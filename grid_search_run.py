@@ -6,18 +6,30 @@ import os
 from ray import train, tune # pip install "ray[tune]"
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
+search_space = {
+    "n_stores": tune.grid_search([3, 5, 10, 20, 30, 50]),
+    "context_size": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
+    "learning_rate": tune.grid_search([0.01, 0.001]),
+    "demand_seed": tune.grid_search([57, 58, 59]),
+}
+
 # this grid search is specifically for symmetry aware setup
+search_or_visualize = sys.argv[1]
+if search_or_visualize not in ["search", "visualize"]:
+    raise ValueError("Invalid argument. Must be 'search' or 'visualize'.")
+
+if search_or_visualize == "visualize"
+    ray_results_folder_name = sys.argv[2]
+    ray_results_folder_path = os.getcwd() + "/ray_results/" + ray_results_folder_name
+    # iterate all folders in the results, fetch all results.
+    return
+
+
 hyperparams_name = "symmetry_aware"
-if len(sys.argv) == 2:
-    setting_name = sys.argv[1]
-else:
-    print(f'Number of parameters provided including script name: {len(sys.argv)}')
-    print(f'Number of parameters should be 1.')
-    assert False
+setting_name = sys.argv[2]
 
-
-print(f'Default setting file name: {setting_name}')
-print(f'Default hyperparams file name: {hyperparams_name}\n')
+print(f'setting file name: {setting_name}')
+print(f'hyperparams file name: {hyperparams_name}\n')
 config_setting_file = f'config_files/settings/{setting_name}.yml'
 config_hyperparams_file = f'config_files/policies_and_hyperparams/{hyperparams_name}.yml'
 
@@ -117,13 +129,6 @@ def run(tuning_configs):
         )
 
     return {"test_loss": average_test_loss_to_report}
-
-search_space = {
-    "n_stores": tune.grid_search([3, 5, 10, 20, 30, 50]),
-    "context_size": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
-    "learning_rate": tune.grid_search([0.01, 0.001]),
-    "demand_seed": tune.grid_search([57, 58, 59]),
-}
 
 tuner = tune.Tuner(run, param_space=search_space)
 
