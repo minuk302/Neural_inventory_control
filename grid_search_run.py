@@ -2,19 +2,15 @@ import yaml
 import pandas as pd
 from trainer import *
 import sys
+from ray import train, tune # pip install "ray[tune]"
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-# Check if command-line arguments for setting and hyperparameter filenames are provided (which corresponds to third and fourth parameters)
-if len(sys.argv) == 4:
-    setting_name = sys.argv[2]
-    hyperparams_name = sys.argv[3]
-
-elif len(sys.argv) == 2:
-    setting_name = 'one_store_lost'  # One store under lost demand setting
-    hyperparams_name = 'vanilla_one_store'  # Vanilla neural network for one store setting
+if len(sys.argv) == 3:
+    setting_name = sys.argv[1]
+    hyperparams_name = sys.argv[2]
 else:
     print(f'Number of parameters provided including script name: {len(sys.argv)}')
-    print(f'Number of parameters should be either 4 or 2 (so that last 2 parameters defined in main_run.py)')
+    print(f'Number of parameters should be 3.')
     assert False
 
 print(f'Default setting file name: {setting_name}')
@@ -37,8 +33,11 @@ def run(tuning_configs):
     observation_params = DefaultDict(lambda: None, observation_params)
 
     # apply tuning configs
+    a = tuning_configs['a']
+    b = tuning_configs['b']
+    print(f"called: {a}, {b}")
 
-
+    return
     dataset_creator = DatasetCreator()
     if sample_data_params['split_by_period']:
         scenario = Scenario(
@@ -115,3 +114,11 @@ def run(tuning_configs):
         discrete_allocation=store_params['demand']['distribution'] == 'poisson'
         )
     print(f'Average per-period test loss: {average_test_loss_to_report}')
+
+search_space = {
+    "a": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
+    "b": tune.grid_search([1, 2, 3]),
+}
+
+tuner = tune.Tuner(run, param_space=search_space)
+results = tuner.fit()
