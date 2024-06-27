@@ -4,10 +4,12 @@ import sys
 from ray import train, tune # pip install "ray[tune]"
 import seaborn as sns
 import json
+from matplotlib.ticker import FuncFormatter
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 search_space = {
-    "n_stores": tune.grid_search([3, 5, 10, 20, 30, 50]),
+    #"n_stores": tune.grid_search([3, 5, 10, 20, 30, 50]),
+    "n_stores": tune.grid_search([3]),
     "context_size": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
     "learning_rate": tune.grid_search([0.01, 0.001]),
     "demand_seed": tune.grid_search([57, 58, 59]),
@@ -47,17 +49,31 @@ if search_or_visualize == "visualize":
     df = df.drop_duplicates(subset=['n_stores', 'context_size', 'learning_rate'], keep='first')
     df.drop(columns=['demand_seed'], inplace=True)
 
+    optimal_test_losses_per_stores = {
+        3: 5.61,
+        5: 5.24,
+        10: 5.71,
+        20: 5.82,
+        30: 5.55,
+        50: 5.36,
+    }
+
     figure_result_directory_path = os.path.join(os.getcwd(), 'grid_search/results')
     os.makedirs(figure_result_directory_path, exist_ok=True)
     for n_store in df['n_stores'].unique():
-        df_plot = df[df['n_stores'] == n_store]
-        df_pivot = df_plot.pivot(index='learning_rate', columns='context_size', values='test_loss')
+        df_plot = df[df['n_stores'] == n_store].copy()
+        optimal_test_loss = optimal_test_losses_per_stores[n_store]
+        df_plot['test_loss_gap_percentage'] = ((df_plot['test_loss'] - optimal_test_loss) / optimal_test_loss)
+        df_pivot = df_plot.pivot(index='learning_rate', columns='context_size', values='test_loss_gap_percentage')
         
+        def percentage_formatter(x, pos):
+            return '{:.2%}'.format(x)
+
         # Create heatmap
         plt.figure(figsize=(10, 8))
-        sns.heatmap(df_pivot, annot=True, cmap="coolwarm", fmt=".2f")
-        plt.title(f'Heatmap of Test Loss for {n_store} Stores')
-        plt.xlabel('Context Size')
+        sns.heatmap(df_pivot, annot=True, cmap="coolwarm", fmt=".2%", vmin=0, cbar_kws={'format': FuncFormatter(percentage_formatter)})
+        plt.title(f'Heatmap of Test Loss Gap % for {n_store} Stores')
+        plt.xlabel('Context Net/Dimension')
         plt.ylabel('Learning Rate')
         
         # Save heatmap
