@@ -6,13 +6,15 @@ import os
 from ray import train, tune # pip install "ray[tune]"
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-if len(sys.argv) == 3:
+# this grid search is specifically for symmetry aware setup
+hyperparams_name = "symmetry_aware"
+if len(sys.argv) == 2:
     setting_name = sys.argv[1]
-    hyperparams_name = sys.argv[2]
 else:
     print(f'Number of parameters provided including script name: {len(sys.argv)}')
-    print(f'Number of parameters should be 3.')
+    print(f'Number of parameters should be 1.')
     assert False
+
 
 print(f'Default setting file name: {setting_name}')
 print(f'Default hyperparams file name: {hyperparams_name}\n')
@@ -25,10 +27,6 @@ with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
 
 def run(tuning_configs):
-    # apply tuning configs
-    if tuning_configs['context_size'] == 64:
-        raise ValueError
-
     setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
     hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
     seeds, test_seeds, problem_params, params_by_dataset, observation_params, store_params, warehouse_params, echelon_params, sample_data_params = [
@@ -37,7 +35,13 @@ def run(tuning_configs):
     trainer_params, optimizer_params, nn_params = [config_hyperparams[key] for key in hyperparams_keys]
     observation_params = DefaultDict(lambda: None, observation_params)
 
-    return
+    # apply tuning configs
+    problem_params['n_stores'] = tuning_configs['n_stores']
+    nn_params['neurons_per_hidden_layer']['context'] = [tuning_configs['context_size'] for _ in nn_params['neurons_per_hidden_layer']['context']]
+    nn_params['output_sizes']['context'] = tuning_configs['context_size']
+    optimizer_params['learning_rate'] = tuning_configs['learning_rate']
+    seeds['demand'] = tuning_configs['demand_seed']
+    
     dataset_creator = DatasetCreator()
     if sample_data_params['split_by_period']:
         scenario = Scenario(
@@ -122,10 +126,11 @@ search_space = {
     "demand_seed": tune.grid_search([57, 58, 59]),
 }
 
-#tuner = tune.Tuner(run, param_space=search_space)
+tuner = tune.Tuner(run, param_space=search_space)
 
 # Code for restoring/resuming grid search.
 # https://docs.ray.io/en/latest/tune/api/doc/ray.tune.Tuner.restore.html#ray.tune.Tuner.restore
 # change restart_errored accordingly.
 # tuner = tune.Tuner.restore(os.getcwd() + "/ray_results/run_2024-06-27_07-48-18", run, restart_errored=True)
+
 results = tuner.fit()
