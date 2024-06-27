@@ -58,8 +58,11 @@ class Trainer():
             where to save the model, the filename for the model, whether to save the model, the number of epochs between saving the model
             and the metric to use for choosing the best model
         """
-
+        n_passed_epochs_without_improvement = 0
         for epoch in range(epochs): # Make multiple passes through the dataset
+            n_passed_epochs_without_improvement += 1
+            if n_passed_epochs_without_improvement >= trainer_params['stop_if_no_improve_for_epochs']:
+                break
             
             # Do one epoch of training, including updating the model parameters
             average_train_loss, average_train_loss_to_report = self.do_one_epoch(
@@ -95,8 +98,9 @@ class Trainer():
 
                 # Check if the current model is the best model so far, and save the model parameters if so.
                 # Save the model if specified in the trainer_params
-                self.update_best_params_and_save(epoch, average_train_loss_to_report, average_dev_loss_to_report, trainer_params, model, optimizer)
-                
+                is_updated = self.update_best_params_and_save(epoch, average_train_loss_to_report, average_dev_loss_to_report, trainer_params, model, optimizer)
+                if is_updated == True:
+                    n_passed_epochs_without_improvement = 0
             else:
                 average_dev_loss, average_dev_loss_to_report = 0, 0
                 self.all_dev_losses.append(self.all_dev_losses[-1])
@@ -244,7 +248,7 @@ class Trainer():
         """
         Update best model parameters if it achieves best performance so far, and save the model
         """
-
+        is_updated = False
         data_for_compare = {'train_loss': train_loss, 'dev_loss': dev_loss}
         if data_for_compare[trainer_params['choose_best_model_on']] < self.best_performance_data[trainer_params['choose_best_model_on']]:  
             self.best_performance_data['train_loss'] = train_loss
@@ -252,12 +256,14 @@ class Trainer():
             if model.trainable:
                 self.best_performance_data['model_params_to_save'] = copy.deepcopy(model.state_dict())
             self.best_performance_data['update'] = True
+            is_updated = True
 
         if trainer_params['save_model'] and model.trainable:
             if self.best_performance_data['last_epoch_saved'] + trainer_params['epochs_between_save'] <= epoch and self.best_performance_data['update']:
                 self.best_performance_data['last_epoch_saved'] = epoch
                 self.best_performance_data['update'] = False
                 self.save_model(epoch, model, optimizer, trainer_params)
+        return is_updated
     
     def plot_losses(self, ymin=None, ymax=None):
         """

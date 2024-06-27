@@ -100,10 +100,8 @@ def run(tuning_configs):
 
     trainer_params['base_dir'] = 'saved_models'
     trainer_params['save_model_folders'] = [trainer.get_year_month_day(), nn_params['name']]
+    # TODO: If want to save model, modify the file name to be based on the values of tuning_configs.
     trainer_params['save_model_filename'] = trainer.get_time_stamp()
-    if trainer_params['load_previous_model']:
-        print(f'Loading model from {trainer_params["load_model_path"]}')
-        model, optimizer = trainer.load_model(model, optimizer, trainer_params['load_model_path'])
 
     trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
     average_test_loss, average_test_loss_to_report = trainer.test(
@@ -117,7 +115,8 @@ def run(tuning_configs):
         params_by_dataset, 
         discrete_allocation=store_params['demand']['distribution'] == 'poisson'
         )
-    print(f'Average per-period test loss: {average_test_loss_to_report}')
+
+    return {"test_loss": average_test_loss_to_report}
 
 search_space = {
     "n_stores": tune.grid_search([3, 5, 10, 20, 30, 50]),
