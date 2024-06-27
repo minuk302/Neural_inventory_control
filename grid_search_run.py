@@ -2,6 +2,7 @@ import yaml
 import pandas as pd
 from trainer import *
 import sys
+import os
 from ray import train, tune # pip install "ray[tune]"
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -24,6 +25,10 @@ with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
 
 def run(tuning_configs):
+    # apply tuning configs
+    if tuning_configs['context_size'] == 64:
+        raise ValueError
+
     setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
     hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
     seeds, test_seeds, problem_params, params_by_dataset, observation_params, store_params, warehouse_params, echelon_params, sample_data_params = [
@@ -31,11 +36,6 @@ def run(tuning_configs):
         ]
     trainer_params, optimizer_params, nn_params = [config_hyperparams[key] for key in hyperparams_keys]
     observation_params = DefaultDict(lambda: None, observation_params)
-
-    # apply tuning configs
-    a = tuning_configs['a']
-    b = tuning_configs['b']
-    print(f"called: {a}, {b}")
 
     return
     dataset_creator = DatasetCreator()
@@ -116,9 +116,16 @@ def run(tuning_configs):
     print(f'Average per-period test loss: {average_test_loss_to_report}')
 
 search_space = {
-    "a": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
-    "b": tune.grid_search([1, 2, 3]),
+    "n_stores": tune.grid_search([3, 5, 10, 20, 30, 50]),
+    "context_size": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
+    "learning_rate": tune.grid_search([0.01, 0.001]),
+    "demand_seed": tune.grid_search([57, 58, 59]),
 }
 
-tuner = tune.Tuner(run, param_space=search_space)
+#tuner = tune.Tuner(run, param_space=search_space)
+
+# Code for restoring/resuming grid search.
+# https://docs.ray.io/en/latest/tune/api/doc/ray.tune.Tuner.restore.html#ray.tune.Tuner.restore
+# change restart_errored accordingly.
+# tuner = tune.Tuner.restore(os.getcwd() + "/ray_results/run_2024-06-27_07-48-18", run, restart_errored=True)
 results = tuner.fit()
