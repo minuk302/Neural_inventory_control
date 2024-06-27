@@ -59,6 +59,7 @@ class Trainer():
             and the metric to use for choosing the best model
         """
         n_passed_epochs_without_improvement = 0
+        epoch_losses = {}
         for epoch in range(epochs): # Make multiple passes through the dataset
             if n_passed_epochs_without_improvement >= trainer_params['stop_if_no_improve_for_epochs']:
                 break
@@ -101,6 +102,10 @@ class Trainer():
                 is_updated = self.update_best_params_and_save(epoch, average_train_loss_to_report, average_dev_loss_to_report, trainer_params, model, optimizer)
                 if is_updated == True:
                     n_passed_epochs_without_improvement = 0
+
+                epoch_losses[f'avg_train_loss_{epoch}'] = average_train_loss_to_report
+                epoch_losses[f'avg_dev_loss_{epoch}'] = average_train_loss_to_report
+                epoch_losses[f'best_dev_loss_{epoch}'] = self.best_performance_data["dev_loss"]
             else:
                 average_dev_loss, average_dev_loss_to_report = 0, 0
                 self.all_dev_losses.append(self.all_dev_losses[-1])
@@ -112,6 +117,7 @@ class Trainer():
                 print(f'Average per-period train loss: {average_train_loss_to_report}')
                 print(f'Average per-period dev loss: {average_dev_loss_to_report}')
                 print(f'Best per-period dev loss: {self.best_performance_data["dev_loss"]}')
+        return epoch_losses
     
     def test(self, loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, discrete_allocation=False):
 

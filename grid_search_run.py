@@ -171,7 +171,7 @@ def run(tuning_configs):
     # TODO: If want to save model, modify the file name to be based on the values of tuning_configs.
     trainer_params['save_model_filename'] = trainer.get_time_stamp()
 
-    trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
+    training_losses = trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
     average_test_loss, average_test_loss_to_report = trainer.test(
         loss_function, 
         simulator, 
@@ -183,8 +183,9 @@ def run(tuning_configs):
         params_by_dataset, 
         discrete_allocation=store_params['demand']['distribution'] == 'poisson'
         )
-
-    return {"test_loss": average_test_loss_to_report}
+    
+    training_losses['test_loss'] = average_test_loss_to_report
+    return training_losses
 
 tuner = tune.Tuner(run, param_space=search_space)
 
