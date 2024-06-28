@@ -205,6 +205,7 @@ context_search_count = 7
 minimum_context_size = 1
 maximum_context_size = 256
 context_size = 128
+results_df = pd.DataFrame(columns=['Context Size', 'Success'])
 for _ in range(context_search_count):
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001]),
@@ -217,10 +218,17 @@ for _ in range(context_search_count):
     results = tuner.fit()
     best_result = results.get_best_result("test_loss", "min")
 
-    if is_success(best_result.metrics['test_loss']):
+    success = is_success(best_result.metrics['test_loss'])
+    results_df = results_df.append({'Context Size': context_size, 'Success': success}, ignore_index=True)
+    if success:
         maximum_context_size = context_size
         context_size = (minimum_context_size + context_size) // 2
     else:
         minimum_context_size = context_size
         context_size = (context_size + maximum_context_size) // 2
     print(f"context_size updated: {context_size}")
+
+results_dir = os.path.join(os.getcwd(), 'grid_search/results')
+os.makedirs(results_dir, exist_ok=True)
+results_path = os.path.join(results_dir, f'{{n_store}}_stores_context_search_results.csv')
+results_df.to_csv(results_path, index=False)
