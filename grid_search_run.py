@@ -12,7 +12,7 @@ search_space = {
     "n_stores": tune.grid_search([3]),
     "context_size": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
     "learning_rate": tune.grid_search([0.01, 0.001]),
-    "demand_seed": tune.grid_search([57, 58, 59]),
+    "samples": tune.grid_search([0, 1, 2]),
 }
 
 # this grid search is specifically for symmetry aware setup
@@ -41,13 +41,13 @@ if search_or_visualize == "visualize":
             'n_stores': params['n_stores'],
             'context_size': params['context_size'],
             'learning_rate': params['learning_rate'],
-            'demand_seed': params['demand_seed'],
+            'samples': params['samples'],
             'test_loss': results['test_loss']
         })
     df = pd.DataFrame(data)
     df = df.sort_values(by='test_loss')
     df = df.drop_duplicates(subset=['n_stores', 'context_size', 'learning_rate'], keep='first')
-    df.drop(columns=['demand_seed'], inplace=True)
+    df.drop(columns=['samples'], inplace=True)
 
     optimal_test_losses_per_stores = {
         3: 5.61,
@@ -108,7 +108,6 @@ def run(tuning_configs):
     nn_params['neurons_per_hidden_layer']['context'] = [tuning_configs['context_size'] for _ in nn_params['neurons_per_hidden_layer']['context']]
     nn_params['output_sizes']['context'] = tuning_configs['context_size']
     optimizer_params['learning_rate'] = tuning_configs['learning_rate']
-    seeds['demand'] = tuning_configs['demand_seed']
     
     dataset_creator = DatasetCreator()
     if sample_data_params['split_by_period']:
