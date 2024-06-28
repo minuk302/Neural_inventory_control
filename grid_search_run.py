@@ -5,8 +5,18 @@ from ray import train, tune # pip install "ray[tune]"
 from ray.tune import Stopper
 import seaborn as sns
 import json
+import time
 from matplotlib.ticker import FuncFormatter
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+optimal_test_losses_per_stores = {
+    3: 5.61,
+    5: 5.24,
+    10: 5.71,
+    20: 5.82,
+    30: 5.55,
+    50: 5.36,
+}
 
 # this grid search is specifically for symmetry aware setup
 search_or_visualize = sys.argv[1]
@@ -172,14 +182,6 @@ def run(tuning_configs):
 
 n_store = 3
 def is_success(test_loss):
-    optimal_test_losses_per_stores = {
-        3: 5.61,
-        5: 5.24,
-        10: 5.71,
-        20: 5.82,
-        30: 5.55,
-        50: 5.36,
-    }
     return test_loss <= optimal_test_losses_per_stores[n_store] * 1.01
 
 class CustomStopper(Stopper):
@@ -213,7 +215,7 @@ for _ in range(context_search_count):
     stopper = CustomStopper()
     tuner = tune.Tuner(run, param_space=search_space, run_config=train.RunConfig(stop=stopper))
     results = tuner.fit()
-    best_result = results.get_best_result()
+    best_result = results.get_best_result("test_loss", "min")
 
     if is_success(best_result.metrics['test_loss']):
         maximum_context_size = context_size
