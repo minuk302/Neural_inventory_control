@@ -7,12 +7,13 @@ import json
 from matplotlib.ticker import FuncFormatter
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-search_space = {
-    #"n_stores": tune.grid_search([3, 5, 10, 20, 30, 50]),
-    "n_stores": tune.grid_search([3]),
-    "context_size": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
-    "learning_rate": tune.grid_search([0.01, 0.001]),
-    "samples": tune.grid_search([0, 1, 2]),
+optimal_test_losses_per_stores = {
+    3: 5.61,
+    5: 5.24,
+    10: 5.71,
+    20: 5.82,
+    30: 5.55,
+    50: 5.36,
 }
 
 # this grid search is specifically for symmetry aware setup
@@ -48,15 +49,6 @@ if search_or_visualize == "visualize":
     df = df.sort_values(by='test_loss')
     df = df.drop_duplicates(subset=['n_stores', 'context_size', 'learning_rate'], keep='first')
     df.drop(columns=['samples'], inplace=True)
-
-    optimal_test_losses_per_stores = {
-        3: 5.61,
-        5: 5.24,
-        10: 5.71,
-        20: 5.82,
-        30: 5.55,
-        50: 5.36,
-    }
 
     figure_result_directory_path = os.path.join(os.getcwd(), 'grid_search/results')
     os.makedirs(figure_result_directory_path, exist_ok=True)
@@ -186,11 +178,26 @@ def run(tuning_configs):
     training_losses['test_loss'] = average_test_loss_to_report
     return training_losses
 
-tuner = tune.Tuner(run, param_space=search_space)
+context_search_count = 7
+minimum_context_size = 1
+maximum_context_size = 256
+context_size = 128
+n_store = 3
+for _ in range(context_search_count):
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001]),
+        "samples": tune.grid_search([0, 1, 2]),
+        "n_stores": n_store,
+        "context_size": context_size,
+    }
+    tuner = tune.Tuner(run, param_space=search_space)
+    results = tuner.fit()
+    best_result = results.get_best_result()
 
-# Code for restoring/resuming grid search.
-# https://docs.ray.io/en/latest/tune/api/doc/ray.tune.Tuner.restore.html#ray.tune.Tuner.restore
-# change restart_errored accordingly.
-# tuner = tune.Tuner.restore(os.getcwd() + "/ray_results/run_2024-06-27_07-48-18", run, restart_errored=True)
-
-results = tuner.fit()
+    if best_result.metrics['test_loss'] <= optimal_test_losses_per_stores[n_store] * 1.01:
+        maximum_context_size = context_size
+        context_size = (minimum_context_size + context_size) // 2
+    else:
+        minimum_context_size = context_size
+        context_size = (context_size + maximum_context_size) // 2
+    print(f"context_size updated: {context_size}")
