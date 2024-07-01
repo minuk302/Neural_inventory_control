@@ -2,11 +2,8 @@ import yaml
 from trainer import *
 import sys
 from ray import train, tune # pip install "ray[tune]"
+import matplotlib.pyplot as plt
 from ray.tune import Stopper
-import seaborn as sns
-import json
-import time
-from matplotlib.ticker import FuncFormatter
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 optimal_test_losses_per_stores = {
@@ -17,6 +14,9 @@ optimal_test_losses_per_stores = {
     30: 5.55,
     50: 5.36,
 }
+results_dir = os.path.join(os.getcwd(), 'grid_search/results')
+maximum_context_size = 256
+context_search_count = 7
 
 # this grid search is specifically for symmetry aware setup
 search_or_visualize = sys.argv[1]
@@ -24,7 +24,29 @@ if search_or_visualize not in ["search", "visualize"]:
     raise ValueError("Invalid argument. Must be 'search' or 'visualize'.")
 
 if search_or_visualize == "visualize":
+    csv_files = [f for f in os.listdir(results_dir) if f.endswith('.csv')]
+    store_results = pd.DataFrame(columns=['Store', 'Min Context Size'])
+    for file in csv_files:
+        store_number = file.split('_')[0]
+        df = pd.read_csv(os.path.join(results_dir, file))
+        successful_df = df[df['Success']]
+        if not successful_df.empty:
+            min_context_size = successful_df['Context Size'].min()
+        else:
+            min_context_size = maximum_context_size
+        new_row = pd.DataFrame({'Store': [store_number], 'Min Context Size': [min_context_size]})
+        store_results = pd.concat([store_results, new_row], ignore_index=True)
 
+    store_results['Store'] = pd.to_numeric(store_results['Store'])
+    store_results.sort_values('Store', inplace=True)
+    plt.plot(store_results['Store'], store_results['Min Context Size'], marker='o', linestyle='-', color='blue')
+    plt.xticks(store_results['Store'])  # Set x-axis ticks to only the existing store numbers
+    plt.xlabel('Store Number')
+    plt.ylabel('Smallest Successful Context Size')
+    plt.title('Smallest Context Size That Succeeded by Store')
+    plt.grid(True)
+    plt.show()
+    plt.savefig(os.path.join(results_dir, 'summary_results_plot.png'))
     exit()
 
 hyperparams_name = "symmetry_aware"
@@ -153,9 +175,7 @@ class CustomStopper(Stopper):
     def stop_all(self) -> bool:
         return self.should_stop
 
-context_search_count = 7
 minimum_context_size = 1
-maximum_context_size = 256
 context_size = 128
 results_df = pd.DataFrame(columns=['Context Size', 'Success'])
 for _ in range(context_search_count):
@@ -180,7 +200,6 @@ for _ in range(context_search_count):
         context_size = (context_size + maximum_context_size) // 2
     print(f"context_size updated: {context_size}")
 
-results_dir = os.path.join(os.getcwd(), 'grid_search/results')
 os.makedirs(results_dir, exist_ok=True)
 results_path = os.path.join(results_dir, f'{{n_store}}_stores_context_search_results.csv')
 results_df.to_csv(results_path, index=False)
