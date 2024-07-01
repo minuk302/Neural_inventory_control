@@ -24,55 +24,7 @@ if search_or_visualize not in ["search", "visualize"]:
     raise ValueError("Invalid argument. Must be 'search' or 'visualize'.")
 
 if search_or_visualize == "visualize":
-    ray_results_folder_name = sys.argv[2]
-    base_path = os.getcwd() + "/ray_results/" + ray_results_folder_name
 
-    data = []
-    for folder_name in os.listdir(base_path):
-        folder_path = os.path.join(base_path, folder_name)
-        if os.path.isdir(folder_path) == False:
-            continue
-        params_path = os.path.join(folder_path, 'params.json')
-        result_path = os.path.join(folder_path, 'result.json')
-        
-        with open(params_path, 'r') as file:
-            params = json.load(file)
-        with open(result_path, 'r') as file:
-            results = json.load(file)
-        
-        data.append({
-            'n_stores': params['n_stores'],
-            'context_size': params['context_size'],
-            'learning_rate': params['learning_rate'],
-            'samples': params['samples'],
-            'test_loss': results['test_loss']
-        })
-    df = pd.DataFrame(data)
-    df = df.sort_values(by='test_loss')
-    df = df.drop_duplicates(subset=['n_stores', 'context_size', 'learning_rate'], keep='first')
-    df.drop(columns=['samples'], inplace=True)
-
-    figure_result_directory_path = os.path.join(os.getcwd(), 'grid_search/results')
-    os.makedirs(figure_result_directory_path, exist_ok=True)
-    for n_store in df['n_stores'].unique():
-        df_plot = df[df['n_stores'] == n_store].copy()
-        optimal_test_loss = optimal_test_losses_per_stores[n_store]
-        df_plot['test_loss_gap_percentage'] = ((df_plot['test_loss'] - optimal_test_loss) / optimal_test_loss)
-        df_pivot = df_plot.pivot(index='learning_rate', columns='context_size', values='test_loss_gap_percentage')
-        
-        def percentage_formatter(x, pos):
-            return '{:.2%}'.format(x)
-
-        # Create heatmap
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(df_pivot, annot=True, cmap="coolwarm", fmt=".2%", vmin=0, cbar_kws={'format': FuncFormatter(percentage_formatter)})
-        plt.title(f'Heatmap of Test Loss Gap % for {n_store} Stores')
-        plt.xlabel('Context Net/Dimension')
-        plt.ylabel('Learning Rate')
-        
-        # Save heatmap
-        plt.savefig(f'{figure_result_directory_path}/heatmap_n_stores_{n_store}.png')
-        plt.close()
     exit()
 
 hyperparams_name = "symmetry_aware"
