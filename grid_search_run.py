@@ -15,6 +15,7 @@ optimal_test_losses_per_stores = {
     50: 5.36,
 }
 results_dir = os.path.join(os.getcwd(), 'grid_search/results')
+n_store = 3
 maximum_context_size = 256
 context_search_count = 7
 
@@ -154,7 +155,6 @@ def run(tuning_configs):
     training_losses['test_loss'] = average_test_loss_to_report
     return training_losses
 
-n_store = 3
 def is_success(test_loss):
     return test_loss <= optimal_test_losses_per_stores[n_store] * 1.01
 
@@ -176,7 +176,7 @@ class CustomStopper(Stopper):
         return self.should_stop
 
 minimum_context_size = 1
-context_size = 128
+context_size = (minimum_context_size + maximum_context_size) // 2
 results_df = pd.DataFrame(columns=['Context Size', 'Success'])
 for _ in range(context_search_count):
     search_space = {
@@ -186,12 +186,14 @@ for _ in range(context_search_count):
         "context_size": context_size,
     }
     stopper = CustomStopper()
-    tuner = tune.Tuner(run, param_space=search_space, run_config=train.RunConfig(stop=stopper))
+    trainable_with_resources = tune.with_resources(run, {"cpu": 4})
+    tuner = tune.Tuner(trainable_with_resources, param_space=search_space, run_config=train.RunConfig(stop=stopper))
     results = tuner.fit()
     best_result = results.get_best_result("test_loss", "min")
 
     success = is_success(best_result.metrics['test_loss'])
-    results_df = results_df.append({'Context Size': context_size, 'Success': success}, ignore_index=True)
+    new_row = pd.DataFrame({'Context Size': [context_size], 'Success': [success]})
+    results_df = pd.concat([results_df, new_row], ignore_index=True)
     if success:
         maximum_context_size = context_size
         context_size = (minimum_context_size + context_size) // 2
