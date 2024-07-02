@@ -15,7 +15,7 @@ optimal_test_losses_per_stores = {
     50: 5.36,
 }
 results_dir = os.path.join(os.getcwd(), 'grid_search/results')
-n_store = 3
+n_store = 30
 maximum_context_size = 256
 context_search_count = 7
 
@@ -203,5 +203,5 @@ for _ in range(context_search_count):
     print(f"context_size updated: {context_size}")
 
 os.makedirs(results_dir, exist_ok=True)
-results_path = os.path.join(results_dir, f'{{n_store}}_stores_context_search_results.csv')
+results_path = os.path.join(results_dir, f'{n_store}_stores_context_search_results.csv')
 results_df.to_csv(results_path, index=False)

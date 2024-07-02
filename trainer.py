@@ -116,18 +116,19 @@ class Trainer():
                     model_for_test = copy.deepcopy(model)
                     # Load the parameter weights that gave the best performance on the specified dataset
                     model_for_test.load_state_dict(self.best_performance_data['model_params_to_save'])
-                    average_test_loss, average_test_loss_to_report = self.do_one_epoch(
-                        optimizer, 
-                        data_loaders['test'], 
-                        loss_function, 
-                        simulator, 
-                        model_for_test, 
-                        params_by_dataset['test']['periods'], 
-                        problem_params, 
-                        observation_params,
-                        train=False, 
-                        ignore_periods=params_by_dataset['test']['ignore_periods'],
-                        )
+                    with torch.no_grad():
+                        average_test_loss, average_test_loss_to_report = self.do_one_epoch(
+                            optimizer, 
+                            data_loaders['test'], 
+                            loss_function, 
+                            simulator, 
+                            model_for_test, 
+                            params_by_dataset['test']['periods'], 
+                            problem_params, 
+                            observation_params,
+                            train=False, 
+                            ignore_periods=params_by_dataset['test']['ignore_periods'],
+                            )
                     train.report({'test_loss': average_test_loss_to_report})
 
             # Print epoch number and average per-period loss every 10 epochs
