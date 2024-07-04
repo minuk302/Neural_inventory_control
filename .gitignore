@@ -1,3 +1,6 @@
 ray_results/
 __pycache__/
 .vscode-server/
+data_files/favorita_one_warehouse/
+grid_search/
+*.pyc
