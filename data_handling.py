@@ -84,7 +84,8 @@ class Scenario():
         However, if it is generated, the split is according to sample indexes
         """
 
-        split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories', 'initial_warehouse_inventories'], 
+        split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories', 'initial_warehouse_inventories'\
+                                    , 'warehouse_lead_times', 'warehouse_holding_costs'], 
                     'period': []}
 
         if self.store_params['demand']['distribution'] == 'real':
