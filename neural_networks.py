@@ -39,6 +39,7 @@ class MyNeuralNetwork(nn.Module):
         
         # If warehouse_upper_bound is not None, then we will use it to multiply the output of the warehouse neural network
         self.warehouse_upper_bound = 0
+        self.use_warehouse_upper_bound = False
 
         self.layers = {}
         # Create nn.ModuleDict to store multiple neural networks
@@ -370,6 +371,13 @@ class SymmetryAware(MyNeuralNetwork):
     Symmetry-aware neural network for settings with one warehouse and many stores
     """
 
+    def get_store_inventory_and_context_params(self, observation):
+        return observation['store_inventories']
+
+    def get_store_inventory_and_params(self, observation):
+        store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
+        return torch.concat([observation['store_inventories'], store_params], dim=2)
+
     def forward(self, observation):
         """
         Use store and warehouse inventories and output a context vector.
@@ -379,11 +387,9 @@ class SymmetryAware(MyNeuralNetwork):
         """
 
         # Get tensor of store parameters
-        store_inventories, warehouse_inventories = observation['store_inventories'], observation['warehouse_inventories']
-        store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
-        
-        # Get context vector using local state (and without using local parameters)
-        input_tensor = self.flatten_then_concatenate_tensors([store_inventories, warehouse_inventories])
+        warehouse_inventories = observation['warehouse_inventories']
+        store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
+        input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_context_param, warehouse_inventories])
         context = self.net['context'](input_tensor)
 
         # Concatenate context vector to warehouselocal state, and get intermediate outputs
@@ -391,8 +397,7 @@ class SymmetryAware(MyNeuralNetwork):
                 self.concatenate_signal_to_object_state_tensor(warehouse_inventories, context)
         warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
 
-        # Concatenate context vector to each store's local state and parameters, and get intermediate outputs
-        store_inventory_and_params = torch.concat([store_inventories, store_params], dim=2)
+        store_inventory_and_params = self.get_store_inventory_and_params(observation)
         stores_and_context = \
                 self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
         store_intermediate_outputs = self.net['store'](stores_and_context)[:, :, 0]  # third dimension has length 1, so we remove it
@@ -403,15 +408,25 @@ class SymmetryAware(MyNeuralNetwork):
             warehouse_inventories
             )
 
-        # Apply sigmoid to warehouse intermediate outputs and multiply by warehouse upper bound        
-        # Sigmoid is applied if specified in the config file!
-        warehouse_allocation = warehouse_intermediate_outputs*(self.warehouse_upper_bound.unsqueeze(1))
+        warehouse_allocation = warehouse_intermediate_outputs
+        if self.use_warehouse_upper_bound:
+            warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1) 
 
         return {
             'stores': store_allocation, 
             'warehouses': warehouse_allocation
             }
 
+class SymmetryAwareRealData(SymmetryAware):
+    def get_store_inventory_and_context_params(self, observation):
+        return torch.cat([observation['store_inventories']] \
+             + [observation[k].unsqueeze(-1) for k in ['days_from_christmas']] \
+             + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
+
+    def get_store_inventory_and_params(self, observation):
+        return torch.cat([observation['store_inventories']] \
+             + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs']] \
+             + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
     
 class VanillaTransshipment(VanillaOneWarehouse):
     """
@@ -616,6 +631,7 @@ class NeuralNetworkCreator:
             'vanilla_transshipment': VanillaTransshipment,
             'vanilla_one_warehouse': VanillaOneWarehouse,
             'symmetry_aware': SymmetryAware,
+            'symmetry_aware_real_data': SymmetryAwareRealData,
             'data_driven': DataDrivenNet,
             'transformed_nv': TransformedNV,
             'fixed_quantile': FixedQuantile,
@@ -652,5 +668,6 @@ class NeuralNetworkCreator:
         # Calculate warehouse upper bound if specified in config file
         if 'warehouse_upper_bound_mult' in nn_params.keys():
             model.warehouse_upper_bound = self.get_warehouse_upper_bound(nn_params['warehouse_upper_bound_mult'], scenario, device)
+            model.use_warehouse_upper_bound = True
         
         return model.to(device)
