@@ -1,11 +1,12 @@
+#!/user/ml4723/.conda/envs/neural_inventory_control/bin/python
+
 import yaml
 from trainer import *
 import sys
 from ray import train, tune # pip install "ray[tune]"
 import matplotlib.pyplot as plt
 from ray.tune import Stopper
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-
+import ray
 optimal_test_losses_per_stores = {
     3: 5.61,
     5: 5.24,
@@ -64,6 +65,7 @@ with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
 
 def run(tuning_configs):
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
     hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
     seeds, test_seeds, problem_params, params_by_dataset, observation_params, store_params, warehouse_params, echelon_params, sample_data_params = [
@@ -175,6 +177,7 @@ class CustomStopper(Stopper):
     def stop_all(self) -> bool:
         return self.should_stop
 
+ray.init(object_store_memory=4000000000)
 minimum_context_size = 1
 context_size = (minimum_context_size + maximum_context_size) // 2
 results_df = pd.DataFrame(columns=['Context Size', 'Success'])
@@ -186,8 +189,10 @@ for _ in range(context_search_count):
         "context_size": context_size,
     }
     stopper = CustomStopper()
-    trainable_with_resources = tune.with_resources(run, {"cpu": 4})
-    tuner = tune.Tuner(trainable_with_resources, param_space=search_space, run_config=train.RunConfig(stop=stopper))
+    trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
+    tuner = tune.Tuner(trainable_with_resources
+    , param_space=search_space
+    , run_config=train.RunConfig(stop=stopper, storage_path=os.path.join(os.getcwd(), 'ray_results')))
     results = tuner.fit()
     best_result = results.get_best_result("test_loss", "min")
 
@@ -205,3 +210,4 @@ for _ in range(context_search_count):
 os.makedirs(results_dir, exist_ok=True)
 results_path = os.path.join(results_dir, f'{n_store}_stores_context_search_results.csv')
 results_df.to_csv(results_path, index=False)
+ray.shutdown()

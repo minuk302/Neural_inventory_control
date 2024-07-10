@@ -1,4 +1,5 @@
 ray_results/
+tmp/
 __pycache__/
 .vscode-server/
 data_files/favorita_one_warehouse/

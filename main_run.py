@@ -1,3 +1,5 @@
+#!/user/ml4723/.conda/envs/neural_inventory_control/bin/python
+
 import yaml
 import pandas as pd
 from trainer import *
