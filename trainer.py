@@ -104,9 +104,13 @@ class Trainer():
                 if is_updated == True:
                     n_passed_epochs_without_improvement = 0
 
+                if 'ray_report_dev_loss' in trainer_params:
+                    train.report({'dev_loss': average_dev_loss_to_report})
+    
                 epoch_losses[f'avg_train_loss_{epoch}'] = average_train_loss_to_report
                 epoch_losses[f'avg_dev_loss_{epoch}'] = average_train_loss_to_report
                 epoch_losses[f'best_dev_loss_{epoch}'] = self.best_performance_data["dev_loss"]
+
             else:
                 average_dev_loss, average_dev_loss_to_report = 0, 0
                 self.all_dev_losses.append(self.all_dev_losses[-1])
