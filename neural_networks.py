@@ -592,9 +592,7 @@ class JustInTime(MyNeuralNetwork):
     
         num_samples, num_stores, max_lead_time = demands.shape
 
-        # For every sample and store, get the demand 'lead_times' periods from now.
-        # Does not currently work for backlogged demand setting!
-        future_demands = torch.stack([
+        stores_future_demands = torch.stack([
             demands[:, j][
                 torch.arange(num_samples), 
                 torch.clip(current_period.to(self.device) + period_shift + lead_times[:, j].long(), max=max_lead_time - 1)
@@ -603,8 +601,20 @@ class JustInTime(MyNeuralNetwork):
             ], dim=1
             )
 
-        return {"stores": torch.clip(future_demands, min=0)}
-
+        if 'warehouse_lead_times' in observation:
+            warehouse_lead_times = self.unpack_args(observation, ["warehouse_lead_times"])
+            warehouse_future_demands = torch.stack([
+                demands[:, j][
+                    torch.arange(num_samples), 
+                    torch.clip(current_period.to(self.device) + period_shift + warehouse_lead_times[:, 0].long() + lead_times[:, j].long(), max=max_lead_time - 1)
+                    ] 
+                for j in range(num_stores)
+                ], dim=1
+                )
+            warehouse_future_demands = warehouse_future_demands.sum(dim=1).unsqueeze(-1)
+            store_allocation = self.apply_proportional_allocation(torch.clip(stores_future_demands, min=0), observation['warehouse_inventories'])
+            return {'stores': store_allocation,'warehouses': torch.clip(warehouse_future_demands, min=0),} 
+        return {'stores': stores_future_demands}
 class NeuralNetworkCreator:
     """
     Class to create neural networks
