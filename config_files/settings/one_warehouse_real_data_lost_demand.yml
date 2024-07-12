@@ -23,26 +23,26 @@ sample_data_params:
   'test_periods': (154, 200)
 
 problem_params : 
-  'n_stores': 10
+  'n_stores': 16
   'n_warehouses': 1
   'n_extra_echelons': 0
   'lost_demand': True
-  'maximize_profit': False
+  'maximize_profit': True
 
 params_by_dataset : 
   'train': 
-    'n_samples': 32768 
-    'batch_size': 8192 
+    'n_samples': 416 
+    'batch_size': 416 
     'periods': 104 
     'ignore_periods': 16
   'dev': 
-    'n_samples': 32768 
-    'batch_size': 8192 
+    'n_samples': 416 
+    'batch_size': 416 
     'periods': 50 
     'ignore_periods': 16 
   'test': 
-    'n_samples': 32768 
-    'batch_size': 8192 
+    'n_samples': 416 
+    'batch_size': 416 
     'periods': 30 
     'ignore_periods': 10
 
