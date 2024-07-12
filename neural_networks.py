@@ -441,20 +441,24 @@ class DataDrivenNet(MyNeuralNetwork):
     """
     
     def forward(self, observation):
-        """
-        Utilize inventory on-hand, past demands, arrivals, orders, underage costs, and days from Christmas to output store orders directly
-        """
+        input_data = [observation['store_inventories'][:, :, 0]] \
+                    + [observation[key] for key in ['past_demands', 'arrivals', 'orders', 'underage_costs', 'days_from_christmas']]
 
-        # Input tensor is given by current inventory on hand, past demands, arrivals and orders, and underage costs for 
-        # each sample path, and days from Christmas
-        input_tensor = self.flatten_then_concatenate_tensors(
-            [
-                observation['store_inventories'][:, :, 0]] + 
-                [observation[key] for key in ['past_demands', 'arrivals', 'orders', 'underage_costs', 'days_from_christmas']
-                ]
-            )
+        if 'warehouse_inventories' in observation:
+            input_data = input_data + [observation['warehouse_inventories']]
+        input_tensor = self.flatten_then_concatenate_tensors(input_data)
+        outputs = self.net['master'](input_tensor)
+        
+        if 'warehouse_inventories' not in observation:
+            return {'stores': outputs}
 
-        return {'stores': self.net['master'](input_tensor)} # Clip output to be non-negative
+        n_stores = observation['store_inventories'].size(1)
+        store_intermediate_outputs, warehouse_intermediate_outputs = outputs[:, :n_stores], outputs[:, n_stores:]
+        store_allocation = self.apply_proportional_allocation(store_intermediate_outputs, observation['warehouse_inventories'])
+        warehouse_allocation = warehouse_intermediate_outputs
+        if self.use_warehouse_upper_bound:
+            warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
+        return {'stores': store_allocation, 'warehouses': warehouse_allocation}
 
 class QuantilePolicy(MyNeuralNetwork):
     """
