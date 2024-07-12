@@ -56,8 +56,8 @@ observation_params:
     'past_periods': 16
     'period_shift': 16
   'include_past_observations':
-    'arrivals': 8
-    'orders': 8
+    'arrivals': 4
+    'orders': 4
   'time_features_file': 'data_files/favorita_one_warehouse/dates_with_info.csv'
   'time_features':
     ['days_from_christmas']
@@ -81,7 +81,7 @@ store_params:
     'expand': True
     'value': 1.0
   'underage_cost': 
-    'sample_across_stores': True
+    'sample_across_stores': False
     'vary_across_samples': True 
     'expand': False
     'range': [6.3, 11.7]
