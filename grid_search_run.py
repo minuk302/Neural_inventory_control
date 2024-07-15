@@ -7,6 +7,8 @@ from ray import train, tune # pip install "ray[tune]"
 import matplotlib.pyplot as plt
 from ray.tune import Stopper
 import ray
+import wandb
+import pynvml
 optimal_test_losses_per_stores = {
     3: 5.61,
     5: 5.24,
@@ -16,9 +18,14 @@ optimal_test_losses_per_stores = {
     50: 5.36,
 }
 results_dir = os.path.join(os.getcwd(), 'grid_search/results')
-n_store = 30
-maximum_context_size = 256
-context_search_count = 7
+# n_store = 50
+# maximum_context_size = 256
+# context_search_count = 7
+# change tune_rate too
+
+n_store = 50
+maximum_context_size = 8
+context_search_count = 1
 
 # this grid search is specifically for symmetry aware setup
 search_or_visualize = sys.argv[1]
@@ -43,15 +50,15 @@ if search_or_visualize == "visualize":
     store_results.sort_values('Store', inplace=True)
     plt.plot(store_results['Store'], store_results['Min Context Size'], marker='o', linestyle='-', color='blue')
     plt.xticks(store_results['Store'])  # Set x-axis ticks to only the existing store numbers
-    plt.xlabel('Store Number')
-    plt.ylabel('Smallest Successful Context Size')
-    plt.title('Smallest Context Size That Succeeded by Store')
+    plt.xlabel('# of Stores')
+    plt.ylabel('Context Size')
+    plt.title('Smallest Context Size Achieved 1% Test Gap VS # of Stores')
     plt.grid(True)
     plt.show()
     plt.savefig(os.path.join(results_dir, 'summary_results_plot.png'))
     exit()
 
-hyperparams_name = "symmetry_aware"
+hyperparams_name = "symmetry_aware_grid_search"
 setting_name = sys.argv[2]
 
 print(f'Setting file name: {setting_name}')
@@ -65,6 +72,8 @@ with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
 
 def run(tuning_configs):
+    pynvml.nvmlInit()
+    wandb.init(project="Neural_Inventory_Control", config = tuning_configs)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
     hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
@@ -155,6 +164,8 @@ def run(tuning_configs):
         )
     
     training_losses['test_loss'] = average_test_loss_to_report
+    wandb.finish()
+    pynvml.nvmlShutdown()
     return training_losses
 
 def is_success(test_loss):
@@ -183,8 +194,9 @@ context_size = (minimum_context_size + maximum_context_size) // 2
 results_df = pd.DataFrame(columns=['Context Size', 'Success'])
 for _ in range(context_search_count):
     search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001]),
-        "samples": tune.grid_search([0, 1, 2]),
+        #"learning_rate": tune.grid_search([0.01, 0.001]),
+        "learning_rate": tune.grid_search([0.001, 0.0005]),
+        "samples": tune.grid_search([0, 1, 2, 3, 4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]),
         "n_stores": n_store,
         "context_size": context_size,
     }

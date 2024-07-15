@@ -1,5 +1,7 @@
 from shared_imports import *
 from quantile_forecaster import FullyConnectedForecaster
+import gc
+import wandb
 
 class MyNeuralNetwork(nn.Module):
 
@@ -167,7 +169,16 @@ class MyNeuralNetwork(nn.Module):
 
         n_objects = object_state.size(1)
         signal = signal.unsqueeze(1).expand(-1, n_objects, -1)
-        return torch.cat((object_state, signal), dim=2)
+        try:
+            return torch.cat((object_state, signal), dim=2)
+        except RuntimeError as e:
+            if 'out of memory' in str(e):
+                print("CUDA out of memory. Clearing cache and trying again...")
+                gc.collect()
+                torch.cuda.empty_cache()
+                return torch.cat((object_state, signal), dim=2)
+            else:
+                raise e
     
     def unpack_args(self, args, keys):
         """
@@ -410,7 +421,7 @@ class SymmetryAware(MyNeuralNetwork):
 
         warehouse_allocation = warehouse_intermediate_outputs
         if self.use_warehouse_upper_bound:
-            warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1) 
+            warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
 
         return {
             'stores': store_allocation, 
