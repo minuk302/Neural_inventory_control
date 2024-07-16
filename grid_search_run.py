@@ -7,8 +7,6 @@ from ray import train, tune # pip install "ray[tune]"
 import matplotlib.pyplot as plt
 from ray.tune import Stopper
 import ray
-import wandb
-import pynvml
 optimal_test_losses_per_stores = {
     3: 5.61,
     5: 5.24,
@@ -25,7 +23,7 @@ results_dir = os.path.join(os.getcwd(), 'grid_search/results')
 
 n_store = 50
 maximum_context_size = 8
-context_search_count = 1
+context_search_count = 2
 
 # this grid search is specifically for symmetry aware setup
 search_or_visualize = sys.argv[1]
@@ -72,8 +70,6 @@ with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
 
 def run(tuning_configs):
-    pynvml.nvmlInit()
-    wandb.init(project="Neural_Inventory_Control", config = tuning_configs)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
     hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
@@ -151,21 +147,6 @@ def run(tuning_configs):
     trainer_params['save_model_filename'] = trainer.get_time_stamp()
 
     training_losses = trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
-    average_test_loss, average_test_loss_to_report = trainer.test(
-        loss_function, 
-        simulator, 
-        model, 
-        data_loaders, 
-        optimizer, 
-        problem_params, 
-        observation_params, 
-        params_by_dataset, 
-        discrete_allocation=store_params['demand']['distribution'] == 'poisson'
-        )
-    
-    training_losses['test_loss'] = average_test_loss_to_report
-    wandb.finish()
-    pynvml.nvmlShutdown()
     return training_losses
 
 def is_success(test_loss):
@@ -196,6 +177,7 @@ for _ in range(context_search_count):
     search_space = {
         #"learning_rate": tune.grid_search([0.01, 0.001]),
         "learning_rate": tune.grid_search([0.001, 0.0005]),
+        # "samples": tune.grid_search([0, 1]),
         "samples": tune.grid_search([0, 1, 2, 3, 4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]),
         "n_stores": n_store,
         "context_size": context_size,

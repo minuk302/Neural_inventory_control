@@ -10,3 +10,4 @@ import copy
 from collections import defaultdict as DefaultDict
 import datetime
 import os
+import pynvml

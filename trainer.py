@@ -2,8 +2,6 @@ from shared_imports import *
 from environment import *
 from loss_functions import *
 from ray import train
-import wandb_utils
-import wandb
 
 class Trainer():
     """
@@ -68,8 +66,6 @@ class Trainer():
                 break
             n_passed_epochs_without_improvement += 1
             
-            wandb_utils.write_file(f'1st phase')
-            wandb.log({'phase': 1})
             # Do one epoch of training, including updating the model parameters
             average_train_loss, average_train_loss_to_report = self.do_one_epoch(
                 optimizer, 
@@ -87,8 +83,7 @@ class Trainer():
             self.all_train_losses.append(average_train_loss_to_report)
 
             if epoch % trainer_params['do_dev_every_n_epochs'] == 0:
-                wandb_utils.write_file(f'2nd phase')
-                wandb.log({'phase': 2})
+
                 average_dev_loss, average_dev_loss_to_report = self.do_one_epoch(
                     optimizer, 
                     data_loaders['dev'], 
@@ -126,8 +121,7 @@ class Trainer():
                     model_for_test = copy.deepcopy(model)
                     # Load the parameter weights that gave the best performance on the specified dataset
                     model_for_test.load_state_dict(self.best_performance_data['model_params_to_save'])
-                    wandb_utils.write_file(f'3rd phase')
-                    wandb.log({'phase': 3})
+
                     with torch.no_grad():
                         average_test_loss, average_test_loss_to_report = self.do_one_epoch(
                             optimizer, 
@@ -184,7 +178,7 @@ class Trainer():
         periods_tracking_loss = periods - ignore_periods  # Number of periods for which we report the loss
 
         for i, data_batch in enumerate(data_loader):  # Loop through batches of data
-            wandb_utils.write_file(f'{i}-th batch')
+
             data_batch = self.move_batch_to_device(data_batch)
             
             if train:
@@ -218,8 +212,7 @@ class Trainer():
 
         observation, _ = simulator.reset(periods, problem_params, data_batch, observation_params)
         for t in range(periods):
-            wandb_utils.log_memory_usage()
-            wandb_utils.write_file(f'{t}-th period')
+
             # We add internal data to the observation to create non-admissible benchmark policies.
             # No admissible policy should use data stored in _internal_data!
             observation_and_internal_data = {k: v for k, v in observation.items()}

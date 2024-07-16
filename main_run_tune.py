@@ -106,18 +106,18 @@ def run(tuning_configs):
     return 0
 
 ray.init(object_store_memory=4000000000)
-# search_space = {
-#     "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-#     "master_neurons": tune.grid_search([128, 256, 512]),
-#     "samples": tune.grid_search([0, 1]),
-# }
 search_space = {
     "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+    "master_neurons": tune.grid_search([64, 128, 256]),
     "samples": tune.grid_search([0, 1, 2]),
 }
+# search_space = {
+#     "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+#     "samples": tune.grid_search([0, 1, 2]),
+# }
 trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
 tuner = tune.Tuner(trainable_with_resources
 , param_space=search_space
-, run_config=train.RunConfig(storage_path=os.path.join(os.getcwd(), f'ray_results_{hyperparams_name}')))
+, run_config=train.RunConfig(storage_path=os.path.join(os.getcwd(), f'ray_results_real_{hyperparams_name}')))
 results = tuner.fit()
 ray.shutdown()

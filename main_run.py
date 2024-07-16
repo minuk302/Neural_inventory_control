@@ -4,10 +4,6 @@ import yaml
 import pandas as pd
 from trainer import *
 import sys
-import wandb
-
-wandb.init(project="Neural_Inventory_Control")
-
 # Check if command-line arguments for setting and hyperparameter filenames are provided (which corresponds to third and fourth parameters)
 if len(sys.argv) == 4:
     setting_name = sys.argv[2]
@@ -150,4 +146,3 @@ elif train_or_test in ['test', 'train']:
 else:
     print(f'Invalid argument: {train_or_test}')
     assert False
-wandb.finish()
