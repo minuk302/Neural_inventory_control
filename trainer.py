@@ -160,7 +160,7 @@ class Trainer():
                 params_by_dataset['test']['periods'], 
                 problem_params, 
                 observation_params, 
-                train=True, 
+                train=False, 
                 ignore_periods=params_by_dataset['test']['ignore_periods'],
                 discrete_allocation=discrete_allocation
                 )

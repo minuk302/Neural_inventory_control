@@ -21,9 +21,9 @@ results_dir = os.path.join(os.getcwd(), 'grid_search/results')
 # context_search_count = 7
 # change tune_rate too
 
-n_store = 50
-maximum_context_size = 8
-context_search_count = 2
+n_store = 3
+maximum_context_size = 256
+context_search_count = 8
 
 # this grid search is specifically for symmetry aware setup
 search_or_visualize = sys.argv[1]
@@ -147,10 +147,24 @@ def run(tuning_configs):
     trainer_params['save_model_filename'] = trainer.get_time_stamp()
 
     training_losses = trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
+    
+    with torch.no_grad():
+        average_test_loss, average_test_loss_to_report = trainer.test(
+            loss_function, 
+            simulator, 
+            model,
+            data_loaders, 
+            optimizer, 
+            problem_params, 
+            observation_params, 
+            params_by_dataset, 
+            discrete_allocation=store_params['demand']['distribution'] == 'poisson'
+            )
+    training_losses['test_loss'] = average_test_loss_to_report
     return training_losses
 
 def is_success(test_loss):
-    return test_loss <= optimal_test_losses_per_stores[n_store] * 1.01
+    return test_loss <= optimal_test_losses_per_stores[n_store] * 1.005
 
 class CustomStopper(Stopper):
     def __init__(self):
@@ -175,10 +189,10 @@ context_size = (minimum_context_size + maximum_context_size) // 2
 results_df = pd.DataFrame(columns=['Context Size', 'Success'])
 for _ in range(context_search_count):
     search_space = {
-        #"learning_rate": tune.grid_search([0.01, 0.001]),
-        "learning_rate": tune.grid_search([0.001, 0.0005]),
+        # "learning_rate": tune.grid_search([0.001, 0.0005]),
+        "learning_rate": tune.grid_search([0.1, 0.01, 0.001]),
         # "samples": tune.grid_search([0, 1]),
-        "samples": tune.grid_search([0, 1, 2, 3, 4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]),
+        "samples": tune.grid_search([0, 1, 2, 3, 4,5,6,7,8,9,10]),
         "n_stores": n_store,
         "context_size": context_size,
     }
@@ -186,7 +200,7 @@ for _ in range(context_search_count):
     trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
     tuner = tune.Tuner(trainable_with_resources
     , param_space=search_space
-    , run_config=train.RunConfig(stop=stopper, storage_path=os.path.join(os.getcwd(), 'ray_results')))
+    , run_config=train.RunConfig(stop=stopper, storage_path=os.path.join(os.getcwd(), f'ray_results_{n_store}')))
     results = tuner.fit()
     best_result = results.get_best_result("test_loss", "min")
 
