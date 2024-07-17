@@ -2,7 +2,7 @@ trainer_params :
   'epochs': 10000
   'stop_if_no_improve_for_epochs': 500
   'do_dev_every_n_epochs': 5
-  'ray_report_dev_loss': True
+  'ray_report_loss': True
   'print_results_every_n_epochs': 5
   'save_model': False  # Path to save is defined in main script
   'epochs_between_save': 5  # Save if cost improved, and at least this number of epochs have passed
@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'symmetry_aware'
+  'name': 'symmetry_aware_real_data'
   'inner_layer_activations': 
     'context': 'elu'
     'store': 'elu'
@@ -22,7 +22,7 @@ nn_params:
   'output_layer_activation':
     'context': 'sigmoid'
     'store': 'softplus'
-    'warehouse': 'sigmoid'
+    'warehouse': 'relu'
   'neurons_per_hidden_layer':
     'context': [256]
     'store': [32, 32]
@@ -32,4 +32,3 @@ nn_params:
     'store': 1
     'warehouse': 1
   'initial_bias': null
-  'warehouse_upper_bound_mult': 4
