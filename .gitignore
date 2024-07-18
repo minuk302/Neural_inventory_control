@@ -5,3 +5,7 @@ __pycache__/
 data_files/favorita_one_warehouse/
 grid_search/
 *.pyc
+*.7z
+wandb/
+ray_results_*/
+progress_log/

@@ -1,7 +1,6 @@
 #!/user/ml4723/.conda/envs/neural_inventory_control/bin/python
 
 import yaml
-import pandas as pd
 from trainer import *
 import sys
 # Check if command-line arguments for setting and hyperparameter filenames are provided (which corresponds to third and fourth parameters)

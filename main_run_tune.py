@@ -102,19 +102,21 @@ def run(tuning_configs):
     # TODO: If want to save model, modify the file name to be based on the values of tuning_configs.
     trainer_params['save_model_filename'] = trainer.get_time_stamp()
 
-    training_losses = trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
-    return 0
+    trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
 
 ray.init(object_store_memory=4000000000)
-search_space = {
-    "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-    "master_neurons": tune.grid_search([64, 128, 256]),
-    "samples": tune.grid_search([0, 1, 2]),
-}
-# search_space = {
-#     "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-#     "samples": tune.grid_search([0, 1, 2]),
-# }
+
+if 'symmetry' in hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001, 0.00001]),
+        "samples": tune.grid_search([0, 1]),
+    }
+else:
+    search_space = {
+        "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
+        "master_neurons": tune.grid_search([32, 64, 128, 256]),
+        "samples": tune.grid_search([0, 1]),
+    }
 trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
 tuner = tune.Tuner(trainable_with_resources
 , param_space=search_space
