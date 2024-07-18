@@ -14,21 +14,25 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'symmetry_aware_real_data'
+  'name': 'symmetry_GNN_real_data'
   'inner_layer_activations': 
     'context': 'elu'
+    'context_store': 'elu'
     'store': 'elu'
     'warehouse': 'elu'
   'output_layer_activation':
     'context': 'sigmoid'
+    'context_store': 'sigmoid'
     'store': 'softplus'
     'warehouse': 'relu'
   'neurons_per_hidden_layer':
     'context': [256]
+    'context_store': [256]
     'store': [32, 32]
     'warehouse': [16, 16]
   'output_sizes':
     'context': 256
+    'context_store': 256
     'store': 1
     'warehouse': 1
   'initial_bias': null

@@ -389,6 +389,11 @@ class SymmetryAware(MyNeuralNetwork):
         store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
         return torch.concat([observation['store_inventories'], store_params], dim=2)
 
+    def get_context(self, observation):
+        store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
+        input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_context_param, observation['warehouse_inventories']])
+        return self.net['context'](input_tensor)
+
     def forward(self, observation):
         """
         Use store and warehouse inventories and output a context vector.
@@ -396,16 +401,12 @@ class SymmetryAware(MyNeuralNetwork):
         For stores, interpret intermediate outputs as ordered, and apply proportional allocation whenever inventory is scarce.
         For warehouses, apply sigmoid to intermediate outputs and multiply by warehouse upper bound.
         """
-
         # Get tensor of store parameters
-        warehouse_inventories = observation['warehouse_inventories']
-        store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
-        input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_context_param, warehouse_inventories])
-        context = self.net['context'](input_tensor)
+        context = self.get_context(observation)
 
         # Concatenate context vector to warehouselocal state, and get intermediate outputs
         warehouses_and_context = \
-                self.concatenate_signal_to_object_state_tensor(warehouse_inventories, context)
+                self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
         warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
 
         store_inventory_and_params = self.get_store_inventory_and_params(observation)
@@ -416,7 +417,7 @@ class SymmetryAware(MyNeuralNetwork):
         # Apply proportional allocation whenever inventory at the warehouse is scarce.
         store_allocation = self.apply_proportional_allocation(
             store_intermediate_outputs, 
-            warehouse_inventories
+            observation['warehouse_inventories']
             )
 
         warehouse_allocation = warehouse_intermediate_outputs
@@ -438,6 +439,13 @@ class SymmetryAwareRealData(SymmetryAware):
         return torch.cat([observation['store_inventories']] \
              + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs']] \
              + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
+
+class SymmetryGNNRealData(SymmetryAwareRealData):
+    def get_context(self, observation):
+        store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
+        aggregated_store_embeddings = self.net['context_store'](store_inventory_and_context_param).mean(dim=1)
+        input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
+        return self.net['context'](input_tensor)
     
 class VanillaTransshipment(VanillaOneWarehouse):
     """
@@ -657,6 +665,7 @@ class NeuralNetworkCreator:
             'vanilla_one_warehouse': VanillaOneWarehouse,
             'symmetry_aware': SymmetryAware,
             'symmetry_aware_real_data': SymmetryAwareRealData,
+            'symmetry_GNN_real_data' : SymmetryGNNRealData,
             'data_driven': DataDrivenNet,
             'transformed_nv': TransformedNV,
             'fixed_quantile': FixedQuantile,
