@@ -16,6 +16,8 @@ if len(sys.argv) == 3:
     setting_name = sys.argv[1]
     hyperparams_name = sys.argv[2]
 
+n_stores = 3
+
 print(f'Setting file name: {setting_name}')
 print(f'Hyperparams file name: {hyperparams_name}\n')
 config_setting_file = f'config_files/settings/{setting_name}.yml'
@@ -37,9 +39,20 @@ def run(tuning_configs):
     observation_params = DefaultDict(lambda: None, observation_params)
 
     # apply tuning configs
-    optimizer_params['learning_rate'] = tuning_configs['learning_rate']
     if "master_neurons" in tuning_configs:
-        nn_params['neurons_per_hidden_layer']['master'] = [tuning_configs["master_neurons"] for _ in range(3)]
+        nn_params['neurons_per_hidden_layer']['master'] = [tuning_configs['master'] for _ in nn_params['neurons_per_hidden_layer']['master']]
+
+    if 'n_stores' in tuning_configs:
+        problem_params['n_stores'] = tuning_configs['n_stores']
+    
+    if 'learning_rate' in tuning_configs:
+        optimizer_params['learning_rate'] = tuning_configs['learning_rate']
+
+    nets = ['context', 'context_store']
+    for net in nets:
+        if net in tuning_configs:
+            nn_params['neurons_per_hidden_layer'][net] = [tuning_configs[net] for _ in nn_params['neurons_per_hidden_layer'][net]]
+            nn_params['output_sizes'][net] = tuning_configs[net]
     
     dataset_creator = DatasetCreator()
     if sample_data_params['split_by_period']:
@@ -97,18 +110,25 @@ def run(tuning_configs):
     simulator = Simulator(device=device)
     trainer = Trainer(device=device)
 
-    trainer_params['base_dir'] = 'saved_models'
-    trainer_params['save_model_folders'] = [trainer.get_year_month_day(), nn_params['name']]
-    # TODO: If want to save model, modify the file name to be based on the values of tuning_configs.
-    trainer_params['save_model_filename'] = trainer.get_time_stamp()
-
+    trainer_params['base_dir'] = train.get_context().get_trial_dir()
+    trainer_params['save_model_folders'] = []
+    trainer_params['save_model_filename'] = "model"
     trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
 
 ray.init(object_store_memory=4000000000)
 
-if 'symmetry' in hyperparams_name:
+if 'symmetry_aware' in hyperparams_name:
     search_space = {
-        "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001, 0.00001]),
+        'n_stores': n_stores,
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        'context': tune.grid_search([1, 256]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
+    }
+elif 'GNN' in hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
+        "context": tune.grid_search([16, 32, 64, 128, 256]),
+        "context_store": tune.grid_search([16, 32, 64, 128, 256]),
         "samples": tune.grid_search([0, 1]),
     }
 else:
@@ -120,6 +140,6 @@ else:
 trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
 tuner = tune.Tuner(trainable_with_resources
 , param_space=search_space
-, run_config=train.RunConfig(storage_path=os.path.join(os.getcwd(), f'ray_results_real_{hyperparams_name}')))
+, run_config=train.RunConfig(storage_path=os.path.join(os.getcwd(), f'ray_results/perf/{n_stores}')))
 results = tuner.fit()
 ray.shutdown()
