@@ -7,16 +7,17 @@ from ray import train, tune # pip install "ray[tune]"
 import matplotlib.pyplot as plt
 from ray.tune import Stopper
 import ray
+import json
 
 # HDPO w/o context = symmetry_aware
 # HDPO w/ context = symmetry_aware
 
 # Check if command-line arguments for setting and hyperparameter filenames are provided (which corresponds to third and fourth parameters)
-if len(sys.argv) == 3:
-    setting_name = sys.argv[1]
-    hyperparams_name = sys.argv[2]
 
-n_stores = 3
+setting_name = sys.argv[1]
+hyperparams_name = sys.argv[2]
+n_stores = int(sys.argv[3])
+load_model = False
 
 print(f'Setting file name: {setting_name}')
 print(f'Hyperparams file name: {hyperparams_name}\n')
@@ -27,6 +28,32 @@ with open(config_setting_file, 'r') as file:
     config_setting = yaml.safe_load(file)
 with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
+
+
+def find_model_path_for(tuning_configs):
+    paths = {
+        3: "/user/ml4723/Prj/NIC/ray_results/perf/3/run_2024-07-19_23-43-56",
+        5: "/user/ml4723/Prj/NIC/ray_results/perf/5/run_2024-07-19_23-45-43",
+        10: "/user/ml4723/Prj/NIC/ray_results/perf/10/run_2024-07-19_23-53-23",
+        20: "/user/ml4723/Prj/NIC/ray_results/perf/20/run_2024-07-19_23-53-28",
+        30: "/user/ml4723/Prj/NIC/ray_results/perf/30/run_2024-07-19_23-51-47",
+        50: "/user/ml4723/Prj/NIC/ray_results/perf/50/run_2024-07-19_23-53-27"
+    }
+    for num_stores, base_path in paths.items():
+        if tuning_configs['n_stores'] != num_stores:
+            continue
+        for subfolder in os.listdir(base_path):
+            subfolder_path = os.path.join(base_path, subfolder)
+            params_path = os.path.join(subfolder_path, 'params.json')
+
+            if not os.path.isfile(params_path):
+                continue
+
+            with open(params_path, 'r') as f:
+                params = json.load(f)
+                if all(tuning_configs[key] == params.get(key) for key in tuning_configs):
+                    return os.path.join(subfolder_path, 'model.pt')
+    return None
 
 def run(tuning_configs):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -51,6 +78,9 @@ def run(tuning_configs):
     nets = ['context', 'context_store']
     for net in nets:
         if net in tuning_configs:
+            if tuning_configs[net] == 0:
+                del nn_params['output_sizes'][net]
+                continue
             nn_params['neurons_per_hidden_layer'][net] = [tuning_configs[net] for _ in nn_params['neurons_per_hidden_layer'][net]]
             nn_params['output_sizes'][net] = tuning_configs[net]
     
@@ -110,6 +140,9 @@ def run(tuning_configs):
     simulator = Simulator(device=device)
     trainer = Trainer(device=device)
 
+    if load_model == True:
+        model, optimizer = trainer.load_model(model, optimizer, find_model_path_for(tuning_configs))
+
     trainer_params['base_dir'] = train.get_context().get_trial_dir()
     trainer_params['save_model_folders'] = []
     trainer_params['save_model_filename'] = "model"
@@ -121,7 +154,8 @@ if 'symmetry_aware' in hyperparams_name:
     search_space = {
         'n_stores': n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        'context': tune.grid_search([1, 256]),
+        'context': tune.grid_search([0]),
+        # 'context': tune.grid_search([1, 256]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
     }
 elif 'GNN' in hyperparams_name:

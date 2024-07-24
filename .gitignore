@@ -1,4 +1,4 @@
-ray_results/
+ray_results*/
 tmp/
 __pycache__/
 .vscode-server/
