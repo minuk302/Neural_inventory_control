@@ -401,25 +401,27 @@ class SymmetryAware(MyNeuralNetwork):
         For stores, interpret intermediate outputs as ordered, and apply proportional allocation whenever inventory is scarce.
         For warehouses, apply sigmoid to intermediate outputs and multiply by warehouse upper bound.
         """
-        # Get tensor of store parameters
-        context = self.get_context(observation)
+        if 'context' in self.net:
+            # Get tensor of store parameters
+            context = self.get_context(observation)
 
-        # Concatenate context vector to warehouselocal state, and get intermediate outputs
-        warehouses_and_context = \
-                self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
-        warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
+            # Concatenate context vector to warehouselocal state, and get intermediate outputs
+            warehouses_and_context = \
+                    self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
+            warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
 
-        store_inventory_and_params = self.get_store_inventory_and_params(observation)
-        stores_and_context = \
-                self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
-        store_intermediate_outputs = self.net['store'](stores_and_context)[:, :, 0]  # third dimension has length 1, so we remove it
+            store_inventory_and_params = self.get_store_inventory_and_params(observation)
+            stores_and_context = \
+                    self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
+            store_intermediate_outputs = self.net['store'](stores_and_context)[:, :, 0]  # third dimension has length 1, so we remove it
+        else:
+            warehouse_intermediate_outputs = self.net['warehouse'](observation['warehouse_inventories'])[:, :, 0]
+            store_intermediate_outputs = self.net['store'](self.get_store_inventory_and_params(observation))[:, :, 0]
 
-        # Apply proportional allocation whenever inventory at the warehouse is scarce.
         store_allocation = self.apply_proportional_allocation(
             store_intermediate_outputs, 
             observation['warehouse_inventories']
             )
-
         warehouse_allocation = warehouse_intermediate_outputs
         if self.use_warehouse_upper_bound:
             warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
@@ -514,7 +516,7 @@ class QuantilePolicy(MyNeuralNetwork):
             self.fixed_nets['quantile_forecaster'].get_quantile(
                 torch.cat([
                     past_demands, 
-                    days_from_christmas.unsqueeze(1).expand(past_demands.shape[0], past_demands.shape[1], 1)
+                    days_from_christmas.unsqueeze(-1)
                     ], dim=2
                     ), 
                     quantiles, 
@@ -525,9 +527,9 @@ class QuantilePolicy(MyNeuralNetwork):
         if allow_back_orders:
             store_allocation = base_stock_levels - store_inventories.sum(dim=2)
         else:
-            store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2), min=0)
-        
-        return {"stores": store_allocation}
+            store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2, keepdim=True), min=0)
+
+        return base_stock_levels, {"stores": store_allocation.squeeze(-1)}
     
     def compute_desired_quantiles(self, args):
 
@@ -543,12 +545,21 @@ class QuantilePolicy(MyNeuralNetwork):
 
         # Get the desired quantiles for each store, which will be used to forecast the base stock levels
         # This function is different for each type of QuantilePolicy
-        quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs, 'holding_costs': holding_costs})
+        quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
 
         # Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
-        return self.forecast_base_stock_allocation(
+        stores_base_stock_levels, result = self.forecast_base_stock_allocation(
             past_demands, days_from_christmas, store_inventories, lead_times, quantiles, allow_back_orders=self.allow_back_orders
             )
+        if 'warehouse_inventories' not in observation:
+            return result
+
+        warehouse_inventories = observation['warehouse_inventories']
+        warehouse_pos = warehouse_inventories.sum(dim=2) + store_inventories.sum(dim=2).sum(dim=1, keepdim=True)
+        warehouse_base_stock_level = self.net['warehouse'](torch.tensor([0.0]).to(self.device)) + stores_base_stock_levels.sum(dim=1)
+        result['warehouses'] = torch.clip(warehouse_base_stock_level - warehouse_pos, min=0)
+        result['stores'] = self.apply_proportional_allocation(result['stores'], warehouse_inventories)
+        return result
         
 class TransformedNV(QuantilePolicy):
 
