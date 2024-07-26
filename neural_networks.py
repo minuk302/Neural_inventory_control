@@ -418,10 +418,13 @@ class SymmetryAware(MyNeuralNetwork):
             warehouse_intermediate_outputs = self.net['warehouse'](observation['warehouse_inventories'])[:, :, 0]
             store_intermediate_outputs = self.net['store'](self.get_store_inventory_and_params(observation))[:, :, 0]
 
-        store_allocation = self.apply_proportional_allocation(
-            store_intermediate_outputs, 
-            observation['warehouse_inventories']
-            )
+        if self.__class__.__name__ == 'SymmetryAwareTransshipment':
+            store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs, observation['warehouse_inventories'], transshipment=True)
+        else:
+            store_allocation = self.apply_proportional_allocation(
+                store_intermediate_outputs, 
+                observation['warehouse_inventories']
+                )
         warehouse_allocation = warehouse_intermediate_outputs
         if self.use_warehouse_upper_bound:
             warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
@@ -430,6 +433,11 @@ class SymmetryAware(MyNeuralNetwork):
             'stores': store_allocation, 
             'warehouses': warehouse_allocation
             }
+
+class SymmetryAwareTransshipment(SymmetryAware):
+    def get_store_inventory_and_params(self, observation):
+        store_params = torch.stack([observation[k] for k in ['underage_costs', 'lead_times']], dim=2)
+        return torch.concat([observation['store_inventories'], store_params], dim=2)
 
 class SymmetryAwareRealData(SymmetryAware):
     def get_store_inventory_and_context_params(self, observation):
@@ -683,6 +691,7 @@ class NeuralNetworkCreator:
             'quantile_nv': QuantileNV,
             'returns_nv': ReturnsNV,
             'just_in_time': JustInTime,
+            'symmetry_aware_transshipment': SymmetryAwareTransshipment,
             }
         return architectures[name]
     
