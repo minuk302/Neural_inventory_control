@@ -70,7 +70,7 @@ store_params:
     'sample_across_stores': False
     'vary_across_samples': False
     'expand': True
-    'value': 2  # Tested values: 2, 6
+    'value': 6  # Tested values: 2, 6
   'holding_cost': 
     'sample_across_stores': False 
     'vary_across_samples': False
@@ -80,7 +80,7 @@ store_params:
     'sample_across_stores': False
     'vary_across_samples': False 
     'expand': True
-    'value': 4.0  # Tested values: 4.0, 9.0
+    'value': 9.0  # Tested values: 4.0, 9.0
   'initial_inventory': 
     'sample': True
     'range_mult': [0, 1]

@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from ray.tune import Stopper
 import ray
 import json
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 # HDPO w/o context = symmetry_aware
 # HDPO w/ context = symmetry_aware
@@ -16,7 +17,9 @@ import json
 
 setting_name = sys.argv[1]
 hyperparams_name = sys.argv[2]
-n_stores = int(sys.argv[3])
+n_stores = None
+if len(sys.argv) == 4:
+    n_stores = int(sys.argv[3])
 load_model = False
 
 print(f'Setting file name: {setting_name}')
@@ -150,7 +153,7 @@ def run(tuning_configs):
 
 ray.init(object_store_memory=4000000000)
 
-if 'symmetry_aware' in hyperparams_name:
+if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
         'n_stores': n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -158,6 +161,13 @@ if 'symmetry_aware' in hyperparams_name:
         # 'context': tune.grid_search([1, 256]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
     }
+    save_path = 'ray_results/perf'
+elif 'symmetry_aware_real_data' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "samples": tune.grid_search([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    }
+    save_path = 'ray_results/real/ctx'
 elif 'GNN' in hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
@@ -165,15 +175,26 @@ elif 'GNN' in hyperparams_name:
         "context_store": tune.grid_search([16, 32, 64, 128, 256]),
         "samples": tune.grid_search([0, 1]),
     }
-else:
+    save_path = 'ray_results/real/GNN'
+elif 'transformed_nv_one_warehouse' == hyperparams_name:
+    # for real data, n_stores = 16 is fixed!
+    search_space = {
+        "learning_rate": tune.grid_search([0.5, 0.03, 0.005]),
+        "samples": tune.grid_search([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    }
+    save_path = 'ray_results/real/bench'
+elif 'data_driven_net_real_data' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
         "master_neurons": tune.grid_search([32, 64, 128, 256]),
         "samples": tune.grid_search([0, 1]),
     }
+    save_path = 'ray_results/real/vanilla'
 trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
+if n_stores != None:
+    save_path += f'/{n_stores}'
 tuner = tune.Tuner(trainable_with_resources
 , param_space=search_space
-, run_config=train.RunConfig(storage_path=os.path.join(os.getcwd(), f'ray_results/perf/{n_stores}')))
+, run_config=train.RunConfig(storage_path=os.path.join(os.getcwd(), save_path)))
 results = tuner.fit()
 ray.shutdown()

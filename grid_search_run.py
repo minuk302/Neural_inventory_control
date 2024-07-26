@@ -21,9 +21,9 @@ results_dir = os.path.join(os.getcwd(), 'grid_search/results')
 # context_search_count = 7
 # change tune_rate too
 
-n_store = 50
-maximum_context_size = 256
-context_search_count = 8
+n_store = 20
+maximum_context_size = 2
+context_search_count = 1
 
 # this grid search is specifically for symmetry aware setup
 search_or_visualize = sys.argv[1]
@@ -160,7 +160,7 @@ def run(tuning_configs):
             params_by_dataset, 
             discrete_allocation=store_params['demand']['distribution'] == 'poisson'
             )
-    return average_test_loss_to_report
+    return {'test_loss': average_test_loss}
 
 def is_success(test_loss):
     return test_loss <= optimal_test_losses_per_stores[n_store] * 1.005
@@ -188,10 +188,10 @@ context_size = (minimum_context_size + maximum_context_size) // 2
 results_df = pd.DataFrame(columns=['Context Size', 'Success'])
 for _ in range(context_search_count):
     search_space = {
-        # "learning_rate": tune.grid_search([0.001, 0.0005]),
-        "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0005]),
-        # "samples": tune.grid_search([0, 1]),
+        "learning_rate": tune.grid_search([0.001]),
         "samples": tune.grid_search([0, 1, 2, 3, 4,5,6,7,8,9,10]),
+        # "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0005]),
+        # "samples": tune.grid_search([0, 1, 2, 3, 4,5,6,7,8,9,10]),
         "n_stores": n_store,
         "context_size": context_size,
     }
