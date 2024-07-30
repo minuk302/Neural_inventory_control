@@ -78,7 +78,7 @@ def run(tuning_configs):
     if 'learning_rate' in tuning_configs:
         optimizer_params['learning_rate'] = tuning_configs['learning_rate']
 
-    nets = ['context', 'store_embedding']
+    nets = ['context', 'store_embedding', 'warehouse_embedding', 'store_embedding_update']
     for net in nets:
         if net in tuning_configs:
             if tuning_configs[net] == 0:
@@ -184,6 +184,17 @@ elif 'symmetry_aware_real_data' == hyperparams_name:
         "samples": tune.grid_search([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/real/ctx'
+elif 'symmetry_GNN_message_passing' == hyperparams_name:
+    search_space = {
+        "n_stores": n_stores,
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "context": tune.grid_search([1, 32]),
+        "store_embedding": tune.grid_search([1, 32]),
+        "warehouse_embedding": tune.grid_search([1, 32]),
+        "store_embedding_update": tune.grid_search([1, 32]),
+        "samples": tune.grid_search([0, 1]),
+    }
+    save_path = 'ray_results/perf/GNN_message_passing'
 elif 'GNN' in hyperparams_name:
     search_space = {
         "n_stores": n_stores,

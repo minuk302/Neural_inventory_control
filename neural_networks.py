@@ -472,6 +472,25 @@ class SymmetryGNN(SymmetryAware):
 class SymmetryGNNRealData(SymmetryAwareRealData, SymmetryGNN):
     pass
     
+class SymmetryGNN_MessagePassing(SymmetryAware):
+    def get_context(self, observation):
+        store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
+        store_embeddings = self.net['store_embedding'](store_inventory_and_context_param)
+        aggregated_store_embeddings = store_embeddings.mean(dim=1)
+
+        warehouse_embedding_input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
+        warehouse_embedding = self.net['warehouse_embedding'](warehouse_embedding_input_tensor)
+
+        combined_embeddings = torch.cat([
+            store_embeddings,
+            warehouse_embedding.unsqueeze(1).expand(-1, store_embeddings.size(1), -1)
+        ], dim=-1)
+        updated_store_embeddings = self.net['store_embedding_update'](combined_embeddings)
+        aggregated_updated_store_embeddings = updated_store_embeddings.mean(dim=1)
+
+        input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, warehouse_embedding])
+        return self.net['context'](input_tensor)
+
 class VanillaTransshipment(VanillaOneWarehouse):
     """
     Fully connected neural network for setting with one transshipment center (that cannot hold inventory) and many stores
@@ -707,7 +726,8 @@ class NeuralNetworkCreator:
             'returns_nv': ReturnsNV,
             'just_in_time': JustInTime,
             'symmetry_aware_transshipment': SymmetryAwareTransshipment,
-            'SymmetryGNN': SymmetryGNN
+            'SymmetryGNN': SymmetryGNN,
+            'SymmetryGNN_MessagePassing': SymmetryGNN_MessagePassing,
             }
         return architectures[name]
     
