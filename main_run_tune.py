@@ -89,12 +89,21 @@ def run(tuning_configs):
     ############################ legacy for the ones running already
 
     for net in tuning_configs['overriding_networks']:
-        nn_params['neurons_per_hidden_layer'][net] = [tuning_configs[net] for _ in nn_params['neurons_per_hidden_layer'][net]]
+        if 'for_all_networks' in tuning_configs:
+            size = tuning_configs['for_all_networks']
+        else:
+            size = tuning_configs[net]
+        nn_params['neurons_per_hidden_layer'][net] = [size for _ in nn_params['neurons_per_hidden_layer'][net]]
+
     for net in tuning_configs['overriding_outputs']:
-        if tuning_configs[net] == 0:
+        if 'for_all_networks' in tuning_configs:
+            size = tuning_configs['for_all_networks']
+        else:
+            size = tuning_configs[net]
+        if size == 0:
             del nn_params['output_sizes'][net]
             continue
-        nn_params['output_sizes'][net] = tuning_configs[net]
+        nn_params['output_sizes'][net] = size
     
     dataset_creator = DatasetCreator()
     if sample_data_params['split_by_period']:
@@ -201,10 +210,7 @@ elif 'symmetry_GNN_message_passing' == hyperparams_name:
     search_space = {
         "n_stores": n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "context": tune.grid_search([1, 32]),
-        "store_embedding": tune.grid_search([1, 32]),
-        "warehouse_embedding": tune.grid_search([1, 32]),
-        "store_embedding_update": tune.grid_search([1, 32]),
+        "for_all_networks": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
         "overriding_networks": ["context", "store_embedding", "warehouse_embedding", "store_embedding_update"],
         "overriding_outputs": ["context", "store_embedding", "warehouse_embedding", "store_embedding_update"],
         "samples": tune.grid_search([0, 1]),
