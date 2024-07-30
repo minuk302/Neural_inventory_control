@@ -49,6 +49,8 @@ observation_params:
     'holding_costs': True 
     'underage_costs': True 
     'lead_times': True 
+    'mean': True 
+    'std': True 
   'demand': 
     'past_periods': 0 
     'period_shift': 0

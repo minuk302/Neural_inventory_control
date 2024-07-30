@@ -429,15 +429,27 @@ class SymmetryAware(MyNeuralNetwork):
         if self.use_warehouse_upper_bound:
             warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
 
+        # for visualization!!
+        # def append_tensors_to_csv(tensor1, tensor2, warehouse_inv, store_inv, warehouse_order, store_order, filename='ctxanalysis/50.csv'):
+        #     df_new = pd.DataFrame({'ctx': tensor1, 'inv': tensor2, 'warehouse_inv': warehouse_inv, 'store_inv': store_inv, 'warehouse_order': warehouse_order, 'store_order': store_order})
+        #     if os.path.exists(filename):
+        #         df_new.to_csv(filename, mode='a', header=False, index=False)
+        #     else:
+        #         df_new.to_csv(filename, index=False)
+        # append_tensors_to_csv(context.cpu().squeeze(-1),
+        # (observation['store_inventories'].cpu().sum(dim=2).sum(dim=1,keepdim=True) + observation['warehouse_inventories'].cpu().sum(dim=2)).squeeze(-1),
+        # observation['warehouse_inventories'].cpu().sum(dim=2).squeeze(-1),
+        # observation['store_inventories'].cpu().sum(dim=2).sum(dim=1,keepdim=True).squeeze(-1),
+        # warehouse_allocation.cpu().squeeze(-1),
+        # store_allocation.cpu().sum(dim=1))
+
         return {
             'stores': store_allocation, 
             'warehouses': warehouse_allocation
             }
 
 class SymmetryAwareTransshipment(SymmetryAware):
-    def get_store_inventory_and_params(self, observation):
-        store_params = torch.stack([observation[k] for k in ['underage_costs', 'lead_times']], dim=2)
-        return torch.concat([observation['store_inventories'], store_params], dim=2)
+    pass
 
 class SymmetryAwareRealData(SymmetryAware):
     def get_store_inventory_and_context_params(self, observation):

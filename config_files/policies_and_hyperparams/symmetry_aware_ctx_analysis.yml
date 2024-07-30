@@ -1,0 +1,41 @@
+trainer_params : 
+  'epochs': 10000
+  'stop_if_no_improve_for_epochs': 500
+  'do_dev_every_n_epochs': 5
+  'print_results_every_n_epochs': 5
+  'save_model': False  # Path to save is defined in main script
+  'epochs_between_save': 5  # Save if cost improved, and at least this number of epochs have passed
+  'choose_best_model_on': 'dev_loss'  # For early stopping, choose according to best performance on this dataset
+  'load_previous_model': True
+  'load_model_path': '/user/ml4723/Prj/NIC/ray_results/perf/50/run_2024-07-22_03-23-15/run_42fa6_00028_28_context=1,learning_rate=0.0001,samples=5_2024-07-22_03-23-16/model.pt'
+
+# for 3: /user/ml4723/Prj/NIC/ray_results/perf/3/run_2024-07-19_23-43-56/run_4ab0e_00162_162_context=1,learning_rate=0.0100,samples=28_2024-07-19_23-43-57/model.pt
+# for 5: /user/ml4723/Prj/NIC/ray_results/perf/5/run_2024-07-19_23-45-43/run_8a3ed_00108_108_context=1,learning_rate=0.0100,samples=19_2024-07-19_23-45-44/model.pt
+# for 10: /user/ml4723/Prj/NIC/ray_results/perf/10/run_2024-07-19_23-53-23/run_9c8a3_00036_36_context=1,learning_rate=0.0100,samples=7_2024-07-19_23-53-24/model.pt
+# for 20: /user/ml4723/Prj/NIC/ray_results/perf/20/run_2024-07-19_23-53-28/run_9fc72_00092_92_context=1,learning_rate=0.0010,samples=16_2024-07-19_23-53-29/model.pt
+# for 30: /user/ml4723/Prj/NIC/ray_results/perf/30/run_2024-07-22_03-23-11/run_40705_00128_128_context=1,learning_rate=0.0010,samples=22_2024-07-22_03-23-12/model.pt
+# for 50: /user/ml4723/Prj/NIC/ray_results/perf/50/run_2024-07-22_03-23-15/run_42fa6_00028_28_context=1,learning_rate=0.0001,samples=5_2024-07-22_03-23-16/model.pt
+
+optimizer_params: 
+  'learning_rate': 0.001
+
+nn_params: 
+  'name': 'symmetry_aware'
+  'inner_layer_activations': 
+    'context': 'elu'
+    'store': 'elu'
+    'warehouse': 'elu'
+  'output_layer_activation':
+    'context': 'sigmoid'
+    'store': 'softplus'
+    'warehouse': 'sigmoid'
+  'neurons_per_hidden_layer':
+    'context': [1]
+    'store': [32, 32]
+    'warehouse': [16, 16]
+  'output_sizes':
+    'context': 1
+    'store': 1
+    'warehouse': 1
+  'initial_bias': null
+  'warehouse_upper_bound_mult': 4

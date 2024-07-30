@@ -61,7 +61,7 @@ class Trainer():
         """
         n_passed_epochs_without_improvement = 0
         for epoch in range(epochs): # Make multiple passes through the dataset
-            if n_passed_epochs_without_improvement >= trainer_params['stop_if_no_improve_for_epochs']:
+            if 'stop_if_no_improve_for_epochs' in trainer_params and n_passed_epochs_without_improvement >= trainer_params['stop_if_no_improve_for_epochs']:
                 break
             n_passed_epochs_without_improvement += 1
             

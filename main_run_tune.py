@@ -154,23 +154,29 @@ def run(tuning_configs):
 ray.init(object_store_memory=4000000000)
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
-    if 'transshipment_backlogged' == setting_name:
+    search_space = {
+        'n_stores': n_stores,
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        'context': tune.grid_search([0]),
+        # 'context': tune.grid_search([1, 256]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
+    }
+    save_path = 'ray_results/perf'
+elif 'symmetry_aware_transshipment' == hyperparams_name:
         search_space = {
             'n_stores': n_stores,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-            'context': tune.grid_search([0, 1]),
-            "samples": tune.grid_search([1, 2, 3, 4, 5]),
+            'context': tune.grid_search([0, 1, 256]),
+            "samples": tune.grid_search([1, 2, 3]),
         }
         save_path = 'ray_results/transshipment'
-    else:
-        search_space = {
-            'n_stores': n_stores,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-            'context': tune.grid_search([0]),
-            # 'context': tune.grid_search([1, 256]),
-            "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
-        }
-        save_path = 'ray_results/perf'
+elif 'vanilla_transshipment' == hyperparams_name:
+    search_space = {
+        'n_stores': n_stores,
+        "learning_rate": tune.grid_search([0.0001]),
+        "samples": tune.grid_search([0, 1, 2]),
+    }
+    save_path = 'ray_results/transshipment/vanilla'
 elif 'symmetry_aware_real_data' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -193,13 +199,6 @@ elif 'transformed_nv_one_warehouse' == hyperparams_name:
     }
     save_path = 'ray_results/real/bench'
 elif 'data_driven_net_real_data' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
-        "master_neurons": tune.grid_search([32, 64, 128, 256]),
-        "samples": tune.grid_search([0, 1]),
-    }
-    save_path = 'ray_results/real/vanilla'
-elif 'vanilla_transshipment' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
         "master_neurons": tune.grid_search([32, 64, 128, 256]),
