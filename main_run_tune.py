@@ -69,16 +69,16 @@ def run(tuning_configs):
     observation_params = DefaultDict(lambda: None, observation_params)
 
     # apply tuning configs
-    if "master_neurons" in tuning_configs:
-        nn_params['neurons_per_hidden_layer']['master'] = [tuning_configs['master'] for _ in nn_params['neurons_per_hidden_layer']['master']]
-
     if 'n_stores' in tuning_configs:
         problem_params['n_stores'] = tuning_configs['n_stores']
     
     if 'learning_rate' in tuning_configs:
         optimizer_params['learning_rate'] = tuning_configs['learning_rate']
 
-    nets = ['context', 'store_embedding', 'warehouse_embedding', 'store_embedding_update']
+    ############################ legacy for the ones running already
+    if "master_neurons" in tuning_configs:
+        nn_params['neurons_per_hidden_layer']['master'] = [tuning_configs['master'] for _ in nn_params['neurons_per_hidden_layer']['master']]
+    nets = ['context', 'store_embedding']
     for net in nets:
         if net in tuning_configs:
             if tuning_configs[net] == 0:
@@ -86,6 +86,15 @@ def run(tuning_configs):
                 continue
             nn_params['neurons_per_hidden_layer'][net] = [tuning_configs[net] for _ in nn_params['neurons_per_hidden_layer'][net]]
             nn_params['output_sizes'][net] = tuning_configs[net]
+    ############################ legacy for the ones running already
+
+    for net in tuning_configs['overriding_networks']:
+        nn_params['neurons_per_hidden_layer'][net] = [tuning_configs[net] for _ in nn_params['neurons_per_hidden_layer'][net]]
+    for net in tuning_configs['overriding_outputs']:
+        if tuning_configs[net] == 0:
+            del nn_params['output_sizes'][net]
+            continue
+        nn_params['output_sizes'][net] = tuning_configs[net]
     
     dataset_creator = DatasetCreator()
     if sample_data_params['split_by_period']:
@@ -160,6 +169,8 @@ if 'symmetry_aware_grid_search' == hyperparams_name:
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         'context': tune.grid_search([0]),
         # 'context': tune.grid_search([1, 256]),
+        "overriding_networks": ["context"],
+        "overriding_outputs": ["context"],
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
     }
     save_path = 'ray_results/perf'
@@ -168,6 +179,8 @@ elif 'symmetry_aware_transshipment' == hyperparams_name:
             'n_stores': n_stores,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
             'context': tune.grid_search([0, 1, 256]),
+            "overriding_networks": ["context"],
+            "overriding_outputs": ["context"],
             "samples": tune.grid_search([1, 2, 3]),
         }
         save_path = 'ray_results/transshipment'
@@ -192,6 +205,8 @@ elif 'symmetry_GNN_message_passing' == hyperparams_name:
         "store_embedding": tune.grid_search([1, 32]),
         "warehouse_embedding": tune.grid_search([1, 32]),
         "store_embedding_update": tune.grid_search([1, 32]),
+        "overriding_networks": ["context", "store_embedding", "warehouse_embedding", "store_embedding_update"],
+        "overriding_outputs": ["context", "store_embedding", "warehouse_embedding", "store_embedding_update"],
         "samples": tune.grid_search([0, 1]),
     }
     save_path = 'ray_results/perf/GNN_message_passing'
@@ -201,6 +216,8 @@ elif 'GNN' in hyperparams_name:
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "context": tune.grid_search([1, 32, 256]),
         "store_embedding": tune.grid_search([1, 32, 256]),
+        "overriding_networks": ["context", "store_embedding"],
+        "overriding_outputs": ["context", "store_embedding"],
         "samples": tune.grid_search([0, 1]),
     }
     if 'symmetry_GNN_real_data' == hyperparams_name:    
@@ -217,7 +234,8 @@ elif 'transformed_nv_one_warehouse' == hyperparams_name:
 elif 'data_driven_net_real_data' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
-        "master_neurons": tune.grid_search([32, 64, 128, 256]),
+        "master": tune.grid_search([32, 64, 128, 256]),
+        "overriding_networks": ["master"],
         "samples": tune.grid_search([0, 1]),
     }
     save_path = 'ray_results/real/vanilla'
