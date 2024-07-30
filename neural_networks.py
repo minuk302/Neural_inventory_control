@@ -462,12 +462,15 @@ class SymmetryAwareRealData(SymmetryAware):
              + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs']] \
              + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
 
-class SymmetryGNNRealData(SymmetryAwareRealData):
+class SymmetryGNN(SymmetryAware):
     def get_context(self, observation):
         store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
-        aggregated_store_embeddings = self.net['context_store'](store_inventory_and_context_param).mean(dim=1)
+        aggregated_store_embeddings = self.net['store_embedding'](store_inventory_and_context_param).mean(dim=1)
         input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
         return self.net['context'](input_tensor)
+
+class SymmetryGNNRealData(SymmetryAwareRealData, SymmetryGNN):
+    pass
     
 class VanillaTransshipment(VanillaOneWarehouse):
     """
@@ -704,6 +707,7 @@ class NeuralNetworkCreator:
             'returns_nv': ReturnsNV,
             'just_in_time': JustInTime,
             'symmetry_aware_transshipment': SymmetryAwareTransshipment,
+            'SymmetryGNN': SymmetryGNN
             }
         return architectures[name]
     

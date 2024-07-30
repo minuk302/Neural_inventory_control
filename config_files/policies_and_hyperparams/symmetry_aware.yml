@@ -2,6 +2,7 @@ trainer_params :
   'epochs': 10000
   'stop_if_no_improve_for_epochs': 500
   'do_dev_every_n_epochs': 5
+  'ray_report_loss': True
   'print_results_every_n_epochs': 5
   'save_model': False  # Path to save is defined in main script
   'epochs_between_save': 5  # Save if cost improved, and at least this number of epochs have passed

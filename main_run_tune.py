@@ -78,7 +78,7 @@ def run(tuning_configs):
     if 'learning_rate' in tuning_configs:
         optimizer_params['learning_rate'] = tuning_configs['learning_rate']
 
-    nets = ['context', 'context_store']
+    nets = ['context', 'store_embedding']
     for net in nets:
         if net in tuning_configs:
             if tuning_configs[net] == 0:
@@ -185,9 +185,9 @@ elif 'symmetry_aware_real_data' == hyperparams_name:
     save_path = 'ray_results/real/ctx'
 elif 'GNN' in hyperparams_name:
     search_space = {
-        "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "context": tune.grid_search([16, 32, 64, 128, 256]),
-        "context_store": tune.grid_search([16, 32, 64, 128, 256]),
+        "store_embedding": tune.grid_search([16, 32, 64, 128, 256]),
         "samples": tune.grid_search([0, 1]),
     }
     save_path = 'ray_results/real/GNN'
