@@ -151,7 +151,8 @@ def run(tuning_configs):
     trainer_params['save_model_filename'] = "model"
     trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
 
-ray.init(object_store_memory=4000000000)
+num_gpus = torch.cuda.device_count()
+ray.init(num_cpus = num_gpus, object_store_memory=4000000000)
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
@@ -185,12 +186,16 @@ elif 'symmetry_aware_real_data' == hyperparams_name:
     save_path = 'ray_results/real/ctx'
 elif 'GNN' in hyperparams_name:
     search_space = {
+        "n_stores": n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "context": tune.grid_search([16, 32, 64, 128, 256]),
-        "store_embedding": tune.grid_search([16, 32, 64, 128, 256]),
+        "context": tune.grid_search([1, 32, 256]),
+        "store_embedding": tune.grid_search([1, 32, 256]),
         "samples": tune.grid_search([0, 1]),
     }
-    save_path = 'ray_results/real/GNN'
+    if 'symmetry_GNN_real_data' == hyperparams_name:    
+        save_path = 'ray_results/real/GNN'
+    else:
+        save_path = 'ray_results/perf/GNN'
 elif 'transformed_nv_one_warehouse' == hyperparams_name:
     # for real data, n_stores = 16 is fixed!
     search_space = {
@@ -208,8 +213,10 @@ elif 'data_driven_net_real_data' == hyperparams_name:
 trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
 if n_stores != None:
     save_path += f'/{n_stores}'
+
 tuner = tune.Tuner(trainable_with_resources
 , param_space=search_space
 , run_config=train.RunConfig(storage_path=os.path.join(os.getcwd(), save_path)))
+
 results = tuner.fit()
 ray.shutdown()
