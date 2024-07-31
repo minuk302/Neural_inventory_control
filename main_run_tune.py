@@ -174,15 +174,14 @@ ray.init(num_cpus = num_gpus, object_store_memory=4000000000)
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
-        'n_stores': n_stores,
+        'warehouse_holding_cost': tune.grid_search([0.5, 0.7, 1.0, 1.3]),
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        'context': tune.grid_search([0]),
-        # 'context': tune.grid_search([1, 256]),
+        'context': tune.grid_search([0, 1, 16, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
-        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
+        "samples": tune.grid_search([1, 2, 3]),
     }
-    save_path = 'ray_results/perf'
+    save_path = 'ray_results/diff_primitive/ctx'
 elif 'symmetry_aware_transshipment' == hyperparams_name:
         search_space = {
             'n_stores': n_stores,
@@ -220,8 +219,7 @@ elif 'GNN' in hyperparams_name:
     search_space = {
         "n_stores": n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "context": tune.grid_search([1, 32, 256]),
-        "store_embedding": tune.grid_search([1, 32, 256]),
+        "for_all_networks": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
         "overriding_networks": ["context", "store_embedding"],
         "overriding_outputs": ["context", "store_embedding"],
         "samples": tune.grid_search([0, 1]),
