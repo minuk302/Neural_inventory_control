@@ -32,9 +32,15 @@ with open(config_setting_file, 'r') as file:
 with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
 
-# with open('/user/ml4723/Prj/NIC/ray_results/diff_primitive/ctx/run_2024-07-31_01-37-33/run_fc58a_00000_0_context=0,learning_rate=0.0100,samples=1,warehouse_holding_cost=1.3000_2024-07-31_01-37-33/params.json', 'r') as file:
-#     params = json.load(file)
-#     config_setting, config_hyperparams = research_utils.override_configs(params, config_setting, config_hyperparams)
+
+if config_setting['record_params']['path'] is not None:
+    path = os.path.join(config_setting['record_params']['path'], 'params.json')
+    with open(path, 'r') as file:
+        params = json.load(file)
+        config_setting, config_hyperparams = research_utils.override_configs(params, config_setting, config_hyperparams)
+
+    model_path = os.path.join(config_setting['record_params']['path'], 'model.pt')
+    config_hyperparams['trainer_params']['load_model_path'] = model_path
 
 setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
 hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
