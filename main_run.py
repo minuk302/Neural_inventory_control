@@ -3,6 +3,8 @@
 import yaml
 from trainer import *
 import sys
+import research_utils
+import json
 # Check if command-line arguments for setting and hyperparameter filenames are provided (which corresponds to third and fourth parameters)
 if len(sys.argv) == 4:
     setting_name = sys.argv[2]
@@ -29,6 +31,10 @@ with open(config_setting_file, 'r') as file:
 
 with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
+
+# with open('/user/ml4723/Prj/NIC/ray_results/diff_primitive/ctx/run_2024-07-31_01-37-33/run_fc58a_00000_0_context=0,learning_rate=0.0100,samples=1,warehouse_holding_cost=1.3000_2024-07-31_01-37-33/params.json', 'r') as file:
+#     params = json.load(file)
+#     config_setting, config_hyperparams = research_utils.override_configs(params, config_setting, config_hyperparams)
 
 setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
 hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
@@ -127,18 +133,19 @@ if train_or_test == 'train':
     trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
 
 elif train_or_test in ['test', 'train']:
-    # Deploy on test set, and enforce discrete allocation if the demand is poisson
-    average_test_loss, average_test_loss_to_report = trainer.test(
-        loss_function, 
-        simulator, 
-        model, 
-        data_loaders, 
-        optimizer, 
-        problem_params, 
-        observation_params, 
-        params_by_dataset, 
-        discrete_allocation=store_params['demand']['distribution'] == 'poisson'
-        )
+    with torch.no_grad():
+        # Deploy on test set, and enforce discrete allocation if the demand is poisson
+        average_test_loss, average_test_loss_to_report = trainer.test(
+            loss_function, 
+            simulator, 
+            model, 
+            data_loaders, 
+            optimizer, 
+            problem_params, 
+            observation_params, 
+            params_by_dataset, 
+            discrete_allocation=store_params['demand']['distribution'] == 'poisson'
+            )
 
     print(f'Average per-period test loss: {average_test_loss_to_report}')
 

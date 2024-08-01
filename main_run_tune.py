@@ -60,6 +60,9 @@ def find_model_path_for(tuning_configs):
 
 def run(tuning_configs):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    import research_utils
+    config_setting, config_hyperparams = research_utils.override_configs(tuning_configs, config_setting, config_hyperparams)
+
     setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
     hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
     seeds, test_seeds, problem_params, params_by_dataset, observation_params, store_params, warehouse_params, echelon_params, sample_data_params = [
@@ -67,41 +70,6 @@ def run(tuning_configs):
         ]
     trainer_params, optimizer_params, nn_params = [config_hyperparams[key] for key in hyperparams_keys]
     observation_params = DefaultDict(lambda: None, observation_params)
-
-    # apply tuning configs
-    if 'n_stores' in tuning_configs:
-        problem_params['n_stores'] = tuning_configs['n_stores']
-    
-    if 'learning_rate' in tuning_configs:
-        optimizer_params['learning_rate'] = tuning_configs['learning_rate']
-
-    if 'warehouse_holding_cost' in tuning_configs:
-        warehouse_params['holding_cost'] = tuning_configs['warehouse_holding_cost']
-
-    if 'warehouse_lead_time' in tuning_configs:
-        warehouse_params['lead_time'] = tuning_configs['warehouse_lead_time']
-
-    if 'stores_correlation' in tuning_configs:
-        store_params['demand']['correlation'] = tuning_configs['stores_correlation']
-
-    for net in tuning_configs['overriding_networks']:
-        if 'for_all_networks' in tuning_configs:
-            size = tuning_configs['for_all_networks']
-        else:
-            size = tuning_configs[net]
-        nn_params['neurons_per_hidden_layer'][net] = [size for _ in nn_params['neurons_per_hidden_layer'][net]]
-
-    for net in tuning_configs['overriding_outputs']:
-        if 'for_all_networks' in tuning_configs:
-            size = tuning_configs['for_all_networks']
-        else:
-            size = tuning_configs[net]
-        if net not in nn_params['output_sizes']:
-            continue
-        if size == 0:
-            del nn_params['output_sizes'][net]
-            continue
-        nn_params['output_sizes'][net] = size
     
     dataset_creator = DatasetCreator()
     if sample_data_params['split_by_period']:
