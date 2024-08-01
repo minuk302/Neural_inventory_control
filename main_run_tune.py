@@ -75,18 +75,14 @@ def run(tuning_configs):
     if 'learning_rate' in tuning_configs:
         optimizer_params['learning_rate'] = tuning_configs['learning_rate']
 
-    ############################ legacy for the ones running already
-    if "master_neurons" in tuning_configs:
-        nn_params['neurons_per_hidden_layer']['master'] = [tuning_configs['master'] for _ in nn_params['neurons_per_hidden_layer']['master']]
-    nets = ['context', 'store_embedding']
-    for net in nets:
-        if net in tuning_configs:
-            if tuning_configs[net] == 0:
-                del nn_params['output_sizes'][net]
-                continue
-            nn_params['neurons_per_hidden_layer'][net] = [tuning_configs[net] for _ in nn_params['neurons_per_hidden_layer'][net]]
-            nn_params['output_sizes'][net] = tuning_configs[net]
-    ############################ legacy for the ones running already
+    if 'warehouse_holding_cost' in tuning_configs:
+        warehouse_params['holding_cost'] = tuning_configs['warehouse_holding_cost']
+
+    if 'warehouse_lead_time' in tuning_configs:
+        warehouse_params['lead_time'] = tuning_configs['warehouse_lead_time']
+
+    if 'stores_correlation' in tuning_configs:
+        store_params['demand']['correlation'] = tuning_configs['stores_correlation']
 
     for net in tuning_configs['overriding_networks']:
         if 'for_all_networks' in tuning_configs:
@@ -100,6 +96,8 @@ def run(tuning_configs):
             size = tuning_configs['for_all_networks']
         else:
             size = tuning_configs[net]
+        if net not in nn_params['output_sizes']:
+            continue
         if size == 0:
             del nn_params['output_sizes'][net]
             continue
@@ -174,12 +172,17 @@ ray.init(num_cpus = num_gpus, object_store_memory=4000000000)
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
-        'warehouse_holding_cost': tune.grid_search([0.5, 0.7, 1.0, 1.3]),
+        # 'warehouse_holding_cost': tune.grid_search([0.7, 1.0, 1.3, 2.0]),
+        # 'warehouse_lead_time': tune.grid_search([2, 6]),
+        # 'stores_correlation': tune.grid_search([-0.5, 0.0, 0.5]),
+        'warehouse_holding_cost': tune.grid_search([2.0]),
+        'warehouse_lead_time': tune.grid_search([2]),
+        'stores_correlation': tune.grid_search([-0.5, 0.0, 0.5]),
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         'context': tune.grid_search([0, 1, 16, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
-        "samples": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2]),
     }
     save_path = 'ray_results/diff_primitive/ctx'
 elif 'symmetry_aware_transshipment' == hyperparams_name:
