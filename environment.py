@@ -11,9 +11,10 @@ class Simulator(gym.Env):
 
     metadata = {"render_modes": None}
 
-    def __init__(self, device='cpu'):
+    def __init__(self, recorder, device='cpu'):
  
         self.device = device
+        self.recorder = recorder
         self.problem_params, self.observation_params, self.maximize_profit = None, None, None
         self.batch_size, self.n_stores, self.periods, self.observation, self._internal_data = None, None, None, None, None
 
@@ -136,7 +137,7 @@ class Simulator(gym.Env):
             )
 
         # Calculate reward and update store inventories
-        reward = self.calculate_store_reward_and_update_store_inventories(
+        reward, s_underage_costs, s_holding_costs = self.calculate_store_reward_and_update_store_inventories(
             current_demands,
             action,
             self.observation,
@@ -146,11 +147,12 @@ class Simulator(gym.Env):
         # Calculate reward and update warehouse inventories
         if self.problem_params['n_warehouses'] > 0:
 
-            w_reward = self.calculate_warehouse_reward_and_update_warehouse_inventories(
+            w_reward, w_holding_costs = self.calculate_warehouse_reward_and_update_warehouse_inventories(
                 action,
                 self.observation,
                 )
             reward += w_reward
+            self.recorder.on_step(s_underage_costs.cpu().mean(dim=1), s_holding_costs.cpu().mean(dim=1), w_holding_costs.cpu().squeeze(-1))
         
         # Calculate reward and update other echelon inventories
         if self.problem_params['n_extra_echelons'] > 0:
@@ -192,6 +194,8 @@ class Simulator(gym.Env):
                 -observation['underage_costs'] * torch.minimum(inventory_on_hand, current_demands) + 
                 observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
                 )
+            underage_costs = -observation['underage_costs'] * torch.minimum(inventory_on_hand, current_demands)
+            holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
         
         # Reward given by underage_costs + holding_costs
         else:
@@ -199,6 +203,8 @@ class Simulator(gym.Env):
                 observation['underage_costs'] * torch.clip(-post_inventory_on_hand, min=0) + 
                 observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
                 )
+            underage_costs = observation['underage_costs'] * torch.clip(-post_inventory_on_hand, min=0)
+            holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
         
         # If we are in a lost demand setting, we cannot have negative inventory
         if self.problem_params['lost_demand']:
@@ -226,7 +232,7 @@ class Simulator(gym.Env):
         #     action["stores"]
         #     )
         
-        return reward.sum(dim=1)
+        return reward.sum(dim=1), underage_costs, holding_costs
     
     def calculate_warehouse_reward_and_update_warehouse_inventories(self, action, observation):
         """
@@ -238,6 +244,7 @@ class Simulator(gym.Env):
         post_warehouse_inventory_on_hand = warehouse_inventory_on_hand - action['stores'].sum(dim=1).unsqueeze(1)
 
         reward = observation['warehouse_holding_costs'] * torch.clip(post_warehouse_inventory_on_hand, min=0)
+        holding_costs = observation['warehouse_holding_costs'] * torch.clip(post_warehouse_inventory_on_hand, min=0)
         observation['warehouse_inventories'] = self.update_inventory_for_heterogeneous_lead_times(
             warehouse_inventory, 
             post_warehouse_inventory_on_hand, 
@@ -246,7 +253,7 @@ class Simulator(gym.Env):
             self._internal_data['warehouse_allocation_shift']
             )
 
-        return reward.sum(dim=1)
+        return reward.sum(dim=1), holding_costs
     
     def calculate_echelon_reward_and_update_echelon_inventories(self, action, observation):
         """

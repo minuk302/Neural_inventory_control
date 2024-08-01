@@ -32,15 +32,14 @@ with open(config_setting_file, 'r') as file:
 with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
 
-
 if config_setting['record_params']['path'] is not None:
     path = os.path.join(config_setting['record_params']['path'], 'params.json')
     with open(path, 'r') as file:
         params = json.load(file)
         config_setting, config_hyperparams = research_utils.override_configs(params, config_setting, config_hyperparams)
-
     model_path = os.path.join(config_setting['record_params']['path'], 'model.pt')
     config_hyperparams['trainer_params']['load_model_path'] = model_path
+recorder = research_utils.Recorder(config_setting, config_hyperparams, True)
 
 setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
 hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
@@ -119,7 +118,7 @@ model = neural_net_creator().create_neural_network(scenario, nn_params, device=d
 loss_function = PolicyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_params['learning_rate'])
 
-simulator = Simulator(device=device)
+simulator = Simulator(recorder, device=device)
 trainer = Trainer(device=device)
 
 # We will create a folder for each day of the year, and a subfolder for each model

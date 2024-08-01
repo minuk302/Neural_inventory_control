@@ -62,6 +62,7 @@ def run(tuning_configs):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     import research_utils
     config_setting, config_hyperparams = research_utils.override_configs(tuning_configs, config_setting, config_hyperparams)
+    recorder = research_utils.Recorder(config_setting, config_hyperparams)
 
     setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
     hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
@@ -124,7 +125,7 @@ def run(tuning_configs):
     loss_function = PolicyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_params['learning_rate'])
 
-    simulator = Simulator(device=device)
+    simulator = Simulator(recorder, device=device)
     trainer = Trainer(device=device)
 
     if load_model == True:

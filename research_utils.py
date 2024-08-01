@@ -38,3 +38,31 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         config_hyperparams['nn_params']['output_sizes'][net] = size
     
     return config_setting, config_hyperparams
+
+
+class Recorder():
+    def __init__(self, config_setting, config_hyperparams, start_recording = False):
+        self.is_recording = start_recording
+        self.config_setting = config_setting
+        self.config_hyperparams = config_hyperparams
+
+    def start_recording(self):
+        self.is_recording = True
+    
+    def on_step(self, s_underage_costs, s_holding_costs, w_holding_costs):
+        if self.is_recording == False:
+            return
+        
+        holding_cost = self.config_setting['warehouse_params']['holding_cost']
+        lead_time = self.config_setting['warehouse_params']['lead_time']
+        correlation = self.config_setting['store_params']['demand']['correlation']
+        context = self.config_hyperparams['nn_params']['neurons_per_hidden_layer']['context']
+        file_name = f"analysis/primitive/{holding_cost}_{lead_time}_{correlation}_{context}.csv"
+        def append_tensors_to_csv(filename, s_underage_costs, s_holding_costs, w_holding_costs):
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs, 'w_holding_costs': w_holding_costs})
+            if os.path.exists(filename):
+                df_new.to_csv(filename, mode='a', header=False, index=False)
+            else:
+                df_new.to_csv(filename, index=False)
+        append_tensors_to_csv(file_name, s_underage_costs, s_holding_costs, w_holding_costs)
