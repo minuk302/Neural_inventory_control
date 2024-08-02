@@ -5,155 +5,168 @@ from trainer import *
 import sys
 import research_utils
 import json
-# Check if command-line arguments for setting and hyperparameter filenames are provided (which corresponds to third and fourth parameters)
-if len(sys.argv) == 4:
-    setting_name = sys.argv[2]
-    hyperparams_name = sys.argv[3]
 
-elif len(sys.argv) == 2:
-    setting_name = 'one_store_lost'  # One store under lost demand setting
-    hyperparams_name = 'vanilla_one_store'  # Vanilla neural network for one store setting
-else:
-    print(f'Number of parameters provided including script name: {len(sys.argv)}')
-    print(f'Number of parameters should be either 4 or 2 (so that last 2 parameters defined in main_run.py)')
-    assert False
+class MainRun:
+    def __init__(self, train_or_test, setting_name, hyperparams_name, recorder_config_path=None):
+        self.train_or_test = train_or_test
+        self.setting_name = setting_name
+        self.hyperparams_name = hyperparams_name
+        self.recorder_config_path = recorder_config_path
 
-train_or_test = sys.argv[1]
+        self.config_setting_file = f'config_files/settings/{setting_name}.yml'
+        self.config_hyperparams_file = f'config_files/policies_and_hyperparams/{hyperparams_name}.yml'
 
-print(f'Setting file name: {setting_name}')
-print(f'Hyperparams file name: {hyperparams_name}\n')
+        def load_yaml(file_path):
+            with open(file_path, 'r') as file:
+                return yaml.safe_load(file)
+        self.config_setting = load_yaml(self.config_setting_file)
+        self.config_hyperparams = load_yaml(self.config_hyperparams_file)
 
-config_setting_file = f'config_files/settings/{setting_name}.yml'
-config_hyperparams_file = f'config_files/policies_and_hyperparams/{hyperparams_name}.yml'
+        if recorder_config_path is not None:
+            self.override_configs()
+            self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams, True)
+        else:
+            self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams)
 
-with open(config_setting_file, 'r') as file:
-    config_setting = yaml.safe_load(file)
+        self.extract_configs()
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.dataset_creator = DatasetCreator()
 
-with open(config_hyperparams_file, 'r') as file:
-    config_hyperparams = yaml.safe_load(file)
+        self.create_scenario_and_datasets()
+        self.create_data_loaders()
+        self.create_model_and_optimizer()
+        self.simulator = Simulator(self.recorder, device=self.device)
+        self.trainer = Trainer(device=self.device)
 
-if config_setting['record_params']['path'] is not None:
-    path = os.path.join(config_setting['record_params']['path'], 'params.json')
-    with open(path, 'r') as file:
-        params = json.load(file)
-        config_setting, config_hyperparams = research_utils.override_configs(params, config_setting, config_hyperparams)
-    model_path = os.path.join(config_setting['record_params']['path'], 'model.pt')
-    config_hyperparams['trainer_params']['load_model_path'] = model_path
-recorder = research_utils.Recorder(config_setting, config_hyperparams, True)
+        self.setup_trainer_params()
 
-setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
-hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
-seeds, test_seeds, problem_params, params_by_dataset, observation_params, store_params, warehouse_params, echelon_params, sample_data_params = [
-    config_setting[key] for key in setting_keys
-    ]
+    def override_configs(self):
+        path = os.path.join(self.recorder_config_path, 'params.json')
+        with open(path, 'r') as file:
+            params = json.load(file)
+            self.config_setting, self.config_hyperparams = research_utils.override_configs(params, self.config_setting, self.config_hyperparams)
+        model_path = os.path.join(self.recorder_config_path, 'model.pt')
+        self.config_hyperparams['trainer_params']['load_model_path'] = model_path
+        self.config_hyperparams['trainer_params']['load_previous_model'] = True
 
-trainer_params, optimizer_params, nn_params = [config_hyperparams[key] for key in hyperparams_keys]
-observation_params = DefaultDict(lambda: None, observation_params)
+    def extract_configs(self):
+        setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
+        self.seeds, self.test_seeds, self.problem_params, self.params_by_dataset, self.observation_params, self.store_params, self.warehouse_params, self.echelon_params, self.sample_data_params = [
+            self.config_setting[key] for key in setting_keys
+        ]
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-dataset_creator = DatasetCreator()
+        hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
+        self.trainer_params, self.optimizer_params, self.nn_params = [self.config_hyperparams[key] for key in hyperparams_keys]
+        self.observation_params = DefaultDict(lambda: None, self.observation_params)
 
-# For realistic data, train, dev and test sets correspond to the same products, but over disjoint periods.
-# We will therefore create one scenario, and then split the data into train, dev and test sets by 
-# "copying" all non-period related information, and then splitting the period related information
-if sample_data_params['split_by_period']:
-    
-    scenario = Scenario(
-        periods=None,  # period info for each dataset is given in sample_data_params
-        problem_params=problem_params, 
-        store_params=store_params, 
-        warehouse_params=warehouse_params, 
-        echelon_params=echelon_params, 
-        num_samples=params_by_dataset['train']['n_samples'],  # in this case, num_samples=number of products, which has to be the same across all datasets
-        observation_params=observation_params, 
-        seeds=seeds
-        )
-    
-    train_dataset, dev_dataset, test_dataset = dataset_creator.create_datasets(
-        scenario, 
-        split=True, 
-        by_period=True, 
-        periods_for_split=[sample_data_params[k] for  k in ['train_periods', 'dev_periods', 'test_periods']],)
-
-# For synthetic data, we will first create a scenario that we will divide into train and dev sets by sample index.
-# Then, we will create a separate scenario for the test set, which will be exaclty the same as the previous scenario, 
-# but with different seeds to generate demand traces, and with a longer time horizon.
-# One can use this method of generating scenarios to train a model using some specific problem primitives, 
-# and then test it on a different set of problem primitives, by simply creating a new scenario with the desired primitives.
-else:
-    scenario = Scenario(
-        periods=params_by_dataset['train']['periods'], 
-        problem_params=problem_params, 
-        store_params=store_params, 
-        warehouse_params=warehouse_params, 
-        echelon_params=echelon_params, 
-        num_samples=params_by_dataset['train']['n_samples'] + params_by_dataset['dev']['n_samples'], 
-        observation_params=observation_params, 
-        seeds=seeds
-        )
-
-    train_dataset, dev_dataset = dataset_creator.create_datasets(scenario, split=True, by_sample_indexes=True, sample_index_for_split=params_by_dataset['dev']['n_samples'])
-
-    scenario = Scenario(
-        params_by_dataset['test']['periods'], 
-        problem_params, 
-        store_params, 
-        warehouse_params, 
-        echelon_params, 
-        params_by_dataset['test']['n_samples'], 
-        observation_params, 
-        test_seeds
-        )
-
-    test_dataset = dataset_creator.create_datasets(scenario, split=False)
-
-train_loader = DataLoader(train_dataset, batch_size=params_by_dataset['train']['batch_size'], shuffle=True)
-dev_loader = DataLoader(dev_dataset, batch_size=params_by_dataset['dev']['batch_size'], shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=params_by_dataset['test']['batch_size'], shuffle=False)
-data_loaders = {'train': train_loader, 'dev': dev_loader, 'test': test_loader}
-
-neural_net_creator = NeuralNetworkCreator
-model = neural_net_creator().create_neural_network(scenario, nn_params, device=device)
-
-loss_function = PolicyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_params['learning_rate'])
-
-simulator = Simulator(recorder, device=device)
-trainer = Trainer(device=device)
-
-# We will create a folder for each day of the year, and a subfolder for each model
-# When executing with different problem primitives (i.e. instance), it might be useful to create an additional subfolder for each instance
-trainer_params['base_dir'] = 'saved_models'
-trainer_params['save_model_folders'] = [trainer.get_year_month_day(), nn_params['name']]
-
-# We will simply name the model with the current time stamp
-trainer_params['save_model_filename'] = trainer.get_time_stamp()
-
-# Load previous model if load_model is set to True in the config file
-if trainer_params['load_previous_model']:
-    print(f'Loading model from {trainer_params["load_model_path"]}')
-    model, optimizer = trainer.load_model(model, optimizer, trainer_params['load_model_path'])
-
-if train_or_test == 'train':
-    trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
-
-elif train_or_test in ['test', 'train']:
-    with torch.no_grad():
-        # Deploy on test set, and enforce discrete allocation if the demand is poisson
-        average_test_loss, average_test_loss_to_report = trainer.test(
-            loss_function, 
-            simulator, 
-            model, 
-            data_loaders, 
-            optimizer, 
-            problem_params, 
-            observation_params, 
-            params_by_dataset, 
-            discrete_allocation=store_params['demand']['distribution'] == 'poisson'
+    def create_scenario_and_datasets(self):
+        if self.sample_data_params['split_by_period']:
+            self.scenario = Scenario(
+                periods=None,
+                problem_params=self.problem_params,
+                store_params=self.store_params,
+                warehouse_params=self.warehouse_params,
+                echelon_params=self.echelon_params,
+                num_samples=self.params_by_dataset['train']['n_samples'],
+                observation_params=self.observation_params,
+                seeds=self.seeds
             )
 
-    print(f'Average per-period test loss: {average_test_loss_to_report}')
+            self.train_dataset, self.dev_dataset, self.test_dataset = self.dataset_creator.create_datasets(
+                self.scenario,
+                split=True,
+                by_period=True,
+                periods_for_split=[self.sample_data_params[k] for k in ['train_periods', 'dev_periods', 'test_periods']]
+            )
+        else:
+            self.scenario = Scenario(
+                periods=self.params_by_dataset['train']['periods'],
+                problem_params=self.problem_params,
+                store_params=self.store_params,
+                warehouse_params=self.warehouse_params,
+                echelon_params=self.echelon_params,
+                num_samples=self.params_by_dataset['train']['n_samples'] + self.params_by_dataset['dev']['n_samples'],
+                observation_params=self.observation_params,
+                seeds=self.seeds
+            )
 
-else:
-    print(f'Invalid argument: {train_or_test}')
-    assert False
+            self.train_dataset, self.dev_dataset = self.dataset_creator.create_datasets(
+                self.scenario,
+                split=True,
+                by_sample_indexes=True,
+                sample_index_for_split=self.params_by_dataset['dev']['n_samples']
+            )
+
+            self.scenario = Scenario(
+                self.params_by_dataset['test']['periods'],
+                self.problem_params,
+                self.store_params,
+                self.warehouse_params,
+                self.echelon_params,
+                self.params_by_dataset['test']['n_samples'],
+                self.observation_params,
+                self.test_seeds
+            )
+
+            self.test_dataset = self.dataset_creator.create_datasets(self.scenario, split=False)
+
+    def create_data_loaders(self):
+        train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True)
+        dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False)
+        test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False)
+        self.data_loaders = {'train': train_loader, 'dev': dev_loader, 'test': test_loader}
+
+    def create_model_and_optimizer(self):
+        neural_net_creator = NeuralNetworkCreator
+        self.model = neural_net_creator().create_neural_network(self.scenario, self.nn_params, device=self.device)
+        self.loss_function = PolicyLoss()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.optimizer_params['learning_rate'])
+
+    def setup_trainer_params(self):
+        self.trainer_params['base_dir'] = 'saved_models'
+        self.trainer_params['save_model_folders'] = [self.trainer.get_year_month_day(), self.nn_params['name']]
+        self.trainer_params['save_model_filename'] = self.trainer.get_time_stamp()
+
+        if self.trainer_params['load_previous_model']:
+            self.model, self.optimizer = self.trainer.load_model(self.model, self.optimizer, self.trainer_params['load_model_path'])
+
+    def run(self):
+        if self.train_or_test == 'train':
+            self.trainer.train(
+                self.trainer_params['epochs'],
+                self.loss_function,
+                self.simulator,
+                self.model,
+                self.data_loaders,
+                self.optimizer,
+                self.problem_params,
+                self.observation_params,
+                self.params_by_dataset,
+                self.trainer_params
+            )
+        elif self.train_or_test in ['test', 'train']:
+            with torch.no_grad():
+                average_test_loss, average_test_loss_to_report = self.trainer.test(
+                    self.loss_function,
+                    self.simulator,
+                    self.model,
+                    self.data_loaders,
+                    self.optimizer,
+                    self.problem_params,
+                    self.observation_params,
+                    self.params_by_dataset,
+                    discrete_allocation=self.store_params['demand']['distribution'] == 'poisson'
+                )
+            print(f'Average per-period test loss: {average_test_loss_to_report}')
+        else:
+            print(f'Invalid argument: {self.train_or_test}')
+            assert False
+
+if __name__ == "__main__":
+    train_or_test = sys.argv[1]
+    setting_name = sys.argv[2]
+    hyperparams_name = sys.argv[3]
+    recorder_config_path = sys.argv[4] if len(sys.argv) > 4 else None
+
+    main_run = MainRun(train_or_test, setting_name, hyperparams_name, recorder_config_path)
+    main_run.run()
