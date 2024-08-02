@@ -61,15 +61,15 @@ def find_model_path_for(tuning_configs):
 def run(tuning_configs):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     import research_utils
-    config_setting, config_hyperparams = research_utils.override_configs(tuning_configs, config_setting, config_hyperparams)
-    recorder = research_utils.Recorder(config_setting, config_hyperparams)
+    config_setting_overrided, config_hyperparams_overrided = research_utils.override_configs(tuning_configs, config_setting, config_hyperparams)
+    recorder = research_utils.Recorder(config_setting_overrided, config_hyperparams_overrided)
 
     setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
     hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
     seeds, test_seeds, problem_params, params_by_dataset, observation_params, store_params, warehouse_params, echelon_params, sample_data_params = [
-        config_setting[key] for key in setting_keys
+        config_setting_overrided[key] for key in setting_keys
         ]
-    trainer_params, optimizer_params, nn_params = [config_hyperparams[key] for key in hyperparams_keys]
+    trainer_params, optimizer_params, nn_params = [config_hyperparams_overrided[key] for key in hyperparams_keys]
     observation_params = DefaultDict(lambda: None, observation_params)
     
     dataset_creator = DatasetCreator()
@@ -146,12 +146,12 @@ if 'symmetry_aware_grid_search' == hyperparams_name:
         # 'stores_correlation': tune.grid_search([-0.5, 0.0, 0.5]),
         'warehouse_holding_cost': tune.grid_search([2.0]),
         'warehouse_lead_time': tune.grid_search([2]),
-        'stores_correlation': tune.grid_search([-0.5, 0.0, 0.5]),
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        'stores_correlation': tune.grid_search([0.5]),
+        "learning_rate": tune.grid_search([0.01, 0.001]),
         'context': tune.grid_search([0, 1, 16, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
-        "samples": tune.grid_search([1, 2]),
+        "samples": tune.grid_search([1]),
     }
     save_path = 'ray_results/diff_primitive/ctx'
 elif 'symmetry_aware_transshipment' == hyperparams_name:
@@ -181,20 +181,20 @@ elif 'symmetry_GNN_message_passing' == hyperparams_name:
     search_space = {
         "n_stores": n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "for_all_networks": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
+        "for_all_networks": tune.grid_search([1, 16, 64]),
         "overriding_networks": ["context", "store_embedding", "warehouse_embedding", "store_embedding_update"],
         "overriding_outputs": ["context", "store_embedding", "warehouse_embedding", "store_embedding_update"],
-        "samples": tune.grid_search([0, 1]),
+        "samples": tune.grid_search([0]),
     }
     save_path = 'ray_results/perf/GNN_message_passing'
 elif 'GNN' in hyperparams_name:
     search_space = {
         "n_stores": n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "for_all_networks": tune.grid_search([1, 2, 4, 8, 16, 32, 64, 128]),
+        "for_all_networks": tune.grid_search([1, 16, 64]),
         "overriding_networks": ["context", "store_embedding"],
         "overriding_outputs": ["context", "store_embedding"],
-        "samples": tune.grid_search([0, 1]),
+        "samples": tune.grid_search([0]),
     }
     if 'symmetry_GNN_real_data' == hyperparams_name:    
         save_path = 'ray_results/real/GNN'

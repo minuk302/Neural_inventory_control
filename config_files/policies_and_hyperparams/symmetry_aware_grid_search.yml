@@ -8,8 +8,8 @@ trainer_params :
   'save_model': True  # Path to save is defined in main script
   'epochs_between_save': 5  # Save if cost improved, and at least this number of epochs have passed
   'choose_best_model_on': 'dev_loss'  # For early stopping, choose according to best performance on this dataset
-  'load_previous_model': False
-  'load_model_path': '/user/ml4723/Prj/NIC/ray_results/perf/3/run_2024-07-19_23-29-08/run_3951d_00000_0_context=1,learning_rate=0.0100,samples=1_2024-07-19_23-29-08/model.pt'
+  'load_previous_model': True
+  'load_model_path': null
 
 optimizer_params: 
   'learning_rate': 0.001
