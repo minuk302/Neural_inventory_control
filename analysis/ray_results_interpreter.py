@@ -3,20 +3,11 @@ import os
 import pandas as pd
 import json
 
-class RayResultsInterpretator:
+class RayResultsinterpreter:
     def __init__(self):
         pass
 
-    def check_ctx_size(self, ctx_size, params):
-        if ctx_size == None:
-            return True
-        if 'context' in params and params['context'] == ctx_size:
-            return True
-        if 'for_all_networks' in params and params['for_all_networks'] == ctx_size:
-            return True
-        return False
-
-    def extract_data(self, top_folder, ctx_size):
+    def extract_data(self, top_folder):
         results = []
         for submain_folder in os.listdir(top_folder):
             main_folder = os.path.join(top_folder, submain_folder)
@@ -32,9 +23,6 @@ class RayResultsInterpretator:
                     data.fillna(0, inplace=True)
                     with open(params_file, 'r') as file:
                         params = json.load(file)
-                    if self.check_ctx_size(ctx_size, params) == False:
-                        continue
-
                     param_dict = {
                         'n_stores': 'n_stores',
                         'context': 'context',
@@ -67,23 +55,35 @@ class RayResultsInterpretator:
                     print(f"Error processing files in {subfolder_path}: {e}")
         return results
 
-    def make_table(self, paths, ctx_sizes):
+    def make_table(self, paths, conditions):
         results = []
         for num_stores, path in paths.items():
-            for ctx_size in ctx_sizes:
-                data = self.extract_data(path, ctx_size)
-                if len(data) == 0:
-                    continue
-                df = pd.DataFrame(data).sort_values(by='best_dev_loss', ascending=True)
-                top_row = df.iloc[0]
+            data = self.extract_data(path)
+            if len(data) == 0:
+                continue
+            df = pd.DataFrame(data).sort_values(by='best_dev_loss', ascending=True)
+
+            for condition_key, condition_values in conditions.items():
+                df = df[df[condition_key].isin(condition_values)]
+
+            if len(conditions.keys()) == 1:
+                grouped = df.groupby(list(conditions.keys())[0])
+            else:
+                grouped = df.groupby(list(conditions.keys()))
+            for group_name, group_df in grouped:
+                top_row = group_df.iloc[0]
                 result_row = {
                     "# of stores": num_stores,
-                    "context size": ctx_size,
-                    "Learning Rate": top_row['learning_rate'],
-                    "Train Loss": top_row['train_loss(at best_dev)'],
-                    "Dev Loss": top_row['best_dev_loss'],
-                    "Test Loss": top_row['test_loss(at best_dev)'],
-                    # "path": top_row['path']
                 }
+                if len(conditions.keys()) == 1:
+                    result_row[list(conditions.keys())[0]] = group_name
+                else:
+                    for condition_key, condition_value in zip(conditions.keys(), group_name):
+                        result_row[condition_key] = condition_value
+                result_row["Learning Rate"] = top_row['learning_rate']
+                result_row["Train Loss"] = top_row['train_loss(at best_dev)']
+                result_row["Dev Loss"] = top_row['best_dev_loss']
+                result_row["Test Loss"] = top_row['test_loss(at best_dev)']
+                # result_row["path"] = top_row['path']
                 results.append(result_row)
         return pd.DataFrame(results)
