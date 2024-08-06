@@ -1,4 +1,3 @@
-import shared_imports
 import os
 import pandas as pd
 import json
@@ -55,7 +54,7 @@ class RayResultsinterpreter:
                     print(f"Error processing files in {subfolder_path}: {e}")
         return results
 
-    def make_table(self, paths, conditions):
+    def make_table(self, paths, conditions, custom_data_filler = None):
         results = []
         for num_stores, path in paths.items():
             data = self.extract_data(path)
@@ -85,5 +84,7 @@ class RayResultsinterpreter:
                 result_row["Dev Loss"] = top_row['best_dev_loss']
                 result_row["Test Loss"] = top_row['test_loss(at best_dev)']
                 # result_row["path"] = top_row['path']
+                if custom_data_filler:
+                    custom_data_filler(result_row, top_row)
                 results.append(result_row)
         return pd.DataFrame(results)

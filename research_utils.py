@@ -18,24 +18,26 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'stores_correlation' in overriding_params:
         config_setting['store_params']['demand']['correlation'] = overriding_params['stores_correlation']
 
-    for net in overriding_params['overriding_networks']:
-        if 'for_all_networks' in overriding_params:
-            size = overriding_params['for_all_networks']
-        else:
-            size = overriding_params[net]
-        config_hyperparams['nn_params']['neurons_per_hidden_layer'][net] = [size for _ in config_hyperparams['nn_params']['neurons_per_hidden_layer'][net]]
+    if 'overriding_networks' in overriding_params:
+        for net in overriding_params['overriding_networks']:
+            if 'for_all_networks' in overriding_params:
+                size = overriding_params['for_all_networks']
+            else:
+                size = overriding_params[net]
+            config_hyperparams['nn_params']['neurons_per_hidden_layer'][net] = [size for _ in config_hyperparams['nn_params']['neurons_per_hidden_layer'][net]]
 
-    for net in overriding_params['overriding_outputs']:
-        if 'for_all_networks' in overriding_params:
-            size = overriding_params['for_all_networks']
-        else:
-            size = overriding_params[net]
-        if net not in config_hyperparams['nn_params']['output_sizes']:
-            continue
-        if size == 0:
-            del config_hyperparams['nn_params']['output_sizes'][net]
-            continue
-        config_hyperparams['nn_params']['output_sizes'][net] = size
+    if 'overriding_outputs' in overriding_params:
+        for net in overriding_params['overriding_outputs']:
+            if 'for_all_networks' in overriding_params:
+                size = overriding_params['for_all_networks']
+            else:
+                size = overriding_params[net]
+            if net not in config_hyperparams['nn_params']['output_sizes']:
+                continue
+            if size == 0:
+                del config_hyperparams['nn_params']['output_sizes'][net]
+                continue
+            config_hyperparams['nn_params']['output_sizes'][net] = size
     
     return config_setting, config_hyperparams
 
@@ -49,7 +51,7 @@ class Recorder():
     def start_recording(self):
         self.is_recording = True
     
-    def on_step(self, s_underage_costs, s_holding_costs, w_holding_costs):
+    def on_step(self, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders):
         if self.is_recording == False:
             return
         
@@ -57,12 +59,13 @@ class Recorder():
         lead_time = self.config_setting['warehouse_params']['lead_time']
         correlation = self.config_setting['store_params']['demand']['correlation']
         context = self.config_hyperparams['nn_params']['neurons_per_hidden_layer']['context']
-        file_name = f"analysis/primitive/{holding_cost}_{lead_time}_{correlation}_{context}.csv"
-        def append_tensors_to_csv(filename, s_underage_costs, s_holding_costs, w_holding_costs):
+        file_name = f"analysis/results/primitive/{holding_cost}_{lead_time}_{correlation}_{context}.csv"
+        def append_tensors_to_csv(filename, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
-            df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs, 'w_holding_costs': w_holding_costs})
+            df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs
+                                   , 'w_holding_costs': w_holding_costs, 'warehouse_orders': warehouse_orders})
             if os.path.exists(filename):
                 df_new.to_csv(filename, mode='a', header=False, index=False)
             else:
                 df_new.to_csv(filename, index=False)
-        append_tensors_to_csv(file_name, s_underage_costs, s_holding_costs, w_holding_costs)
+        append_tensors_to_csv(file_name, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders)

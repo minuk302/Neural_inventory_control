@@ -141,19 +141,33 @@ ray.init(num_cpus = num_gpus, object_store_memory=4000000000)
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
-        # 'warehouse_holding_cost': tune.grid_search([0.7, 1.0, 1.3, 2.0]),
-        # 'warehouse_lead_time': tune.grid_search([2, 6]),
-        # 'stores_correlation': tune.grid_search([-0.5, 0.0, 0.5]),
-        'warehouse_holding_cost': tune.grid_search([2.0]),
-        'warehouse_lead_time': tune.grid_search([2]),
+        'warehouse_holding_cost': tune.grid_search([0.7, 1.0]),
+        'warehouse_lead_time': tune.grid_search([2, 6]),
         'stores_correlation': tune.grid_search([0.5]),
-        "learning_rate": tune.grid_search([0.01, 0.001]),
-        'context': tune.grid_search([0, 1, 16, 64]),
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        'context': tune.grid_search([0, 1, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
         "samples": tune.grid_search([1]),
     }
     save_path = 'ray_results/diff_primitive/ctx'
+elif 'vanilla_one_warehouse' == hyperparams_name:
+    search_space = {
+        'warehouse_holding_cost': tune.grid_search([0.7, 1.0]),
+        'warehouse_lead_time': tune.grid_search([2, 6]),
+        'stores_correlation': tune.grid_search([0.5]),
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "samples": tune.grid_search([0]),
+    }
+    save_path = 'ray_results/diff_primitive/vanilla'
+elif 'data_driven_net_real_data' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
+        "master": tune.grid_search([32, 64, 128, 256]),
+        "overriding_networks": ["master"],
+        "samples": tune.grid_search([0, 1]),
+    }
+    save_path = 'ray_results/real/vanilla'
 elif 'symmetry_aware_transshipment' == hyperparams_name:
         search_space = {
             'n_stores': n_stores,

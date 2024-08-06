@@ -9,3 +9,4 @@ grid_search/
 wandb/
 ray_results_*/
 progress_log/
+analysis/results/

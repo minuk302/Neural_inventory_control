@@ -94,6 +94,3 @@ warehouse_params:
 
 echelon_params: 
   null
-
-record_params:
-  'path': '/user/ml4723/Prj/NIC/ray_results/diff_primitive/ctx/run_2024-07-31_01-37-33/run_fc58a_00000_0_context=0,learning_rate=0.0100,samples=1,warehouse_holding_cost=1.3000_2024-07-31_01-37-33'
