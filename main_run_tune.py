@@ -114,9 +114,9 @@ def run(tuning_configs):
             )
         test_dataset = dataset_creator.create_datasets(scenario, split=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=params_by_dataset['train']['batch_size'], shuffle=True)
-    dev_loader = DataLoader(dev_dataset, batch_size=params_by_dataset['dev']['batch_size'], shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=params_by_dataset['test']['batch_size'], shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=params_by_dataset['train']['batch_size'], shuffle=True, num_workers=4, pin_memory=True)
+    dev_loader = DataLoader(dev_dataset, batch_size=params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=params_by_dataset['test']['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
     data_loaders = {'train': train_loader, 'dev': dev_loader, 'test': test_loader}
 
     neural_net_creator = NeuralNetworkCreator
@@ -141,6 +141,7 @@ ray.init(num_cpus = num_gpus, object_store_memory=4000000000)
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
+        'n_stores': n_stores,
         'warehouse_holding_cost': tune.grid_search([0.7, 1.0]),
         'warehouse_lead_time': tune.grid_search([2, 6]),
         'stores_correlation': tune.grid_search([0.5]),
@@ -153,6 +154,7 @@ if 'symmetry_aware_grid_search' == hyperparams_name:
     save_path = 'ray_results/diff_primitive/ctx'
 elif 'vanilla_one_warehouse' == hyperparams_name:
     search_space = {
+        'n_stores': n_stores,
         'warehouse_holding_cost': tune.grid_search([0.7, 1.0]),
         'warehouse_lead_time': tune.grid_search([2, 6]),
         'stores_correlation': tune.grid_search([0.5]),
@@ -232,6 +234,7 @@ elif 'data_driven_net_real_data' == hyperparams_name:
 trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
 if n_stores != None:
     save_path += f'/{n_stores}'
+    search_space['n_stores'] = n_stores
 
 tuner = tune.Tuner(trainable_with_resources
 , param_space=search_space
