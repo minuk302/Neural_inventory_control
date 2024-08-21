@@ -167,7 +167,7 @@ class Trainer():
                 data_batch = self.move_batch_to_device(data_batch)
                 if train:
                     # Zero-out the gradient
-                    optimizer.zero_grad()
+                    optimizer.zero_grad(set_to_none=True)
 
                 # Forward pass
                 total_reward, reward_to_report = self.simulate_batch(
