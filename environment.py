@@ -58,19 +58,19 @@ class Simulator(gym.Env):
 
         # We create "shift" tensors to calculate in which position of the long vector of the entire batch we have to add the corresponding allocation
         # This is necessary whenever the lead time is different for each sample or/and store
-        self._internal_data['allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_inventories'].shape).long().to(self.device)
+        self._internal_data['allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_inventories'].shape).long()
 
         if self.problem_params['n_warehouses'] > 0:
-            self._internal_data['warehouse_allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_warehouse_inventories'].shape).long().to(self.device)
+            self._internal_data['warehouse_allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_warehouse_inventories'].shape).long()
         
         if self.problem_params['n_extra_echelons'] > 0:
-            self._internal_data['echelon_allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_echelon_inventories'].shape).long().to(self.device)
+            self._internal_data['echelon_allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_echelon_inventories'].shape).long()
 
-        self._internal_data['zero_allocation_tensor'] = self.initialize_zero_allocation_tensor(data['initial_inventories'].shape[: -1]).to(self.device)
+        self._internal_data['zero_allocation_tensor'] = self.initialize_zero_allocation_tensor(data['initial_inventories'].shape[: -1])
 
         self.observation = self.initialize_observation(data, observation_params)
-        self.action_space = self.initialize_action_space(self.batch_size, problem_params, observation_params)
-        self.observation_space = self.initialize_observation_space(self.observation, periods, problem_params,)
+        # self.action_space = self.initialize_action_space(self.batch_size, problem_params, observation_params)
+        # self.observation_space = self.initialize_observation_space(self.observation, periods, problem_params,)
         self.maximize_profit = problem_params['maximize_profit']
         
         return self.observation, None
@@ -87,14 +87,14 @@ class Simulator(gym.Env):
         # Results in a vector of lenght batch_size, where each entry corresponds to the first position of an element of a given sample
         # in the long vector of the entire batch
         n_instance_store_shift = (
-            torch.arange(batch_size) * (lead_time_max * n_stores)
-            ).to(self.device)
+            torch.arange(batch_size, device=self.device) * (lead_time_max * n_stores)
+            )
 
         # Results in a tensor of shape batch_size x stores, where each entry corresponds to the number of positions to move 'to the right'
         # for each store, beginning from the first position within a sample
         store_n_shift = (
-            torch.arange(n_stores) * (lead_time_max)
-            ).expand(batch_size, n_stores).to(self.device)
+            torch.arange(n_stores, device=self.device) * (lead_time_max)
+            ).expand(batch_size, n_stores)
         
         # Results in a vector of shape batch_size x stores, where each entry corresponds to the first position of an element of a given (sample, store)
         # in the long vector of the entire batch.
@@ -106,7 +106,7 @@ class Simulator(gym.Env):
         Initialize a tensor of zeros with the same shape as the allocation tensor
         """
 
-        return torch.zeros(shape).to(self.device)
+        return torch.zeros(shape, device=self.device)
     
     def step(self, action):
         """
@@ -152,7 +152,8 @@ class Simulator(gym.Env):
                 self.observation,
                 )
             reward += w_reward
-            self.recorder.on_step(s_underage_costs.cpu().mean(dim=1), s_holding_costs.cpu().mean(dim=1), w_holding_costs.cpu().squeeze(-1), action['warehouses'].cpu().squeeze(-1))
+            if self.recorder.is_recording:
+                self.recorder.on_step(s_underage_costs.cpu().mean(dim=1), s_holding_costs.cpu().mean(dim=1), w_holding_costs.cpu().squeeze(-1), action['warehouses'].cpu().squeeze(-1))
         
         # Calculate reward and update other echelon inventories
         if self.problem_params['n_extra_echelons'] > 0:
@@ -305,7 +306,7 @@ class Simulator(gym.Env):
         # Initialize data for past observations of certain data (e.g., arrivals, orders)
         for k, v in observation_params['include_past_observations'].items():
             if v > 0:
-                observation[k] = torch.zeros(self.batch_size, self.n_stores, v).to(self.device)
+                observation[k] = torch.zeros(self.batch_size, self.n_stores, v, device=self.device)
 
         # Initialize past demands in the observation
         if observation_params['demand']['past_periods'] > 0:
@@ -402,7 +403,7 @@ class Simulator(gym.Env):
         current_period_shifted = current_period + self._internal_data['period_shift']
         
         if current_period_shifted == 0:
-            past_demands = torch.zeros(batch_size, stores, past_periods).to(self.device)
+            past_demands = torch.zeros(batch_size, stores, past_periods, device=self.device)
         # If current_period_shifted < past_periods, we fill with zeros at the left
         else:
             past_demands = data['demands'][:, :, max(0, current_period_shifted - past_periods): current_period_shifted]
@@ -410,7 +411,7 @@ class Simulator(gym.Env):
             fill_with_zeros = past_periods - (current_period_shifted - max(0, current_period_shifted - past_periods))
             if fill_with_zeros > 0:
                 past_demands = torch.cat([
-                    torch.zeros(batch_size, stores, fill_with_zeros).to(self.device), 
+                    torch.zeros(batch_size, stores, fill_with_zeros, device=self.device), 
                     past_demands
                     ], 
                     dim=2)
