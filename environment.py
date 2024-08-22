@@ -191,21 +191,13 @@ class Simulator(gym.Env):
 
         # Reward given by -sales*price + holding_costs
         if maximize_profit:
-            reward = (
-                -observation['underage_costs'] * torch.minimum(inventory_on_hand, current_demands) + 
-                observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
-                )
             underage_costs = -observation['underage_costs'] * torch.minimum(inventory_on_hand, current_demands)
             holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
-        
         # Reward given by underage_costs + holding_costs
         else:
-            reward = (
-                observation['underage_costs'] * torch.clip(-post_inventory_on_hand, min=0) + 
-                observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
-                )
             underage_costs = observation['underage_costs'] * torch.clip(-post_inventory_on_hand, min=0)
             holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
+        reward = underage_costs.sum(dim=1) + holding_costs.sum(dim=1)
         
         # If we are in a lost demand setting, we cannot have negative inventory
         if self.problem_params['lost_demand']:
@@ -233,7 +225,7 @@ class Simulator(gym.Env):
         #     action["stores"]
         #     )
         
-        return reward.sum(dim=1), underage_costs, holding_costs
+        return reward, underage_costs, holding_costs
     
     def calculate_warehouse_reward_and_update_warehouse_inventories(self, action, observation):
         """
@@ -383,9 +375,9 @@ class Simulator(gym.Env):
         
         return torch.stack(
             [
-                inventory_on_hand + inventory[:, :, 1], 
-                *self.move_columns_left(inventory, 1, inventory.shape[2] - 1), 
-                torch.zeros_like(allocation)
+                (inventory_on_hand + inventory[:, :, 1]).unsqueeze(-1), 
+                inventory[:, :, 2:],
+                torch.zeros_like(allocation).unsqueeze(-1)
             ], 
                 dim=2
                 ).put(
