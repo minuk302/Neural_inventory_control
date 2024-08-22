@@ -113,7 +113,7 @@ class MyNeuralNetwork(nn.Module):
         warehouse is not sufficient.
         """
 
-        total_limiting_inventory = warehouse_inventories[:, :, 0].sum(dim=1)  # Total inventory at the warehouse
+        total_limiting_inventory = warehouse_inventories[:, 0, 0]  # Total inventory at the warehouse
         sum_allocation = store_intermediate_outputs.sum(dim=1)  # Sum of all store order quantities
 
         # Multiply current allocation by minimum between inventory/orders and 1
