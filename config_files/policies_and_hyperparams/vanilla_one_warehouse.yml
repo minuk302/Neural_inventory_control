@@ -6,7 +6,7 @@ trainer_params :
   'ray_report_test_loss': True
   'print_results_every_n_epochs': 5
   'save_model': True  # Path to save is defined in main script
-  'epochs_between_save': 5  # Save if cost improved, and at least this number of epochs have passed
+  'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
   'choose_best_model_on': 'dev_loss'  # For early stopping, choose according to best performance on this dataset
   'load_previous_model': False
   'load_model_path': null
