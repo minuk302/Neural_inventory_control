@@ -187,16 +187,15 @@ class Simulator(gym.Env):
         store_inventory = self.observation['store_inventories']
         inventory_on_hand = store_inventory[:, :, 0]
         
-        post_inventory_on_hand = self.observation['store_inventories'][:, :, 0] - current_demands
+        post_inventory_on_hand = inventory_on_hand - current_demands
 
         # Reward given by -sales*price + holding_costs
         if maximize_profit:
             underage_costs = -observation['underage_costs'] * torch.minimum(inventory_on_hand, current_demands)
-            holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
         # Reward given by underage_costs + holding_costs
         else:
             underage_costs = observation['underage_costs'] * torch.clip(-post_inventory_on_hand, min=0)
-            holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
+        holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
         reward = underage_costs.sum(dim=1) + holding_costs.sum(dim=1)
         
         # If we are in a lost demand setting, we cannot have negative inventory

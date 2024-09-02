@@ -114,9 +114,9 @@ def run(tuning_configs):
             )
         test_dataset = dataset_creator.create_datasets(scenario, split=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=params_by_dataset['train']['batch_size'], shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
-    dev_loader = DataLoader(dev_dataset, batch_size=params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
-    test_loader = DataLoader(test_dataset, batch_size=params_by_dataset['test']['batch_size'], shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
+    train_loader = DataLoader(train_dataset, batch_size=params_by_dataset['train']['batch_size'], shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
+    dev_loader = DataLoader(dev_dataset, batch_size=params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=params_by_dataset['test']['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
     data_loaders = {'train': train_loader, 'dev': dev_loader, 'test': test_loader}
 
     neural_net_creator = NeuralNetworkCreator
@@ -137,31 +137,30 @@ def run(tuning_configs):
     trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
 
 num_gpus = torch.cuda.device_count()
-ray.init(num_cpus = num_gpus, object_store_memory=4000000000)
+# num_instances = num_gpus
+num_instances = 8
+gpus_per_instance = num_gpus / num_instances
+ray.init(num_cpus = num_instances, num_gpus = num_gpus, object_store_memory=4000000000, address='local')
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
         'n_stores': n_stores,
-        'warehouse_holding_cost': tune.grid_search([0.7, 1.0]),
-        'warehouse_lead_time': tune.grid_search([2, 6]),
-        'stores_correlation': tune.grid_search([0.5]),
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         'context': tune.grid_search([0, 1, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
-        "samples": tune.grid_search([1]),
+        "samples": tune.grid_search([1, 2, 3]),
     }
-    save_path = 'ray_results/diff_primitive/ctx'
+    save_path = 'ray_results/stable_bench/ctx'
 elif 'vanilla_one_warehouse' == hyperparams_name:
     search_space = {
         'n_stores': n_stores,
-        'warehouse_holding_cost': tune.grid_search([0.7, 1.0]),
-        'warehouse_lead_time': tune.grid_search([2, 6]),
-        'stores_correlation': tune.grid_search([0.5]),
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "samples": tune.grid_search([0]),
+        "master": tune.grid_search([128, 512]),
+        "overriding_networks": ["master"],
+        "samples": tune.grid_search([1, 2, 3]),
     }
-    save_path = 'ray_results/diff_primitive/vanilla'
+    save_path = 'ray_results/stable_bench/vanilla'
 elif 'data_driven_net_real_data' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
@@ -231,7 +230,7 @@ elif 'data_driven_net_real_data' == hyperparams_name:
         "samples": tune.grid_search([0, 1]),
     }
     save_path = 'ray_results/real/vanilla'
-trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": 1})
+trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": gpus_per_instance})
 if n_stores != None:
     save_path += f'/{n_stores}'
     search_space['n_stores'] = n_stores

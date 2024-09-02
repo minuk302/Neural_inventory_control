@@ -59,7 +59,7 @@ class Recorder():
         lead_time = self.config_setting['warehouse_params']['lead_time']
         correlation = self.config_setting['store_params']['demand']['correlation']
         context = self.config_hyperparams['nn_params']['neurons_per_hidden_layer']['context']
-        file_name = f"analysis/results/primitive/{holding_cost}_{lead_time}_{correlation}_{context}.csv"
+        file_name = f"analysis/results/primitive/{self.config_setting['problem_params']['n_stores']}/{holding_cost}_{lead_time}_{correlation}_{context}.csv"
         def append_tensors_to_csv(filename, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs

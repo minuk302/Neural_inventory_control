@@ -169,4 +169,11 @@ if __name__ == "__main__":
     recorder_config_path = sys.argv[4] if len(sys.argv) > 4 else None
 
     main_run = MainRun(train_or_test, setting_name, hyperparams_name, recorder_config_path)
+    import time
+
+    start_time = time.time()
     main_run.run()
+    end_time = time.time()
+    
+    execution_time = end_time - start_time
+    print(f"Execution time: {execution_time:.2f} seconds")

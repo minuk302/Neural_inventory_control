@@ -65,7 +65,9 @@ class RayResultsinterpreter:
             for condition_key, condition_values in conditions.items():
                 df = df[df[condition_key].isin(condition_values)]
 
-            if len(conditions.keys()) == 1:
+            if len(conditions.keys()) == 0:
+                grouped = [('', df)]  # Single group with empty name and all data
+            elif len(conditions.keys()) == 1:
                 grouped = df.groupby(list(conditions.keys())[0])
             else:
                 grouped = df.groupby(list(conditions.keys()))
@@ -83,6 +85,7 @@ class RayResultsinterpreter:
                 result_row["Train Loss"] = top_row['train_loss(at best_dev)']
                 result_row["Dev Loss"] = top_row['best_dev_loss']
                 result_row["Test Loss"] = top_row['test_loss(at best_dev)']
+                result_row["# of runs"] = len(group_df)
                 # result_row["path"] = top_row['path']
                 if custom_data_filler:
                     custom_data_filler(result_row, top_row)
