@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 from ray.tune import Stopper
 import ray
 import json
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+import os
+# for debugging
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 # HDPO w/o context = symmetry_aware
 # HDPO w/ context = symmetry_aware
@@ -18,12 +20,25 @@ os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 setting_name = sys.argv[1]
 hyperparams_name = sys.argv[2]
 n_stores = None
-if len(sys.argv) == 4:
+if len(sys.argv) >= 4:
     n_stores = int(sys.argv[3])
+    
+gpus_in_machine = torch.cuda.device_count()
+if len(sys.argv) >= 5:
+    gpus_to_use = [int(gpu) for gpu in sys.argv[4:]]
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpus_to_use))
+else:
+    gpus_to_use = list(range(torch.cuda.device_count()))
+total_cpus = os.cpu_count()
+num_instances_per_gpu = 1
+n_cpus_per_instance = max(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
+
 load_model = False
 
 print(f'Setting file name: {setting_name}')
 print(f'Hyperparams file name: {hyperparams_name}\n')
+print(f'Using GPUs: {gpus_to_use}')
+print(f'Using CPUs per instance: {n_cpus_per_instance}')
 config_setting_file = f'config_files/settings/{setting_name}.yml'
 config_hyperparams_file = f'config_files/policies_and_hyperparams/{hyperparams_name}.yml'
 
@@ -114,9 +129,9 @@ def run(tuning_configs):
             )
         test_dataset = dataset_creator.create_datasets(scenario, split=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=params_by_dataset['train']['batch_size'], shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
-    dev_loader = DataLoader(dev_dataset, batch_size=params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=params_by_dataset['test']['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=params_by_dataset['train']['batch_size'], shuffle=True, num_workers=n_cpus_per_instance, pin_memory=True, persistent_workers=True, prefetch_factor=8)
+    dev_loader = DataLoader(dev_dataset, batch_size=params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=2, pin_memory=True, prefetch_factor=1)
+    test_loader = DataLoader(test_dataset, batch_size=params_by_dataset['test']['batch_size'], shuffle=False, num_workers=2, pin_memory=True, prefetch_factor=1)
     data_loaders = {'train': train_loader, 'dev': dev_loader, 'test': test_loader}
 
     neural_net_creator = NeuralNetworkCreator
@@ -136,17 +151,18 @@ def run(tuning_configs):
     trainer_params['save_model_filename'] = "model"
     trainer.train(trainer_params['epochs'], loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params)
 
-num_gpus = torch.cuda.device_count()
-# num_instances = num_gpus
-num_instances = 8
+num_gpus = len(gpus_to_use)
+num_instances = num_gpus * num_instances_per_gpu
+
 gpus_per_instance = num_gpus / num_instances
-ray.init(num_cpus = num_instances, num_gpus = num_gpus, object_store_memory=4000000000, address='local')
+ray.init(num_cpus = num_instances * n_cpus_per_instance, num_gpus = num_gpus, object_store_memory=4000000000, address='local')
+
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
         'n_stores': n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        'context': tune.grid_search([0, 1, 64]),
+        'context': tune.grid_search([8, 16]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
         "samples": tune.grid_search([1, 2, 3]),
@@ -230,7 +246,7 @@ elif 'data_driven_net_real_data' == hyperparams_name:
         "samples": tune.grid_search([0, 1]),
     }
     save_path = 'ray_results/real/vanilla'
-trainable_with_resources = tune.with_resources(run, {"cpu": 1, "gpu": gpus_per_instance})
+trainable_with_resources = tune.with_resources(run, {"cpu": n_cpus_per_instance, "gpu": gpus_per_instance})
 if n_stores != None:
     save_path += f'/{n_stores}'
     search_space['n_stores'] = n_stores

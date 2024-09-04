@@ -1,6 +1,6 @@
 trainer_params : 
   'epochs': 20000
-  'stop_if_no_improve_for_epochs': 200
+  'stop_if_no_improve_for_epochs': 100
   'do_dev_every_n_epochs': 50
   'ray_report_loss': True
   'ray_report_test_loss': True
