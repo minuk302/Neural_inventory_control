@@ -135,7 +135,7 @@ class MyNeuralNetwork(nn.Module):
         if not transshipment:
             softmax_inputs = torch.cat((
                 softmax_inputs, 
-                torch.ones_like(softmax_inputs[:, 0]).to(self.device)[:, None]
+                torch.ones_like(softmax_inputs[:, 0], device=self.device)[:, None]
                 ), 
                 dim=1
                 )
@@ -739,7 +739,7 @@ class NeuralNetworkCreator:
         mean = scenario.store_params['demand']['mean']
         if type(mean) == float:
             mean = [mean]
-        return torch.tensor([warehouse_upper_bound_mult*sum(mean)]).float().to(device)
+        return torch.tensor([warehouse_upper_bound_mult*sum(mean)], device=device).float()
     
     def create_neural_network(self, scenario, nn_params, device='cpu'):
 

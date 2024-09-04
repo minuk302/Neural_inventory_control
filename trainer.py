@@ -307,7 +307,7 @@ class Trainer():
         Move a batch of data to the device (CPU or GPU)
         """
 
-        return {k: v.to(self.device) for k, v in data_batch.items()}
+        return {k: v.to(self.device, non_blocking=True) for k, v in data_batch.items()}
     
     def load_model(self, model, optimizer, model_path):
         """
