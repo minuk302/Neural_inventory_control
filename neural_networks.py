@@ -688,6 +688,80 @@ class JustInTime(MyNeuralNetwork):
             store_allocation = self.apply_proportional_allocation(torch.clip(stores_future_demands, min=0), observation['warehouse_inventories'])
             return {'stores': store_allocation,'warehouses': torch.clip(warehouse_future_demands, min=0),} 
         return {'stores': stores_future_demands}
+
+class WeeklyForecastNN(MyNeuralNetwork):
+    """
+    Base class for ...
+    """
+
+    def _init_(self, args, device='cpu'):
+
+        super()._init_(args=args, device=device) # initialize super class
+        self.fixed_nets = {'quantile_forecaster': self.load_forecaster(args, requires_grad=False)}
+        self.allow_back_orders = False  # we will set to True only for non-admissible ReturnsNV policy
+        
+    def load_forecaster(self, nn_params, requires_grad=True):
+        """"
+        Create quantile forecaster and load weights from file
+        """
+        quantile_forecaster = FullyConnectedForecaster([128, 128], lead_times=nn_params['forecaster_lead_times'], qs=np.array([0.5]))
+        quantile_forecaster = quantile_forecaster
+        quantile_forecaster.load_state_dict(torch.load(f"{nn_params['forecaster_location']}"))
+        
+        # Set requires_grad to False for all parameters if we are not training the forecaster
+        for p in quantile_forecaster.parameters():
+            p.requires_grad_(requires_grad)
+        return quantile_forecaster.to(self.device)
+    
+    def interpolate_tensor(self, x, n):
+        # Calculate the indices
+        lower_index = torch.floor(n).long()  # This gives the lower index (e.g., 4 for n = 4.7)
+        upper_index = torch.ceil(n).long()   # This gives the upper index (e.g., 5 for n = 4.7)
+        
+        # Calculate the weights for interpolation
+        upper_weight = n - lower_index   # Weight for the upper index (e.g., 0.7 for n = 4.7)
+        lower_weight = 1 - upper_weight  # Weight for the lower index (e.g., 0.3 for n = 4.7)
+        
+        # Extract the values at the lower and upper indices
+        lower_value = x[:, :, lower_index]
+        upper_value = x[:, :, upper_index]
+        
+        # Perform the linear interpolation
+        y = lower_weight * lower_value + upper_weight * upper_value
+        
+        return y[:, :, 0]
+    
+    def forward(self, observation):
+        """
+        Get store allocation by mapping features to quantiles for each store.
+        Then, with the quantile forecaster, we "invert" the quantiles to get base-stock levels and obtain the store allocation.
+        """
+
+        underage_costs, holding_costs, lead_times, past_demands, days_from_christmas, store_inventories = [observation[key] for key in ['underage_costs', 'holding_costs', 'lead_times', 'past_demands', 'days_from_christmas', 'store_inventories']]
+        forecaster_output = self.fixed_nets['quantile_forecaster'](torch.cat([past_demands, days_from_christmas.unsqueeze(1).expand(past_demands.shape[0], past_demands.shape[1], 1)], dim=2))
+        forecaster_output = forecaster_output[:, :, 0]
+        # print(f'forecaster_output: {forecaster_output[0]}')
+        zero_to_one = self.net['master'](torch.tensor([0.0]).to(self.device))  # constant base stock level
+        pos = zero_to_one*9  # indexes go from 0 to 9, so we interpret output as proportion from 0 to 9
+        base_level = self.interpolate_tensor(forecaster_output, pos)
+        # print(f'pos: {pos}')
+        # print(f'base_level: {base_level[0]}')
+        # print(f'inventory_position: {store_inventories.sum(dim=2)[0]}')
+
+        # calculate allocation using base level
+        store_allocation = torch.clip(base_level - store_inventories.sum(dim=2), min=0)
+        # print(f'store_allocation: {store_allocation[0]}')
+        # print()
+
+        # Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
+        return {"stores": store_allocation}
+    
+    def forecast_base_stock_allocation(self, past_demands, days_from_christmas, store_inventories, lead_times, quantiles, allow_back_orders=False):
+        """"
+        Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
+        """
+        net_output = self.net['master'](torch.cat([past_demands, days_from_christmas.unsqueeze(1).expand(past_demands.shape[0], past_demands.shape[1], 1)], dim=2))
+
 class NeuralNetworkCreator:
     """
     Class to create neural networks
@@ -725,6 +799,7 @@ class NeuralNetworkCreator:
             'symmetry_aware_transshipment': SymmetryAwareTransshipment,
             'SymmetryGNN': SymmetryGNN,
             'SymmetryGNN_MessagePassing': SymmetryGNN_MessagePassing,
+            'weekly_forecast_NN': WeeklyForecastNN,
             }
         return architectures[name]
     

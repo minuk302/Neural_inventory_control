@@ -18,6 +18,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'stores_correlation' in overriding_params:
         config_setting['store_params']['demand']['correlation'] = overriding_params['stores_correlation']
 
+    if 'store_underage_cost' in overriding_params:
+        config_setting['store_params']['underage_cost']['value'] = overriding_params['store_underage_cost']
+
     if 'overriding_networks' in overriding_params:
         for net in overriding_params['overriding_networks']:
             if 'for_all_networks' in overriding_params:

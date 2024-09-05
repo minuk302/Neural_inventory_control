@@ -181,12 +181,18 @@ elif 'symmetry_GNN' == hyperparams_name:
     search_space = {
         "n_stores": n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "for_all_networks": tune.grid_search([1, 2, 4, 8, 16]),
+        "for_all_networks": tune.grid_search([32, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
         "samples": tune.grid_search([0, 1, 2]),
     }
     save_path = 'ray_results/stable_bench/GNN'
+elif 'cons_weekly_forecast_NN' == hyperparams_name:
+    search_space = {
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([0, 1, 2, 3, 4, 5]),
+    }
+    save_path = 'ray_results/stable_bench/cons_weekly_forecast_NN'
 elif 'data_driven_net_real_data' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
