@@ -22,6 +22,8 @@ hyperparams_name = sys.argv[2]
 n_stores = None
 if len(sys.argv) >= 4:
     n_stores = int(sys.argv[3])
+    if n_stores == -1:
+        n_stores = None
     
 gpus_in_machine = torch.cuda.device_count()
 if len(sys.argv) >= 5:
@@ -192,7 +194,30 @@ elif 'cons_weekly_forecast_NN' == hyperparams_name:
         "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
         "samples": tune.grid_search([0, 1, 2, 3, 4, 5]),
     }
-    save_path = 'ray_results/stable_bench/cons_weekly_forecast_NN'
+elif 'cons_data_driven_net' == hyperparams_name:
+    search_space = {
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([0, 1, 2, 3, 4, 5]),
+    }
+    save_path = 'ray_results/cons/data_driven_net'
+elif 'cons_fixed_quantile' == hyperparams_name:
+    search_space = {
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([0, 1, 2, 3, 4, 5]),
+    }
+    save_path = 'ray_results/cons/fixed_quantile'
+elif 'cons_quantile_nv' == hyperparams_name:
+    search_space = {
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([0]),
+    }
+    save_path = 'ray_results/cons/quantile_nv'
+elif 'cons_just_in_time' == hyperparams_name:
+    search_space = {
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([0]),
+    }
+    save_path = 'ray_results/cons/just_in_time'
 elif 'data_driven_net_real_data' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),

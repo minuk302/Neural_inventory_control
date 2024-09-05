@@ -33,6 +33,7 @@ class RayResultsinterpreter:
                         'store_embedding': 'store_embedding',
                         'for_all_networks': 'for_all_networks',
                         'master': 'master',
+                        'store_underage_cost': 'store_underage_cost',
                     }
                     result = {}
                     for key, value in param_dict.items():
@@ -45,9 +46,11 @@ class RayResultsinterpreter:
                                 result[key] = 0.5
 
                     result['best_dev_loss'] = data['dev_loss'].min()
-                    result['test_loss(at best_dev)'] = data[data['dev_loss'] == result['best_dev_loss']]['test_loss'].iloc[0]
+                    if 'test_loss' in data:
+                        result['test_loss(at best_dev)'] = data[data['dev_loss'] == result['best_dev_loss']]['test_loss'].iloc[0]
                     result['train_loss(at best_dev)'] = data[data['dev_loss'] == result['best_dev_loss']]['train_loss'].iloc[0]
-                    result['best_test_loss'] = data['test_loss'].min()
+                    if 'test_loss' in data:
+                        result['best_test_loss'] = data['test_loss'].min()
                     result['best_train_loss'] = data['train_loss'].min()
                     result['path'] = subfolder_path
                     results.append(result)
@@ -87,7 +90,8 @@ class RayResultsinterpreter:
                     result_row["Learning Rate"] = top_row['learning_rate']
                 result_row["Train Loss"] = top_row['train_loss(at best_dev)']
                 result_row["Dev Loss"] = top_row['best_dev_loss']
-                result_row["Test Loss"] = top_row['test_loss(at best_dev)']
+                if 'test_loss(at best_dev)' in top_row:
+                    result_row["Test Loss"] = top_row['test_loss(at best_dev)']
                 result_row["# of runs"] = len(group_df)
                 # result_row["path"] = top_row['path']
                 if custom_data_filler:

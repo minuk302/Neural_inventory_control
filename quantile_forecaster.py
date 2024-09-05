@@ -87,8 +87,11 @@ class FullyConnectedForecaster(nn.Module):
         x = self.create_0_1_quantiles(x) 
 
         # Get the previous and next quantiles, to use for linear interpolation 
-        prev_quantile = torch.gather(x, 2, (indices - 1))
-        next_quantile = torch.gather(x, 2, indices)
+        prev_quantile = torch.gather(x, 2, (indices - 1).unsqueeze(2)).squeeze(2)
+        next_quantile = torch.gather(x, 2, indices.unsqueeze(2)).squeeze(2)
+        # for warehouse case..
+        # prev_quantile = torch.gather(x, 2, (indices - 1))
+        # next_quantile = torch.gather(x, 2, indices)
 
         # Get the difference between quantile and the corresponding prob_points
         diff_prev = quantile - self.prob_points[indices - 1]

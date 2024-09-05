@@ -143,7 +143,7 @@ class Simulator(gym.Env):
             self.observation,
             self.maximize_profit
             )
-        
+
         # Calculate reward and update warehouse inventories
         if self.problem_params['n_warehouses'] > 0:
 
@@ -154,7 +154,9 @@ class Simulator(gym.Env):
             reward += w_reward
             if self.recorder.is_recording:
                 self.recorder.on_step(s_underage_costs.cpu().mean(dim=1), s_holding_costs.cpu().mean(dim=1), w_holding_costs.cpu().squeeze(-1), action['warehouses'].cpu().squeeze(-1))
-        
+        else:
+            if self.recorder.is_recording:
+                self.recorder.on_step_store(s_underage_costs.cpu().mean(dim=1), s_holding_costs.cpu().mean(dim=1))
         # Calculate reward and update other echelon inventories
         if self.problem_params['n_extra_echelons'] > 0:
 

@@ -53,7 +53,20 @@ class Recorder():
 
     def start_recording(self):
         self.is_recording = True
-    
+
+    def on_step_store(self, s_underage_costs, s_holding_costs):
+        if self.is_recording == False:
+            return
+        underage_cost = self.config_setting['store_params']['underage_cost']['value']
+        filename = f"analysis/results/cons/{self.config_hyperparams['nn_params']['name']}/{underage_cost}.csv"
+        def append_tensors_to_csv():
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs})
+            if os.path.exists(filename):
+                df_new.to_csv(filename, mode='a', header=False, index=False)
+            else:
+                df_new.to_csv(filename, index=False)
+        append_tensors_to_csv()
     def on_step(self, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders):
         if self.is_recording == False:
             return

@@ -555,7 +555,9 @@ class QuantilePolicy(MyNeuralNetwork):
             self.fixed_nets['quantile_forecaster'].get_quantile(
                 torch.cat([
                     past_demands, 
-                    days_from_christmas.unsqueeze(-1)
+                    # for warehouse..
+                    # days_from_christmas.unsqueeze(-1)
+                    days_from_christmas.unsqueeze(1).expand(past_demands.shape[0], past_demands.shape[1], 1)
                     ], dim=2
                     ), 
                     quantiles, 
@@ -566,9 +568,14 @@ class QuantilePolicy(MyNeuralNetwork):
         if allow_back_orders:
             store_allocation = base_stock_levels - store_inventories.sum(dim=2)
         else:
-            store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2, keepdim=True), min=0)
+            store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2), min=0)
+            # for warehouse..
+            # store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2, keepdim=True), min=0)
 
-        return base_stock_levels, {"stores": store_allocation.squeeze(-1)}
+
+        return base_stock_levels, {"stores": store_allocation}
+        # for warehouse..
+        # return base_stock_levels, {"stores": store_allocation.squeeze(-1)}
     
     def compute_desired_quantiles(self, args):
 
@@ -584,7 +591,9 @@ class QuantilePolicy(MyNeuralNetwork):
 
         # Get the desired quantiles for each store, which will be used to forecast the base stock levels
         # This function is different for each type of QuantilePolicy
-        quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
+        quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs, 'holding_costs': holding_costs})
+        # for warehouse..
+        # quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
 
         # Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
         stores_base_stock_levels, result = self.forecast_base_stock_allocation(
@@ -687,16 +696,15 @@ class JustInTime(MyNeuralNetwork):
             warehouse_future_demands = warehouse_future_demands.sum(dim=1).unsqueeze(-1)
             store_allocation = self.apply_proportional_allocation(torch.clip(stores_future_demands, min=0), observation['warehouse_inventories'])
             return {'stores': store_allocation,'warehouses': torch.clip(warehouse_future_demands, min=0),} 
-        return {'stores': stores_future_demands}
+        return {'stores': torch.clip(stores_future_demands, min=0)}
 
 class WeeklyForecastNN(MyNeuralNetwork):
     """
     Base class for ...
     """
 
-    def _init_(self, args, device='cpu'):
-
-        super()._init_(args=args, device=device) # initialize super class
+    def __init__(self, args, device='cpu'):
+        super().__init__(args=args, device=device) # initialize super class
         self.fixed_nets = {'quantile_forecaster': self.load_forecaster(args, requires_grad=False)}
         self.allow_back_orders = False  # we will set to True only for non-admissible ReturnsNV policy
         

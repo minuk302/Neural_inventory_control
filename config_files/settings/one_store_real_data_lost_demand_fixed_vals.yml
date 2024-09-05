@@ -59,14 +59,14 @@ observation_params:
   'include_past_observations':
     'arrivals': 8
     'orders': 8
-  'time_features_file': 'data_files/favorita/dates_with_info.csv'
+  'time_features_file': '/user/ml4723/Prj/NIC/data_files/favorita/dates_with_info.csv'
   'time_features':
     ['days_from_christmas']
 
 store_params: 
   'demand': 
     'distribution': 'real'
-    'file_location': 'data_files/favorita/weekly_sales.pt'
+    'file_location': '/user/ml4723/Prj/NIC/data_files/favorita/weekly_sales.pt'
     'sample_across_stores': False
     'expand': False
     'clip': False
@@ -97,5 +97,5 @@ warehouse_params:
   'lead_time': 4     
 
 echelon_params: 
-  None
+  null
 

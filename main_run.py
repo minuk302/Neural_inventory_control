@@ -47,7 +47,7 @@ class MainRun:
             self.config_setting, self.config_hyperparams = research_utils.override_configs(params, self.config_setting, self.config_hyperparams)
         model_path = os.path.join(self.recorder_config_path, 'model.pt')
         self.config_hyperparams['trainer_params']['load_model_path'] = model_path
-        self.config_hyperparams['trainer_params']['load_previous_model'] = True
+        self.config_hyperparams['trainer_params']['load_previous_model'] = os.path.exists(model_path)
 
     def extract_configs(self):
         setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
@@ -144,7 +144,7 @@ class MainRun:
                 self.params_by_dataset,
                 self.trainer_params
             )
-        elif self.train_or_test in ['test', 'train']:
+        elif self.train_or_test == 'test':
             with torch.no_grad():
                 average_test_loss, average_test_loss_to_report = self.trainer.test(
                     self.loss_function,
@@ -158,6 +158,20 @@ class MainRun:
                     discrete_allocation=self.store_params['demand']['distribution'] == 'poisson'
                 )
             print(f'Average per-period test loss: {average_test_loss_to_report}')
+        elif self.train_or_test == 'test_on_dev':
+            with torch.no_grad():
+                average_dev_loss, average_dev_loss_to_report = self.trainer.test_on_dev(
+                    self.loss_function,
+                    self.simulator,
+                    self.model,
+                    self.data_loaders,
+                    self.optimizer,
+                    self.problem_params,
+                    self.observation_params,
+                    self.params_by_dataset,
+                    discrete_allocation=self.store_params['demand']['distribution'] == 'poisson'
+                )
+            print(f'Average per-period dev loss: {average_dev_loss_to_report}')
         else:
             print(f'Invalid argument: {self.train_or_test}')
             assert False
