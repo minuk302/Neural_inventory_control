@@ -31,7 +31,7 @@ else:
     gpus_to_use = list(range(torch.cuda.device_count()))
 total_cpus = os.cpu_count()
 num_instances_per_gpu = 1
-n_cpus_per_instance = max(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
+n_cpus_per_instance = min(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
 
 load_model = False
 
@@ -162,7 +162,7 @@ if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
         'n_stores': n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        'context': tune.grid_search([8, 16]),
+        'context': tune.grid_search([16, 32, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
         "samples": tune.grid_search([1, 2, 3]),
@@ -177,6 +177,16 @@ elif 'vanilla_one_warehouse' == hyperparams_name:
         "samples": tune.grid_search([1, 2, 3]),
     }
     save_path = 'ray_results/stable_bench/vanilla'
+elif 'symmetry_GNN' == hyperparams_name:
+    search_space = {
+        "n_stores": n_stores,
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "for_all_networks": tune.grid_search([1, 2, 4, 8, 16]),
+        "overriding_networks": ["context"],
+        "overriding_outputs": ["context"],
+        "samples": tune.grid_search([0, 1, 2]),
+    }
+    save_path = 'ray_results/stable_bench/GNN'
 elif 'data_driven_net_real_data' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),

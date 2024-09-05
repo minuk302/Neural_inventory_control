@@ -389,7 +389,7 @@ class SymmetryAware(MyNeuralNetwork):
         store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
         return torch.concat([observation['store_inventories'], store_params], dim=2)
 
-    def get_context(self, observation):
+    def get_context(self, observation, store_inventory_and_params):
         store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
         input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_context_param, observation['warehouse_inventories']])
         return self.net['context'](input_tensor)
@@ -402,15 +402,13 @@ class SymmetryAware(MyNeuralNetwork):
         For warehouses, apply sigmoid to intermediate outputs and multiply by warehouse upper bound.
         """
         if 'context' in self.net:
-            # Get tensor of store parameters
-            context = self.get_context(observation)
+            store_inventory_and_params = self.get_store_inventory_and_params(observation)
+            context = self.get_context(observation, store_inventory_and_params)
 
             # Concatenate context vector to warehouselocal state, and get intermediate outputs
             warehouses_and_context = \
                     self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
             warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
-
-            store_inventory_and_params = self.get_store_inventory_and_params(observation)
             stores_and_context = \
                     self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
             store_intermediate_outputs = self.net['store'](stores_and_context)[:, :, 0]  # third dimension has length 1, so we remove it
@@ -463,9 +461,8 @@ class SymmetryAwareRealData(SymmetryAware):
              + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
 
 class SymmetryGNN(SymmetryAware):
-    def get_context(self, observation):
-        store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
-        aggregated_store_embeddings = self.net['store_embedding'](store_inventory_and_context_param).mean(dim=1)
+    def get_context(self, observation, store_inventory_and_params):
+        aggregated_store_embeddings = self.net['store_embedding'](store_inventory_and_params).mean(dim=1)
         input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
         return self.net['context'](input_tensor)
 
