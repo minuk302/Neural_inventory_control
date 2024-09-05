@@ -32,6 +32,7 @@ class RayResultsinterpreter:
                         'master_neurons': 'master_neurons',
                         'store_embedding': 'store_embedding',
                         'for_all_networks': 'for_all_networks',
+                        'master': 'master',
                     }
                     result = {}
                     for key, value in param_dict.items():
@@ -81,7 +82,9 @@ class RayResultsinterpreter:
                 else:
                     for condition_key, condition_value in zip(conditions.keys(), group_name):
                         result_row[condition_key] = condition_value
-                result_row["Learning Rate"] = top_row['learning_rate']
+
+                if 'learning_rate' in top_row:
+                    result_row["Learning Rate"] = top_row['learning_rate']
                 result_row["Train Loss"] = top_row['train_loss(at best_dev)']
                 result_row["Dev Loss"] = top_row['best_dev_loss']
                 result_row["Test Loss"] = top_row['test_loss(at best_dev)']
