@@ -162,7 +162,6 @@ ray.init(num_cpus = num_instances * n_cpus_per_instance, num_gpus = num_gpus, ob
 
 if 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
-        'n_stores': n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         'context': tune.grid_search([16, 32, 64]),
         "overriding_networks": ["context"],
@@ -172,7 +171,6 @@ if 'symmetry_aware_grid_search' == hyperparams_name:
     save_path = 'ray_results/stable_bench/ctx'
 elif 'vanilla_one_warehouse' == hyperparams_name:
     search_space = {
-        'n_stores': n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "master": tune.grid_search([128, 512]),
         "overriding_networks": ["master"],
@@ -181,7 +179,6 @@ elif 'vanilla_one_warehouse' == hyperparams_name:
     save_path = 'ray_results/stable_bench/vanilla'
 elif 'symmetry_GNN' == hyperparams_name:
     search_space = {
-        "n_stores": n_stores,
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "for_all_networks": tune.grid_search([32, 64]),
         "overriding_networks": ["context"],
@@ -189,6 +186,15 @@ elif 'symmetry_GNN' == hyperparams_name:
         "samples": tune.grid_search([0, 1, 2]),
     }
     save_path = 'ray_results/stable_bench/GNN'
+elif 'symmetry_GNN_message_passing' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "context": tune.grid_search([1, 2, 4, 8, 16, 32]),
+        "overriding_networks": ["context"],
+        "overriding_outputs": ["context"],
+        "samples": tune.grid_search([0, 1, 2]),
+    }
+    save_path = 'ray_results/perf/GNN_message_passing'
 elif 'cons_weekly_forecast_NN' == hyperparams_name:
     search_space = {
         "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
@@ -249,16 +255,6 @@ elif 'symmetry_aware_real_data' == hyperparams_name:
         "samples": tune.grid_search([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/real/ctx'
-elif 'symmetry_GNN_message_passing' == hyperparams_name:
-    search_space = {
-        "n_stores": n_stores,
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "for_all_networks": tune.grid_search([1, 16, 64]),
-        "overriding_networks": ["context", "store_embedding", "warehouse_embedding", "store_embedding_update"],
-        "overriding_outputs": ["context", "store_embedding", "warehouse_embedding", "store_embedding_update"],
-        "samples": tune.grid_search([0]),
-    }
-    save_path = 'ray_results/perf/GNN_message_passing'
 elif 'GNN' in hyperparams_name:
     search_space = {
         "n_stores": n_stores,

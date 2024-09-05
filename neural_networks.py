@@ -470,9 +470,8 @@ class SymmetryGNNRealData(SymmetryAwareRealData, SymmetryGNN):
     pass
     
 class SymmetryGNN_MessagePassing(SymmetryAware):
-    def get_context(self, observation):
-        store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
-        store_embeddings = self.net['store_embedding'](store_inventory_and_context_param)
+    def get_context(self, observation, store_inventory_and_params):
+        store_embeddings = self.net['store_embedding'](store_inventory_and_params)
         aggregated_store_embeddings = store_embeddings.mean(dim=1)
 
         warehouse_embedding_input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
