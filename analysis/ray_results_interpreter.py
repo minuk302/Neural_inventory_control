@@ -34,6 +34,7 @@ class RayResultsinterpreter:
                         'for_all_networks': 'for_all_networks',
                         'master': 'master',
                         'store_underage_cost': 'store_underage_cost',
+                        'samples': 'samples',
                     }
                     result = {}
                     for key, value in param_dict.items():

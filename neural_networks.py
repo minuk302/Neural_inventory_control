@@ -2,10 +2,11 @@ from shared_imports import *
 from quantile_forecaster import FullyConnectedForecaster
 import gc
 import wandb
+import torch.nn.functional as F
 
 class MyNeuralNetwork(nn.Module):
 
-    def __init__(self, args, device='cpu'):
+    def __init__(self, args, problem_params, device='cpu'):
         """"
         Initialize neural network with given parameters
 
@@ -461,8 +462,42 @@ class SymmetryAwareRealData(SymmetryAware):
              + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
 
 class SymmetryGNN(SymmetryAware):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+        self.n_stores = problem_params['n_stores']
+        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
+                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
+                          / torch.tensor(self.n_stores + 1, device=self.device)
+
     def get_context(self, observation, store_inventory_and_params):
-        aggregated_store_embeddings = self.net['store_embedding'](store_inventory_and_params).mean(dim=1)
+        if 'attention' in self.net:
+            warehouse_inventories = observation['warehouse_inventories'].expand(-1, self.n_stores, -1)
+            combined_input = torch.cat([store_inventory_and_params, warehouse_inventories], dim=-1)
+            attention_scores = self.net['attention'](combined_input).squeeze(-1)
+            attention_weights = F.softmax(attention_scores, dim=1)
+            aggregated_store_embeddings = torch.sum(store_inventory_and_params * attention_weights.unsqueeze(-1), dim=1)
+        elif 'pna_store_embedding' in self.net:
+            combined_input = torch.cat([store_inventory_and_params, warehouse_inventories], dim=-1)
+            store_embeddings = self.net['pna_store_embedding'](combined_input)
+            aggregators = [
+                lambda x: x.mean(dim=1),
+                lambda x: x.min(dim=1)[0],
+                lambda x: x.max(dim=1)[0],
+                lambda x: x.std(dim=1)
+            ]
+            aggregated = torch.stack([agg(store_embeddings) for agg in aggregators], dim=1)
+            scalers = [
+                lambda x: x,  # identity
+                lambda x: x * (torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)) / self.pna_delta),  # amplification
+                lambda x: x * (self.pna_delta / torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)))  # attenuation
+            ]
+            
+            scaled = torch.cat([scale(aggregated) for scale in scalers], dim=1)
+            aggregated_store_embeddings = scaled.view(scaled.size(0), -1)
+        else:
+            store_embeddings = self.net['store_embedding'](store_inventory_and_params)
+            aggregated_store_embeddings = store_embeddings.mean(dim=1)
+
         input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
         return self.net['context'](input_tensor)
 
@@ -526,9 +561,9 @@ class QuantilePolicy(MyNeuralNetwork):
     quantile forecaster to get base-stock levels.
     """
 
-    def __init__(self, args, device='cpu'):
+    def __init__(self, args, problem_params, device='cpu'):
 
-        super().__init__(args=args, device=device) # Initialize super class
+        super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
         self.fixed_nets = {'quantile_forecaster': self.load_forecaster(args, requires_grad=False)}
         self.allow_back_orders = False  # We will set to True only for non-admissible ReturnsNV policy
         
@@ -619,9 +654,9 @@ class TransformedNV(QuantilePolicy):
 
 class QuantileNV(QuantilePolicy):
 
-    def __init__(self, args, device='cpu'):
+    def __init__(self, args, problem_params, device='cpu'):
 
-        super().__init__(args=args, device=device) # Initialize super class
+        super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
         self.trainable = False
 
     def compute_desired_quantiles(self, args):
@@ -636,9 +671,9 @@ class ReturnsNV(QuantileNV):
     Same as QuantileNV, but allows back orders (so it is a non-admissible policy)
     """
 
-    def __init__(self, args, device='cpu'):
+    def __init__(self, args, problem_params, device='cpu'):
 
-        super().__init__(args=args, device=device) # Initialize super class
+        super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
         self.trainable = False
         self.allow_back_orders = True
 
@@ -658,8 +693,8 @@ class JustInTime(MyNeuralNetwork):
     Can be considered as an "oracle policy"
     """
 
-    def __init__(self, args, device='cpu'):
-        super().__init__(args=args, device=device) # Initialize super class
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
         self.trainable = False
 
     def forward(self, observation):
@@ -702,8 +737,8 @@ class WeeklyForecastNN(MyNeuralNetwork):
     Base class for ...
     """
 
-    def __init__(self, args, device='cpu'):
-        super().__init__(args=args, device=device) # initialize super class
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args=args, problem_params=problem_params, device=device) # initialize super class
         self.fixed_nets = {'quantile_forecaster': self.load_forecaster(args, requires_grad=False)}
         self.allow_back_orders = False  # we will set to True only for non-admissible ReturnsNV policy
         
@@ -831,6 +866,7 @@ class NeuralNetworkCreator:
 
         model = self.get_architecture(nn_params_copy['name'])(
             nn_params_copy, 
+            scenario.problem_params,
             device=device
             )
         

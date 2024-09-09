@@ -16,6 +16,8 @@ class Trainer():
         self.device = device
         self.time_stamp = self.get_time_stamp()
         self.best_performance_data = {'train_loss': np.inf, 'dev_loss': np.inf, 'last_epoch_saved': -1000, 'model_params_to_save': None}
+        self.best_train_loss = np.inf
+        self.best_dev_loss = np.inf
     
     def reset(self):
         """
@@ -99,8 +101,9 @@ class Trainer():
 
                 # Check if the current model is the best model so far, and save the model parameters if so.
                 # Save the model if specified in the trainer_params
-                is_updated = self.update_best_params_and_save(epoch, average_train_loss_to_report, average_dev_loss_to_report, trainer_params, model, optimizer)
-                if is_updated == True:
+                self.update_best_params_and_save(epoch, average_train_loss_to_report, average_dev_loss_to_report, trainer_params, model, optimizer)
+                
+                if self.update_best_train_or_dev_loss(average_train_loss_to_report, average_dev_loss_to_report):
                     n_passed_epochs_without_improvement = 0
 
                 if 'ray_report_loss' in trainer_params:
@@ -204,6 +207,7 @@ class Trainer():
                 if train and model.trainable:
                     mean_loss.backward()
                     optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
             
             return epoch_loss/(total_samples*periods*problem_params['n_stores']), epoch_loss_to_report/(total_samples*periods_tracking_loss*problem_params['n_stores'])
         
@@ -307,6 +311,16 @@ class Trainer():
                 self.best_performance_data['last_epoch_saved'] = epoch
                 self.best_performance_data['update'] = False
                 self.save_model(epoch, model, optimizer, trainer_params)
+        return is_updated
+    
+    def update_best_train_or_dev_loss(self, train_loss, dev_loss):
+        is_updated = False
+        if self.best_train_loss >= train_loss:
+            self.best_train_loss = train_loss
+            is_updated = True
+        if self.best_dev_loss >= dev_loss:
+            self.best_dev_loss = dev_loss
+            is_updated = True
         return is_updated
     
     def plot_losses(self, ymin=None, ymax=None):
