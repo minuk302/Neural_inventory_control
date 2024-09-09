@@ -477,6 +477,7 @@ class SymmetryGNN(SymmetryAware):
             attention_weights = F.softmax(attention_scores, dim=1)
             aggregated_store_embeddings = torch.sum(store_inventory_and_params * attention_weights.unsqueeze(-1), dim=1)
         elif 'pna_store_embedding' in self.net:
+            warehouse_inventories = observation['warehouse_inventories'].expand(-1, self.n_stores, -1)
             combined_input = torch.cat([store_inventory_and_params, warehouse_inventories], dim=-1)
             store_embeddings = self.net['pna_store_embedding'](combined_input)
             aggregators = [
