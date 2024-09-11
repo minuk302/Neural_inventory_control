@@ -18,27 +18,24 @@ nn_params:
   'name': 'SymmetryGNN'
   'inner_layer_activations': 
     'context': 'elu'
-    'store_embedding': 'elu'
     'store': 'elu'
     'warehouse': 'elu'
-    'pna_store_embedding': 'elu'
+    'store_embedding': 'elu'
   'output_layer_activation':
     'context': 'sigmoid'
-    'store_embedding': 'sigmoid'
     'store': 'softplus'
     'warehouse': 'sigmoid'
-    'pna_store_embedding': 'sigmoid'
+    'store_embedding': 'sigmoid'
   'neurons_per_hidden_layer':
     'context': [16]
-    'store_embedding': [16, 16]
     'store': [32, 32]
     'warehouse': [16, 16]
-    'pna_store_embedding': [16, 16]
+    'store_embedding': [16, 16]
   'output_sizes':
     'context': 16
-    'store_embedding': 16
     'store': 1
     'warehouse': 1
-    'pna_store_embedding': 16 # keep pna outout_size equal to store_embedding.
+    'store_embedding': 16 # keep pna outout_size equal to store_embedding.
+  'use_pna': True
   'initial_bias': null
   'warehouse_upper_bound_mult': 4
