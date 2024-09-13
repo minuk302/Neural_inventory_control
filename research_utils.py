@@ -5,6 +5,15 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     config_hyperparams = copy.deepcopy(config_hyperparams)
     if 'n_stores' in overriding_params:
         config_setting['problem_params']['n_stores'] = overriding_params['n_stores']
+
+    if 'different_for_each_sample' in config_setting['seeds'] and config_setting['seeds']['different_for_each_sample'] == True:
+        for key, value in config_setting['seeds'].items():
+            if key != 'different_for_each_sample':
+                config_setting['seeds'][key] = value + overriding_params['samples']
+
+    if 'training_n_samples' in overriding_params:
+        config_setting['params_by_dataset']['train']['n_samples'] = overriding_params['training_n_samples']
+        config_setting['params_by_dataset']['train']['batch_size'] = overriding_params['training_n_samples']
     
     if 'learning_rate' in overriding_params:
         config_hyperparams['optimizer_params']['learning_rate'] = overriding_params['learning_rate']

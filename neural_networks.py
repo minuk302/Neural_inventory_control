@@ -523,6 +523,14 @@ class SymmetryAware(MyNeuralNetwork):
             }
 
 class GNN_Separation(MyNeuralNetwork):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+        self.n_stores = problem_params['n_stores']
+        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
+                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
+                          / torch.tensor(self.n_stores + 1, device=self.device)
+        self.use_pna = 'use_pna' in args and args['use_pna']
+
     def get_store_inventory_and_context_params(self, observation):
         return observation['store_inventories']
 
@@ -537,8 +545,30 @@ class GNN_Separation(MyNeuralNetwork):
 
         store_embeddings_store = self.net['store_embedding_store'](store_embeddings_store)
         store_embeddings_warehouse = self.net['store_embedding_warehouse'](store_embeddings_warehouse)
-        store_aggregation_store = torch.mean(store_embeddings_store, dim=1, keepdim=True)
-        store_aggregation_warehouse = torch.mean(store_embeddings_warehouse, dim=1, keepdim=True)
+
+        if self.use_pna:
+            aggregators = [
+                lambda x: x.mean(dim=1),
+                lambda x: x.min(dim=1)[0],
+                lambda x: x.max(dim=1)[0],
+                lambda x: x.std(dim=1)
+            ]
+            aggregated_store_embeddings_store = torch.stack([agg(store_embeddings_store) for agg in aggregators], dim=1)
+            aggregated_store_embeddings_warehouse = torch.stack([agg(store_embeddings_warehouse) for agg in aggregators], dim=1)
+            scalers = [
+                lambda x: x,  # identity
+                lambda x: x * (torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)) / self.pna_delta),  # amplification
+                lambda x: x * (self.pna_delta / torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)))  # attenuation
+            ]
+            
+            scaled_store_embeddings_store = torch.cat([scale(aggregated_store_embeddings_store) for scale in scalers], dim=1)
+            scaled_store_embeddings_warehouse = torch.cat([scale(aggregated_store_embeddings_warehouse) for scale in scalers], dim=1)
+            store_aggregation_store = scaled_store_embeddings_store.view(scaled_store_embeddings_store.size(0), 1, -1)
+            store_aggregation_warehouse = scaled_store_embeddings_warehouse.view(scaled_store_embeddings_warehouse.size(0), 1, -1)
+        else:
+            store_aggregation_store = torch.mean(store_embeddings_store, dim=1, keepdim=True)
+            store_aggregation_warehouse = torch.mean(store_embeddings_warehouse, dim=1, keepdim=True)
+
         input_tensor_store = self.flatten_then_concatenate_tensors([store_aggregation_store, observation['warehouse_inventories']])
         input_tensor_warehouse = self.flatten_then_concatenate_tensors([store_aggregation_warehouse, observation['warehouse_inventories']])
         context_store = self.net['context_store'](input_tensor_store)

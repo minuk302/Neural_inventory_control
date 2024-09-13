@@ -32,7 +32,7 @@ if len(sys.argv) >= 5:
 else:
     gpus_to_use = list(range(torch.cuda.device_count()))
 total_cpus = os.cpu_count()
-num_instances_per_gpu = 1
+num_instances_per_gpu = 4
 n_cpus_per_instance = min(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
 
 load_model = False
@@ -165,38 +165,72 @@ if 'symmetry_GNN_NoCtx' == hyperparams_name:
         "samples": tune.grid_search([1, 2, 3]),
     }
     save_path = 'ray_results/stable_bench/GNN_NoCtx'
-elif 'symmetry_GNN_NoCtx_PNA' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "samples": tune.grid_search([1, 2, 3]),
-    }
-    save_path = 'ray_results/stable_bench/GNN_NoCtx_PNA'
+
 elif 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        'context': tune.grid_search([64]),
+        'context': tune.grid_search([16, 32, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
-        "samples": tune.grid_search([1, 2, 3]),
+        "training_n_samples": tune.grid_search([8]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
-    save_path = 'ray_results/stable_bench/ctx'
-elif 'vanilla_one_warehouse' == hyperparams_name:
+    save_path = 'ray_results/stable_bench_sample_efficiency/ctx'
+elif 'symmetry_GNN_NoCtx_PNA' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "master": tune.grid_search([512, 128]),
-        "overriding_networks": ["master"],
-        "samples": tune.grid_search([1, 2, 3]),
+        "training_n_samples": tune.grid_search([8]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
-    save_path = 'ray_results/stable_bench/vanilla'
+    save_path = 'ray_results/stable_bench_sample_efficiency/GNN_NoCtx_PNA'
 elif 'symmetry_GNN' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "for_all_networks": tune.grid_search([16, 32, 64]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
-        "samples": tune.grid_search([0, 1, 2]),
+        "training_n_samples": tune.grid_search([8]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
-    save_path = 'ray_results/stable_bench/GNN'
+    save_path = 'ray_results/stable_bench_sample_efficiency/GNN'
+elif 'symmetry_GNN_PNA' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "for_all_networks": tune.grid_search([16, 32, 64]),
+        "overriding_networks": ["context"],
+        "overriding_outputs": ["context"],
+        "training_n_samples": tune.grid_search([8]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+    }
+    save_path = 'ray_results/stable_bench_sample_efficiency/GNN_PNA'
+elif 'vanilla_one_warehouse' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "master": tune.grid_search([512, 128]),
+        "overriding_networks": ["master"],
+        "training_n_samples": tune.grid_search([8]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+    }
+    save_path = 'ray_results/stable_bench_sample_efficiency/vanilla'
+elif 'symmetry_GNN_attention' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "for_all_networks": tune.grid_search([16, 32, 64]),
+        "overriding_networks": ["context"],
+        "overriding_outputs": ["context"],
+        "training_n_samples": tune.grid_search([8]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+    }
+    save_path = 'ray_results/stable_bench_sample_efficiency/GNN_attention'
+
+
+
 elif 'GNN_Separation' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -206,6 +240,15 @@ elif 'GNN_Separation' == hyperparams_name:
         "samples": tune.grid_search([0, 1, 2]),
     }
     save_path = 'ray_results/stable_bench/GNN_Separation'
+elif 'GNN_Separation_PNA' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "for_all_networks": tune.grid_search([16, 32]), # have to run 16 32 more.
+        "overriding_networks": ["context_store", "context_warehouse"],
+        "overriding_outputs": ["context_store", "context_warehouse"],
+        "samples": tune.grid_search([0, 1, 2]),
+    }
+    save_path = 'ray_results/stable_bench/GNN_Separation_PNA'
 elif 'symmetry_GNN_WISTEMB' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -215,15 +258,6 @@ elif 'symmetry_GNN_WISTEMB' == hyperparams_name:
         "samples": tune.grid_search([0, 1, 2]),
     }
     save_path = 'ray_results/stable_bench/GNN_WISTEMB'
-elif 'symmetry_GNN_attention' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "for_all_networks": tune.grid_search([32]),
-        "overriding_networks": ["context"],
-        "overriding_outputs": ["context"],
-        "samples": tune.grid_search([0, 1, 2]),
-    }
-    save_path = 'ray_results/stable_bench/GNN_attention'
 elif 'symmetry_GNN_PNA_WISTEMB' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -233,15 +267,6 @@ elif 'symmetry_GNN_PNA_WISTEMB' == hyperparams_name:
         "samples": tune.grid_search([0, 1, 2]),
     }
     save_path = 'ray_results/stable_bench/GNN_PNA_WISTEMB'
-elif 'symmetry_GNN_PNA' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "for_all_networks": tune.grid_search([16]), #4, 8 running. 16, 32, 64 to run.
-        "overriding_networks": ["context"],
-        "overriding_outputs": ["context"],
-        "samples": tune.grid_search([0, 1, 2]),
-    }
-    save_path = 'ray_results/stable_bench/GNN_PNA'
 elif 'symmetry_GNN_message_passing' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),

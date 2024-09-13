@@ -315,10 +315,10 @@ class Trainer():
     
     def update_best_train_or_dev_loss(self, train_loss, dev_loss):
         is_updated = False
-        if self.best_train_loss >= train_loss:
+        if self.best_train_loss > train_loss:
             self.best_train_loss = train_loss
             is_updated = True
-        if self.best_dev_loss >= dev_loss:
+        if self.best_dev_loss > dev_loss:
             self.best_dev_loss = dev_loss
             is_updated = True
         return is_updated

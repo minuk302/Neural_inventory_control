@@ -6,7 +6,7 @@ class RayResultsinterpreter:
     def __init__(self):
         pass
 
-    def extract_data(self, top_folder):
+    def extract_data(self, top_folder, sort_by):
         results = []
         for submain_folder in os.listdir(top_folder):
             main_folder = os.path.join(top_folder, submain_folder)
@@ -35,6 +35,7 @@ class RayResultsinterpreter:
                         'master': 'master',
                         'store_underage_cost': 'store_underage_cost',
                         'samples': 'samples',
+                        'training_n_samples': 'training_n_samples',
                     }
                     result = {}
                     for key, value in param_dict.items():
@@ -46,26 +47,28 @@ class RayResultsinterpreter:
                             elif key == 'stores_correlation':
                                 result[key] = 0.5
 
-                    result['best_dev_loss'] = data['dev_loss'].min()
-                    if 'test_loss' in data:
-                        result['test_loss(at best_dev)'] = data[data['dev_loss'] == result['best_dev_loss']]['test_loss'].iloc[0]
-                    result['train_loss(at best_dev)'] = data[data['dev_loss'] == result['best_dev_loss']]['train_loss'].iloc[0]
                     if 'test_loss' in data:
                         result['best_test_loss'] = data['test_loss'].min()
+                    result['best_dev_loss'] = data['dev_loss'].min()
                     result['best_train_loss'] = data['train_loss'].min()
+                    loss_columns = ['dev_loss', 'test_loss', 'train_loss']
+                    for loss_column in loss_columns:
+                        if loss_column in data:
+                            result[f'{loss_column}(at best_{sort_by})'] = data[data[sort_by] == result[f'best_{sort_by}']][loss_column].iloc[0]
+
                     result['path'] = subfolder_path
                     results.append(result)
                 except Exception as e:
                     print(f"Error processing files in {subfolder_path}: {e}")
         return results
 
-    def make_table(self, paths, conditions, custom_data_filler = None):
+    def make_table(self, paths, conditions, custom_data_filler = None, sort_by = 'dev_loss'):
         results = []
         for num_stores, path in paths.items():
-            data = self.extract_data(path)
+            data = self.extract_data(path, sort_by)
             if len(data) == 0:
                 continue
-            df = pd.DataFrame(data).sort_values(by='best_dev_loss', ascending=True)
+            df = pd.DataFrame(data).sort_values(by=f'best_{sort_by}', ascending=True)
 
             for condition_key, condition_values in conditions.items():
                 df = df[df[condition_key].isin(condition_values)]
@@ -89,10 +92,10 @@ class RayResultsinterpreter:
 
                 if 'learning_rate' in top_row:
                     result_row["Learning Rate"] = top_row['learning_rate']
-                result_row["Train Loss"] = top_row['train_loss(at best_dev)']
-                result_row["Dev Loss"] = top_row['best_dev_loss']
-                if 'test_loss(at best_dev)' in top_row:
-                    result_row["Test Loss"] = top_row['test_loss(at best_dev)']
+                result_row["Train Loss"] = top_row[f'train_loss(at best_{sort_by})']
+                result_row["Dev Loss"] = top_row[f'dev_loss(at best_{sort_by})']
+                if f'test_loss(at best_{sort_by})' in top_row:
+                    result_row["Test Loss"] = top_row[f'test_loss(at best_{sort_by})']
                 result_row["# of runs"] = len(group_df)
                 # result_row["path"] = top_row['path']
                 if custom_data_filler:

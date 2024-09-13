@@ -15,30 +15,35 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'SymmetryGNN'
+  'name': 'GNN_Separation'
   'inner_layer_activations': 
-    'context': 'elu'
+    'context_store': 'elu'
+    'context_warehouse': 'elu'
+    'store_embedding_store': 'elu'
+    'store_embedding_warehouse': 'elu'
     'store': 'elu'
     'warehouse': 'elu'
-    'store_embedding': 'elu'
-    'attention': 'elu'
   'output_layer_activation':
-    'context': 'sigmoid'
+    'context_store': 'sigmoid'
+    'context_warehouse': 'sigmoid'
+    'store_embedding_store': 'sigmoid'
+    'store_embedding_warehouse': 'sigmoid'
     'store': 'softplus'
     'warehouse': 'sigmoid'
-    'store_embedding': 'sigmoid'
-    'attention': null
   'neurons_per_hidden_layer':
-    'context': [16]
+    'context_store': [16]
+    'context_warehouse': [16]
+    'store_embedding_store': [16, 16]
+    'store_embedding_warehouse': [16, 16]
     'store': [32, 32]
     'warehouse': [16, 16]
-    'store_embedding': [16, 16]
-    'attention': [16]
   'output_sizes':
-    'context': 16
+    'context_store': 16
+    'context_warehouse': 16
+    'store_embedding_store': 16
+    'store_embedding_warehouse': 16
     'store': 1
     'warehouse': 1
-    'store_embedding': 16
-    'attention': 1
+  'use_pna': True
   'initial_bias': null
   'warehouse_upper_bound_mult': 4
