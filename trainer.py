@@ -103,7 +103,7 @@ class Trainer():
                 # Save the model if specified in the trainer_params
                 self.update_best_params_and_save(epoch, average_train_loss_to_report, average_dev_loss_to_report, trainer_params, model, optimizer)
                 
-                if self.update_best_train_or_dev_loss(average_train_loss_to_report, average_dev_loss_to_report):
+                if self.update_best_train_or_dev_loss(average_train_loss_to_report, average_dev_loss_to_report, trainer_params):
                     n_passed_epochs_without_improvement = 0
 
                 if 'ray_report_loss' in trainer_params:
@@ -313,11 +313,13 @@ class Trainer():
                 self.save_model(epoch, model, optimizer, trainer_params)
         return is_updated
     
-    def update_best_train_or_dev_loss(self, train_loss, dev_loss):
+    def update_best_train_or_dev_loss(self, train_loss, dev_loss, trainer_params):
         is_updated = False
         if self.best_train_loss > train_loss:
             self.best_train_loss = train_loss
             is_updated = True
+            if 'stop_if_no_improve_for_epochs' in trainer_params and trainer_params['stop_if_no_improve_for_epochs'] != 100:
+                is_updated = False
         if self.best_dev_loss > dev_loss:
             self.best_dev_loss = dev_loss
             is_updated = True

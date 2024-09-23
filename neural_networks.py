@@ -614,7 +614,8 @@ class SymmetryGNN(SymmetryAware):
                           / torch.tensor(self.n_stores + 1, device=self.device)
         self.use_pna = 'use_pna' in args and args['use_pna']
         self.use_WISTEMB = 'use_WISTEMB' in args and args['use_WISTEMB']
-
+        self.no_aggregation = 'no_aggregation' in args and args['no_aggregation']
+        self.randomize = 'randomize' in args and args['randomize']
     def get_context(self, observation, store_inventory_and_params):
         if self.use_WISTEMB:
             warehouse_inventories = observation['warehouse_inventories'].expand(-1, self.n_stores, -1)
@@ -645,6 +646,12 @@ class SymmetryGNN(SymmetryAware):
             
             scaled = torch.cat([scale(aggregated) for scale in scalers], dim=1)
             aggregated_store_embeddings = scaled.view(scaled.size(0), -1)
+        elif self.no_aggregation:
+            if self.randomize:
+                random_indices = torch.randperm(store_inventory_and_params.size(1))
+                aggregated_store_embeddings = store_inventory_and_params[:, random_indices, :]
+            else:
+                aggregated_store_embeddings = store_embeddings
         else:
             aggregated_store_embeddings = store_embeddings.mean(dim=1)
 
@@ -655,6 +662,10 @@ class SymmetryGNNRealData(SymmetryAwareRealData, SymmetryGNN):
     pass
     
 class SymmetryGNN_MessagePassing(SymmetryAware):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+        self.sep = 'sep' in args and args['sep']
+
     def get_context(self, observation, store_inventory_and_params):
         store_embeddings = self.net['store_embedding'](store_inventory_and_params)
         aggregated_store_embeddings = store_embeddings.mean(dim=1)
@@ -662,14 +673,23 @@ class SymmetryGNN_MessagePassing(SymmetryAware):
         warehouse_embedding_input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
         warehouse_embedding = self.net['warehouse_embedding'](warehouse_embedding_input_tensor)
 
-        combined_embeddings = torch.cat([
-            store_embeddings,
-            warehouse_embedding.unsqueeze(1).expand(-1, store_embeddings.size(1), -1)
-        ], dim=-1)
+        if self.sep:
+            combined_embeddings = torch.cat([
+                store_inventory_and_params,
+                warehouse_embedding.unsqueeze(1).expand(-1, store_embeddings.size(1), -1)
+            ], dim=-1)
+        else:
+            combined_embeddings = torch.cat([
+                store_embeddings,
+                warehouse_embedding.unsqueeze(1).expand(-1, store_embeddings.size(1), -1)
+            ], dim=-1)
         updated_store_embeddings = self.net['store_embedding_update'](combined_embeddings)
         aggregated_updated_store_embeddings = updated_store_embeddings.mean(dim=1)
 
-        input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, warehouse_embedding])
+        if self.sep:
+            input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, observation['warehouse_inventories']])
+        else:
+            input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, warehouse_embedding])
         return self.net['context'](input_tensor)
 
 class VanillaTransshipment(VanillaOneWarehouse):

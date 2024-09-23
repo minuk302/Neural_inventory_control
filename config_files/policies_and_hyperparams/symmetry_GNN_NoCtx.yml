@@ -1,6 +1,6 @@
 trainer_params : 
   'epochs': 20000
-  'stop_if_no_improve_for_epochs': 100
+  'stop_if_no_improve_for_epochs': 500
   'do_dev_every_n_epochs': 50
   'ray_report_loss': True
   'ray_report_test_loss': True
@@ -29,12 +29,12 @@ nn_params:
   'neurons_per_hidden_layer':
     'store': [32, 32]
     'warehouse': [16, 16]
-    'store_embedding_store': [16, 16]
-    'store_embedding_warehouse': [16, 16]
+    'store_embedding_store': [32, 32]
+    'store_embedding_warehouse': [32, 32]
   'output_sizes':
     'store': 1
     'warehouse': 1
-    'store_embedding_store': 16
-    'store_embedding_warehouse': 16
+    'store_embedding_store': 32
+    'store_embedding_warehouse': 32
   'initial_bias': null
   'warehouse_upper_bound_mult': 4

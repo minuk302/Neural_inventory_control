@@ -15,34 +15,27 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'SymmetryGNN_MessagePassing'
+  'name': 'SymmetryGNN'
   'inner_layer_activations': 
     'context': 'elu'
     'store_embedding': 'elu'
-    'warehouse_embedding': 'elu'
-    'store_embedding_update': 'elu'
     'store': 'elu'
     'warehouse': 'elu'
   'output_layer_activation':
     'context': 'sigmoid'
     'store_embedding': 'sigmoid'
-    'warehouse_embedding': 'sigmoid'
-    'store_embedding_update': 'sigmoid'
     'store': 'softplus'
     'warehouse': 'sigmoid'
   'neurons_per_hidden_layer':
-    'context': [64]
+    'context': [16]
     'store_embedding': [32, 32]
-    'warehouse_embedding': [32]
-    'store_embedding_update': [32]
     'store': [32, 32]
     'warehouse': [16, 16]
   'output_sizes':
-    'context': 64
+    'context': 16
     'store_embedding': 32
-    'warehouse_embedding': 32
-    'store_embedding_update': 32
     'store': 1
     'warehouse': 1
   'initial_bias': null
+  'no_aggregation': True
   'warehouse_upper_bound_mult': 4

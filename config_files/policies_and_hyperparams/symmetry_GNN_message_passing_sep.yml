@@ -45,4 +45,5 @@ nn_params:
     'store': 1
     'warehouse': 1
   'initial_bias': null
+  'sep': True
   'warehouse_upper_bound_mult': 4

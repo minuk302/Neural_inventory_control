@@ -62,13 +62,13 @@ class RayResultsinterpreter:
                     print(f"Error processing files in {subfolder_path}: {e}")
         return results
 
-    def make_table(self, paths, conditions, custom_data_filler = None, sort_by = 'dev_loss'):
+    def make_table(self, paths, conditions, custom_data_filler = None, sort_by = 'dev_loss', pick_row_from_run_by='dev_loss'):
         results = []
         for num_stores, path in paths.items():
-            data = self.extract_data(path, sort_by)
+            data = self.extract_data(path, pick_row_from_run_by)
             if len(data) == 0:
                 continue
-            df = pd.DataFrame(data).sort_values(by=f'best_{sort_by}', ascending=True)
+            df = pd.DataFrame(data).sort_values(by=f'{sort_by}(at best_{pick_row_from_run_by})', ascending=True)
 
             for condition_key, condition_values in conditions.items():
                 df = df[df[condition_key].isin(condition_values)]
@@ -92,10 +92,10 @@ class RayResultsinterpreter:
 
                 if 'learning_rate' in top_row:
                     result_row["Learning Rate"] = top_row['learning_rate']
-                result_row["Train Loss"] = top_row[f'train_loss(at best_{sort_by})']
-                result_row["Dev Loss"] = top_row[f'dev_loss(at best_{sort_by})']
-                if f'test_loss(at best_{sort_by})' in top_row:
-                    result_row["Test Loss"] = top_row[f'test_loss(at best_{sort_by})']
+                result_row["Train Loss"] = top_row[f'train_loss(at best_{pick_row_from_run_by})']
+                result_row["Dev Loss"] = top_row[f'dev_loss(at best_{pick_row_from_run_by})']
+                if f'test_loss(at best_{pick_row_from_run_by})' in top_row:
+                    result_row["Test Loss"] = top_row[f'test_loss(at best_{pick_row_from_run_by})']
                 result_row["# of runs"] = len(group_df)
                 # result_row["path"] = top_row['path']
                 if custom_data_filler:
