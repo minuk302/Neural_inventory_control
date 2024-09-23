@@ -210,7 +210,7 @@ elif 'symmetry_GNN_No_Aggregation_Randomize' == hyperparams_name:
         "repeats": tune.grid_search([1, 2, 3]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
-    save_path = 'ray_results/sample_efficiency/GNN_No_Aggregation_Randomize_sg'
+    save_path = 'ray_results/sample_efficiency/GNN_No_Aggregation_Randomize'
 elif 'symmetry_GNN_No_Aggregation_sample_efficient' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -276,17 +276,6 @@ elif 'symmetry_GNN_WISTEMB' == hyperparams_name:
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
     save_path = 'ray_results/sample_efficiency/GNN_WISTEMB'
-elif 'symmetry_GNN_message_passing_sep' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "context": tune.grid_search([256]),
-        "overriding_networks": ["context"],
-        "overriding_outputs": ["context"],
-        "training_n_samples": tune.grid_search([1, 2, 4, 8]),
-        "repeats": tune.grid_search([1, 2, 3]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
-    }
-    save_path = 'ray_results/sample_efficiency/GNN_message_passing_sep'
 elif 'symmetry_GNN_large' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),

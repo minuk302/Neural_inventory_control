@@ -664,7 +664,6 @@ class SymmetryGNNRealData(SymmetryAwareRealData, SymmetryGNN):
 class SymmetryGNN_MessagePassing(SymmetryAware):
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args, problem_params, device)
-        self.sep = 'sep' in args and args['sep']
 
     def get_context(self, observation, store_inventory_and_params):
         store_embeddings = self.net['store_embedding'](store_inventory_and_params)
@@ -673,23 +672,14 @@ class SymmetryGNN_MessagePassing(SymmetryAware):
         warehouse_embedding_input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
         warehouse_embedding = self.net['warehouse_embedding'](warehouse_embedding_input_tensor)
 
-        if self.sep:
-            combined_embeddings = torch.cat([
-                store_inventory_and_params,
-                warehouse_embedding.unsqueeze(1).expand(-1, store_embeddings.size(1), -1)
-            ], dim=-1)
-        else:
-            combined_embeddings = torch.cat([
-                store_embeddings,
-                warehouse_embedding.unsqueeze(1).expand(-1, store_embeddings.size(1), -1)
-            ], dim=-1)
+        combined_embeddings = torch.cat([
+            store_embeddings,
+            warehouse_embedding.unsqueeze(1).expand(-1, store_embeddings.size(1), -1)
+        ], dim=-1)
         updated_store_embeddings = self.net['store_embedding_update'](combined_embeddings)
         aggregated_updated_store_embeddings = updated_store_embeddings.mean(dim=1)
 
-        if self.sep:
-            input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, observation['warehouse_inventories']])
-        else:
-            input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, warehouse_embedding])
+        input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, warehouse_embedding])
         return self.net['context'](input_tensor)
 
 class VanillaTransshipment(VanillaOneWarehouse):
