@@ -232,7 +232,9 @@ class Scenario():
 
         if params_copy['file_location']:
             params_copy['value'] = torch.load(params_copy['file_location'])[: self.num_samples]
-        if params_copy['sample_across_stores']:
+        if params_copy['sample_across_stores'] and params_copy['vary_across_samples']:
+            return torch.tensor(this_sample_function(*params_copy['range'], self.num_samples * problem_params['n_stores'])).reshape(self.num_samples, problem_params['n_stores'])
+        elif params_copy['sample_across_stores']:
             return torch.tensor(this_sample_function(*params_copy['range'], problem_params['n_stores'])).expand(self.num_samples, -1)
         elif params_copy['vary_across_samples']:
             return torch.tensor(this_sample_function(*params_copy['range'], self.num_samples)).unsqueeze(1).expand(-1, problem_params['n_stores'])

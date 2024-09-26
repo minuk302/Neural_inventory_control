@@ -457,6 +457,9 @@ class SymmetryAware(MyNeuralNetwork):
     """
     Symmetry-aware neural network for settings with one warehouse and many stores
     """
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+        self.include_primitive_features = 'include_primitive_features' in args and args['include_primitive_features']
 
     def get_store_inventory_and_context_params(self, observation):
         return observation['store_inventories']
@@ -466,8 +469,11 @@ class SymmetryAware(MyNeuralNetwork):
         return torch.concat([observation['store_inventories'], store_params], dim=2)
 
     def get_context(self, observation, store_inventory_and_params):
-        store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
-        input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_context_param, observation['warehouse_inventories']])
+        if self.include_primitive_features:
+            input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_params, observation['warehouse_inventories']])
+        else:
+            store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
+            input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_context_param, observation['warehouse_inventories']])
         return self.net['context'](input_tensor)
 
     def forward(self, observation):
@@ -596,13 +602,13 @@ class SymmetryAwareTransshipment(SymmetryAware):
 
 class SymmetryAwareRealData(SymmetryAware):
     def get_store_inventory_and_context_params(self, observation):
-        return torch.cat([observation['store_inventories']] \
+        return torch.cat([observation['store_inventories'][:, :, 0].unsqueeze(-1)] \
              + [observation[k].unsqueeze(-1) for k in ['days_from_christmas']] \
              + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
 
     def get_store_inventory_and_params(self, observation):
-        return torch.cat([observation['store_inventories']] \
-             + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs']] \
+        return torch.cat([observation['store_inventories'][:, :, 0].unsqueeze(-1)] \
+             + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs', 'holding_costs']] \
              + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
 
 class SymmetryGNN(SymmetryAware):
@@ -682,6 +688,9 @@ class SymmetryGNN_MessagePassing(SymmetryAware):
         input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, warehouse_embedding])
         return self.net['context'](input_tensor)
 
+class SymmetryGNN_MessagePassingRealData(SymmetryAwareRealData, SymmetryGNN_MessagePassing):
+    pass
+
 class VanillaTransshipment(VanillaOneWarehouse):
     """
     Fully connected neural network for setting with one transshipment center (that cannot hold inventory) and many stores
@@ -750,8 +759,8 @@ class QuantilePolicy(MyNeuralNetwork):
                 torch.cat([
                     past_demands, 
                     # for warehouse..
-                    # days_from_christmas.unsqueeze(-1)
-                    days_from_christmas.unsqueeze(1).expand(past_demands.shape[0], past_demands.shape[1], 1)
+                    days_from_christmas.unsqueeze(-1)
+                    # days_from_christmas.unsqueeze(1).expand(past_demands.shape[0], past_demands.shape[1], 1)
                     ], dim=2
                     ), 
                     quantiles, 
@@ -762,14 +771,14 @@ class QuantilePolicy(MyNeuralNetwork):
         if allow_back_orders:
             store_allocation = base_stock_levels - store_inventories.sum(dim=2)
         else:
-            store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2), min=0)
+            # store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2), min=0)
             # for warehouse..
-            # store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2, keepdim=True), min=0)
+            store_allocation = torch.clip(base_stock_levels - store_inventories.sum(dim=2, keepdim=True), min=0)
 
 
-        return base_stock_levels, {"stores": store_allocation}
+        # return base_stock_levels, {"stores": store_allocation}
         # for warehouse..
-        # return base_stock_levels, {"stores": store_allocation.squeeze(-1)}
+        return base_stock_levels, {"stores": store_allocation.squeeze(-1)}
     
     def compute_desired_quantiles(self, args):
 
@@ -1002,6 +1011,7 @@ class NeuralNetworkCreator:
             'symmetry_aware_transshipment': SymmetryAwareTransshipment,
             'SymmetryGNN': SymmetryGNN,
             'SymmetryGNN_MessagePassing': SymmetryGNN_MessagePassing,
+            'SymmetryGNN_MessagePassingRealData': SymmetryGNN_MessagePassingRealData,
             'weekly_forecast_NN': WeeklyForecastNN,
             'GNN_Separation': GNN_Separation,
             }

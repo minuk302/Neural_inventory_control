@@ -1,10 +1,10 @@
 trainer_params : 
-  'epochs': 10000
-  'stop_if_no_improve_for_epochs': 500
+  'epochs': 20000
+  'stop_if_no_improve_for_epochs': 50
   'do_dev_every_n_epochs': 5
   'ray_report_loss': True
   'print_results_every_n_epochs': 5
-  'save_model': False
+  'save_model': True
   'load_previous_model': False
   'load_model_path': 'Code_to_submit/models_saved/test.pt'
   'choose_best_model_on': 'train_loss'
@@ -20,7 +20,7 @@ nn_params:
   'output_layer_activation':
     'master': 'relu'
   'neurons_per_hidden_layer': 
-    'master': [128, 128, 128]
+    'master': [128, 128]
   'initial_bias':
     'master': 1.0
   'output_sizes':

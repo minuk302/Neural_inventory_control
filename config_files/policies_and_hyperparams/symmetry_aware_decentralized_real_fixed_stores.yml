@@ -1,13 +1,12 @@
 trainer_params : 
-  'epochs': 20000
-  'stop_if_no_improve_for_epochs': 500
-  'do_dev_every_n_epochs': 50
+  'epochs': 10000
+  'stop_if_no_improve_for_epochs': 50
+  'do_dev_every_n_epochs': 5
   'ray_report_loss': True
-  'ray_report_test_loss': True
-  'print_results_every_n_epochs': 50
+  'print_results_every_n_epochs': 5
   'save_model': True  # Path to save is defined in main script
-  'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
-  'choose_best_model_on': 'dev_loss'  # For early stopping, choose according to best performance on this dataset
+  'epochs_between_save': 5  # Save if cost improved, and at least this number of epochs have passed
+  'choose_best_model_on': 'train_loss'  # For early stopping, choose according to best performance on this dataset
   'load_previous_model': False
   'load_model_path': null
 
@@ -15,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'symmetry_aware'
+  'name': 'symmetry_aware_real_data'
   'inner_layer_activations': 
     'context': 'elu'
     'store': 'elu'
@@ -23,7 +22,7 @@ nn_params:
   'output_layer_activation':
     'context': 'sigmoid'
     'store': 'softplus'
-    'warehouse': 'sigmoid'
+    'warehouse': 'relu'
   'neurons_per_hidden_layer':
     'context': [16]
     'store': [32, 32]
@@ -33,5 +32,3 @@ nn_params:
     'store': 1
     'warehouse': 1
   'initial_bias': null
-  'include_primitive_features': True
-  'warehouse_upper_bound_mult': 4

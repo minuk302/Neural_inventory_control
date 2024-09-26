@@ -26,7 +26,19 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         config_setting['store_params']['demand']['correlation'] = overriding_params['stores_correlation']
 
     if 'store_underage_cost' in overriding_params:
-        config_setting['store_params']['underage_cost']['value'] = overriding_params['store_underage_cost']
+        if 'range' in config_setting['store_params']['underage_cost']:
+            current_range = config_setting['store_params']['underage_cost']['range']
+            current_mean = sum(current_range) / 2
+            current_low_deviation_ratio = (current_mean - current_range[0]) / current_mean
+            current_high_deviation_ratio = (current_range[1] - current_mean) / current_mean
+
+            new_mean = overriding_params['store_underage_cost']
+            new_lower = new_mean * (1 - current_low_deviation_ratio)
+            new_upper = new_mean * (1 + current_high_deviation_ratio)
+            
+            config_setting['store_params']['underage_cost']['range'] = [new_lower, new_upper]
+        else:
+            config_setting['store_params']['underage_cost']['value'] = overriding_params['store_underage_cost']
 
     if 'overriding_networks' in overriding_params:
         for net in overriding_params['overriding_networks']:
