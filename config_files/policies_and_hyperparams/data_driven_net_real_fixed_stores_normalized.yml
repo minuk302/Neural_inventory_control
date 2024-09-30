@@ -11,28 +11,18 @@ trainer_params :
   'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
 
 optimizer_params: 
-  'learning_rate': 0.001
+  'learning_rate': 0.003
 
 nn_params: 
-  'name': 'symmetry_GNN_real_data'
+  'name': 'data_driven'
   'inner_layer_activations': 
-    'context': 'elu'
-    'store_embedding': 'elu'
-    'store': 'elu'
-    'warehouse': 'elu'
+    'master': 'elu'
   'output_layer_activation':
-    'context': 'sigmoid'
-    'store_embedding': 'sigmoid'
-    'store': 'softplus'
-    'warehouse': 'relu'
-  'neurons_per_hidden_layer':
-    'context': [256]
-    'store_embedding': [32, 32]
-    'store': [32, 32]
-    'warehouse': [16, 16]
+    'master': 'relu'
+  'neurons_per_hidden_layer': 
+    'master': [128, 128]
+  'initial_bias':
+    'master': 1.0
   'output_sizes':
-    'context': 256
-    'store_embedding': 32
-    'store': 1
-    'warehouse': 1
-  'initial_bias': null
+    'master': null
+  'apply_normalization': True

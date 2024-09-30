@@ -108,7 +108,7 @@ class Trainer():
 
                 if 'ray_report_loss' in trainer_params:
                     report_dict = {'dev_loss': average_dev_loss_to_report, 'train_loss': average_train_loss_to_report}
-                    if 'ray_report_test_loss' in trainer_params and trainer_params['ray_report_test_loss'] == True:
+                    if 'report_test_loss' in problem_params and problem_params['report_test_loss'] == True:
                         with torch.no_grad():
                             average_test_loss, average_test_loss_to_report = self.do_one_epoch(
                                 optimizer, 
@@ -315,14 +315,15 @@ class Trainer():
     
     def update_best_train_or_dev_loss(self, train_loss, dev_loss, trainer_params):
         is_updated = False
-        if self.best_train_loss > train_loss:
-            self.best_train_loss = train_loss
-            is_updated = True
-            if 'stop_if_no_improve_for_epochs' in trainer_params and trainer_params['stop_if_no_improve_for_epochs'] != 100:
-                is_updated = False
-        if self.best_dev_loss > dev_loss:
-            self.best_dev_loss = dev_loss
-            is_updated = True
+
+        if trainer_params['choose_best_model_on'] == 'train_loss':
+            if self.best_train_loss > train_loss:
+                self.best_train_loss = train_loss
+                is_updated = True
+        elif trainer_params['choose_best_model_on'] == 'dev_loss':
+            if self.best_dev_loss > dev_loss:
+                self.best_dev_loss = dev_loss
+                is_updated = True
         return is_updated
     
     def plot_losses(self, ymin=None, ymax=None):

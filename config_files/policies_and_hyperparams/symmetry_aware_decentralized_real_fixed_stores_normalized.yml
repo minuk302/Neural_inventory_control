@@ -4,36 +4,33 @@ trainer_params :
   'do_dev_every_n_epochs': 50
   'ray_report_loss': True
   'print_results_every_n_epochs': 50
-  'save_model': True  # Path to save is defined in main script
-  'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
-  'choose_best_model_on': 'dev_loss'  # For early stopping, choose according to best performance on this dataset
+  'save_model': True
   'load_previous_model': False
-  'load_model_path': null
+  'load_model_path': 'Code_to_submit/models_saved/test.pt'
+  'choose_best_model_on': 'dev_loss'
+  'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
 
 optimizer_params: 
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'SymmetryGNN'
+  'name': 'symmetry_aware_real_data'
   'inner_layer_activations': 
     'context': 'elu'
-    'store_embedding': 'elu'
     'store': 'elu'
     'warehouse': 'elu'
   'output_layer_activation':
     'context': 'sigmoid'
-    'store_embedding': 'sigmoid'
     'store': 'softplus'
-    'warehouse': 'sigmoid'
+    'warehouse': 'relu'
   'neurons_per_hidden_layer':
     'context': [16]
-    'store_embedding': [32, 32]
     'store': [32, 32]
     'warehouse': [16, 16]
   'output_sizes':
     'context': 16
-    'store_embedding': 32
     'store': 1
     'warehouse': 1
   'initial_bias': null
-  'warehouse_upper_bound_mult': 4
+  'apply_normalization': True
+  'decentralized': True

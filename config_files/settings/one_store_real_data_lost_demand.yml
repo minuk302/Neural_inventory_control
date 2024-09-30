@@ -28,6 +28,7 @@ problem_params :
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': True
+  'report_test_loss': True
 
 params_by_dataset : 
   'train': 

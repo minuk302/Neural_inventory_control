@@ -1,3 +1,4 @@
+from copy import deepcopy
 from shared_imports import *
 from quantile_forecaster import FullyConnectedForecaster
 import gc
@@ -460,13 +461,14 @@ class SymmetryAware(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args, problem_params, device)
         self.include_primitive_features = 'include_primitive_features' in args and args['include_primitive_features']
+        self.apply_normalization = 'apply_normalization' in args and args['apply_normalization']
 
     def get_store_inventory_and_context_params(self, observation):
         return observation['store_inventories']
 
     def get_store_inventory_and_params(self, observation):
         store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
-        return torch.concat([observation['store_inventories'], store_params], dim=2)
+        return torch.cat([observation['store_inventories'], store_params], dim=2)
 
     def get_context(self, observation, store_inventory_and_params):
         if self.include_primitive_features:
@@ -476,6 +478,21 @@ class SymmetryAware(MyNeuralNetwork):
             input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_context_param, observation['warehouse_inventories']])
         return self.net['context'](input_tensor)
 
+    def normalize_observation(self, observation):
+        if 'past_demands' not in observation:
+            return observation, None
+
+        R = observation['past_demands'].mean()
+        if R <= 0:
+            R = 1e-3
+
+        normalized_observation = observation.copy()
+        for key in ['past_demands', 'arrivals', 'orders', 'store_inventories', 'warehouse_inventories']:
+            if key in observation:
+                normalized_observation[key] = observation[key] / R
+
+        return normalized_observation, R
+
     def forward(self, observation):
         """
         Use store and warehouse inventories and output a context vector.
@@ -483,11 +500,15 @@ class SymmetryAware(MyNeuralNetwork):
         For stores, interpret intermediate outputs as ordered, and apply proportional allocation whenever inventory is scarce.
         For warehouses, apply sigmoid to intermediate outputs and multiply by warehouse upper bound.
         """
+        R = None
+        if self.apply_normalization:
+            observation, R = self.normalize_observation(observation)
+
         if 'context' in self.net:
             store_inventory_and_params = self.get_store_inventory_and_params(observation)
             context = self.get_context(observation, store_inventory_and_params)
 
-            # Concatenate context vector to warehouselocal state, and get intermediate outputs
+            # Concatenate context vector to warehouse local state, and get intermediate outputs
             warehouses_and_context = \
                     self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
             warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
@@ -509,19 +530,9 @@ class SymmetryAware(MyNeuralNetwork):
         if self.use_warehouse_upper_bound:
             warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
 
-        # for visualization!!
-        # def append_tensors_to_csv(tensor1, tensor2, warehouse_inv, store_inv, warehouse_order, store_order, filename='ctxanalysis/50.csv'):
-        #     df_new = pd.DataFrame({'ctx': tensor1, 'inv': tensor2, 'warehouse_inv': warehouse_inv, 'store_inv': store_inv, 'warehouse_order': warehouse_order, 'store_order': store_order})
-        #     if os.path.exists(filename):
-        #         df_new.to_csv(filename, mode='a', header=False, index=False)
-        #     else:
-        #         df_new.to_csv(filename, index=False)
-        # append_tensors_to_csv(context.cpu().squeeze(-1),
-        # (observation['store_inventories'].cpu().sum(dim=2).sum(dim=1,keepdim=True) + observation['warehouse_inventories'].cpu().sum(dim=2)).squeeze(-1),
-        # observation['warehouse_inventories'].cpu().sum(dim=2).squeeze(-1),
-        # observation['store_inventories'].cpu().sum(dim=2).sum(dim=1,keepdim=True).squeeze(-1),
-        # warehouse_allocation.cpu().squeeze(-1),
-        # store_allocation.cpu().sum(dim=1))
+        if R is not None:
+            store_allocation = store_allocation * R
+            warehouse_allocation = warehouse_allocation * R
 
         return {
             'stores': store_allocation, 
@@ -700,27 +711,53 @@ class VanillaTransshipment(VanillaOneWarehouse):
 
 class DataDrivenNet(MyNeuralNetwork):
     """
-    Fully connected neural network
+    Fully connected neural network with optional normalization
     """
     
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+        self.apply_normalization = 'apply_normalization' in args and args['apply_normalization']
+    
     def forward(self, observation):
-        input_data = [observation['store_inventories'][:, :, 0]] \
-                    + [observation[key] for key in ['past_demands', 'arrivals', 'orders', 'underage_costs', 'days_from_christmas']]
+        R = None
+        if self.apply_normalization:
+            R = observation['past_demands'].mean()
+            
+            # Normalize quantity-related inputs
+            normalized_store_inventories = observation['store_inventories'][:, :, 0] / R
+            normalized_past_demands = observation['past_demands'] / R
+            normalized_arrivals = observation['arrivals'] / R
+            normalized_orders = observation['orders'] / R
+            
+            input_data = [normalized_store_inventories, normalized_past_demands, normalized_arrivals, normalized_orders]
+        else:
+            input_data = [observation['store_inventories'][:, :, 0], observation['past_demands'], observation['arrivals'], observation['orders']]
+        
+        input_data += [observation[key] for key in ['underage_costs', 'days_from_christmas']]
 
         if 'warehouse_inventories' in observation:
-            input_data = input_data + [observation['warehouse_inventories']]
+            warehouse_inventories = observation['warehouse_inventories'] / R if self.apply_normalization else observation['warehouse_inventories']
+            input_data.append(warehouse_inventories)
+        
         input_tensor = self.flatten_then_concatenate_tensors(input_data)
         outputs = self.net['master'](input_tensor)
         
         if 'warehouse_inventories' not in observation:
-            return {'stores': outputs}
+            return {'stores': outputs * R} if self.apply_normalization else {'stores': outputs}
 
         n_stores = observation['store_inventories'].size(1)
         store_intermediate_outputs, warehouse_intermediate_outputs = outputs[:, :n_stores], outputs[:, n_stores:]
-        store_allocation = self.apply_proportional_allocation(store_intermediate_outputs, observation['warehouse_inventories'])
+        
+        store_allocation = self.apply_proportional_allocation(store_intermediate_outputs, warehouse_inventories)
         warehouse_allocation = warehouse_intermediate_outputs
+        
         if self.use_warehouse_upper_bound:
             warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
+        
+        if self.apply_normalization:
+            store_allocation = store_allocation * R
+            warehouse_allocation = warehouse_allocation * R
+        
         return {'stores': store_allocation, 'warehouses': warehouse_allocation}
 
 class QuantilePolicy(MyNeuralNetwork):

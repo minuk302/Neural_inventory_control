@@ -153,7 +153,7 @@ class Simulator(gym.Env):
                 )
             reward += w_reward
             if self.recorder.is_recording:
-                self.recorder.on_step(s_underage_costs.cpu().mean(dim=1), s_holding_costs.cpu().mean(dim=1), w_holding_costs.cpu().squeeze(-1), action['warehouses'].cpu().squeeze(-1))
+                self.recorder.on_step(s_underage_costs.detach().cpu().mean(dim=1), s_holding_costs.detach().cpu().mean(dim=1), w_holding_costs.detach().cpu().squeeze(-1), action['warehouses'].detach().cpu().squeeze(-1))
         else:
             if self.recorder.is_recording:
                 self.recorder.on_step_store(s_underage_costs.cpu().mean(dim=1), s_holding_costs.cpu().mean(dim=1))
