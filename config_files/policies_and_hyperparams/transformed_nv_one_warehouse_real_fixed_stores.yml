@@ -1,14 +1,14 @@
 trainer_params : 
-  'epochs': 5000
-  'do_dev_every_n_epochs': 1
-  'stop_if_no_improve_for_epochs': 200
-  'print_results_every_n_epochs': 1
+  'epochs': 20000
+  'stop_if_no_improve_for_epochs': 500
+  'do_dev_every_n_epochs': 50
   'ray_report_loss': True
+  'print_results_every_n_epochs': 50
   'save_model': True
   'load_previous_model': False
   'load_model_path': 'Code_to_submit/models_saved/test.pt'
-  'choose_best_model_on': 'train_loss'
-  'epochs_between_save': 5  # Save if cost improved, and at least this number of epochs have passed
+  'choose_best_model_on': 'dev_loss'
+  'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
 
 optimizer_params: 
   'learning_rate': 0.03
@@ -30,5 +30,5 @@ nn_params:
     'master': 1
     'warehouse': 1
   'forecaster_location': 
-    '/user/ml4723/Prj/NIC/quantile_forecasters/1700580865.pt'
-  'forecaster_lead_times': [4, 5, 6]
+    '/user/ml4723/Prj/NIC/quantile_forecasters/1727157161.pt'
+  'forecaster_lead_times': [2, 3]

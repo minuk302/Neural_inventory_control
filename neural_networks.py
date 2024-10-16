@@ -831,9 +831,9 @@ class QuantilePolicy(MyNeuralNetwork):
 
         # Get the desired quantiles for each store, which will be used to forecast the base stock levels
         # This function is different for each type of QuantilePolicy
-        quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs, 'holding_costs': holding_costs})
+        # quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs, 'holding_costs': holding_costs})
         # for warehouse..
-        # quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
+        quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
 
         # Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
         stores_base_stock_levels, result = self.forecast_base_stock_allocation(

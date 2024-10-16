@@ -32,7 +32,7 @@ if len(sys.argv) >= 5:
 else:
     gpus_to_use = list(range(torch.cuda.device_count()))
 total_cpus = os.cpu_count()
-num_instances_per_gpu = 4
+num_instances_per_gpu = 8
 n_cpus_per_instance = min(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
 
 load_model = False
@@ -380,14 +380,15 @@ elif 'cons_just_in_time' == hyperparams_name:
 
 
 
-
 elif 'data_driven_net_real_fixed_stores_normalized' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "master": tune.grid_search([128]),
         "overriding_networks": ["master"],
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
         "training_n_samples": tune.grid_search([416]),
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/vanilla_normalized'
@@ -397,8 +398,10 @@ elif 'symmetry_aware_real_fixed_stores_normalized' == hyperparams_name:
         "context": tune.grid_search([256]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
         "training_n_samples": tune.grid_search([416]),
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/symmetry_aware_normalized'
@@ -408,8 +411,10 @@ elif 'symmetry_GNN_real_fixed_stores_normalized' == hyperparams_name:
         "context": tune.grid_search([256]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
         "training_n_samples": tune.grid_search([416]),
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/GNN_normalized'
@@ -419,8 +424,10 @@ elif 'symmetry_aware_decentralized_real_fixed_stores_normalized' == hyperparams_
         'context': tune.grid_search([0]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
         "training_n_samples": tune.grid_search([416]),
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/symmetry_aware_decentralized_normalized'
@@ -429,8 +436,10 @@ elif 'data_driven_net_real_fixed_stores' == hyperparams_name:
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "master": tune.grid_search([128]),
         "overriding_networks": ["master"],
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
         "training_n_samples": tune.grid_search([416]),
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/vanilla'
@@ -440,8 +449,10 @@ elif 'symmetry_aware_real_fixed_stores' == hyperparams_name:
         "context": tune.grid_search([256]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
         "training_n_samples": tune.grid_search([416]),
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/symmetry_aware'
@@ -451,8 +462,10 @@ elif 'symmetry_GNN_real_fixed_stores' == hyperparams_name:
         "context": tune.grid_search([256]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
         "training_n_samples": tune.grid_search([416]),
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/GNN'
@@ -462,17 +475,31 @@ elif 'symmetry_aware_decentralized_real_fixed_stores' == hyperparams_name:
         'context': tune.grid_search([0]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
         "training_n_samples": tune.grid_search([416]),
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/symmetry_aware_decentralized'
 elif 'just_in_time_real_fixed_stores' == hyperparams_name:
     search_space = {
-        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "warehouse_holding_cost": tune.grid_search([1.5]),
+        "warehouse_lead_time": tune.grid_search([6]),
+        "training_n_samples": tune.grid_search([416]),
+        "store_underage_cost": tune.grid_search([2, 4, 7]),
         "samples": tune.grid_search([1]),
     }
     save_path = 'ray_results/warehouse_real_fixed_stores/just_in_time'
+elif 'transformed_nv_one_warehouse_real_fixed_stores' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.1, 0.03, 0.01]),
+        "warehouse_holding_cost": tune.grid_search([0.6]),
+        "training_n_samples": tune.grid_search([416]),
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    }
+    save_path = 'ray_results/warehouse_real_fixed_stores/transformed_nv'
 elif 'symmetry_GNN_PNA_real_fixed_stores' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -505,7 +532,7 @@ elif 'data_driven_net_real' == hyperparams_name:
         "overriding_networks": ["master"],
         "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
         "training_n_samples": tune.grid_search([416]),
-        "samples": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real/vanilla'
 elif 'symmetry_aware_real' == hyperparams_name:
@@ -516,7 +543,7 @@ elif 'symmetry_aware_real' == hyperparams_name:
         "overriding_outputs": ["context"],
         "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
         "training_n_samples": tune.grid_search([416]),
-        "samples": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real/symmetry_aware'
 elif 'symmetry_GNN_real' == hyperparams_name:
@@ -527,7 +554,7 @@ elif 'symmetry_GNN_real' == hyperparams_name:
         "overriding_outputs": ["context"],
         "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
         "training_n_samples": tune.grid_search([416]),
-        "samples": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real/GNN'
 elif 'symmetry_aware_decentralized_real' == hyperparams_name:
@@ -538,7 +565,7 @@ elif 'symmetry_aware_decentralized_real' == hyperparams_name:
         "overriding_outputs": ["context"],
         "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
         "training_n_samples": tune.grid_search([416]),
-        "samples": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     save_path = 'ray_results/warehouse_real/symmetry_aware_decentralized'
 elif 'just_in_time_real' == hyperparams_name:
@@ -547,6 +574,49 @@ elif 'just_in_time_real' == hyperparams_name:
         "samples": tune.grid_search([1]),
     }
     save_path = 'ray_results/warehouse_real/just_in_time'
+elif 'data_driven_net_real_normalized' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "master": tune.grid_search([128]),
+        "overriding_networks": ["master"],
+        "training_n_samples": tune.grid_search([416]),
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    }
+    save_path = 'ray_results/warehouse_real/vanilla_normalized'
+elif 'symmetry_aware_real_normalized' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "context": tune.grid_search([256]),
+        "overriding_networks": ["context"],
+        "overriding_outputs": ["context"],
+        "training_n_samples": tune.grid_search([416]),
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    }
+    save_path = 'ray_results/warehouse_real/symmetry_aware_normalized'
+elif 'symmetry_GNN_real_normalized' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "context": tune.grid_search([256]),
+        "overriding_networks": ["context"],
+        "overriding_outputs": ["context"],
+        "training_n_samples": tune.grid_search([416]),
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    }
+    save_path = 'ray_results/warehouse_real/GNN_normalized'
+elif 'symmetry_aware_decentralized_real_normalized' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        'context': tune.grid_search([0]),
+        "overriding_networks": ["context"],
+        "overriding_outputs": ["context"],
+        "training_n_samples": tune.grid_search([416]),
+        "store_underage_cost": tune.grid_search([4, 6, 9, 13]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    }
+    save_path = 'ray_results/warehouse_real/symmetry_aware_decentralized_normalized'
 elif 'symmetry_GNN_PNA_real' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),

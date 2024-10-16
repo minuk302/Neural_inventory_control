@@ -27,8 +27,8 @@ problem_params :
   'n_warehouses': 1
   'n_extra_echelons': 0
   'lost_demand': True
-  'maximize_profit': 
-  'report_test_loss': True
+  'maximize_profit': True
+  'report_test_loss': False
 
 params_by_dataset : 
   'train': 
