@@ -25,6 +25,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'stores_correlation' in overriding_params:
         config_setting['store_params']['demand']['correlation'] = overriding_params['stores_correlation']
 
+    if 'n_sub_sample_for_context' in overriding_params:
+        config_hyperparams['nn_params']['n_sub_sample_for_context'] = overriding_params['n_sub_sample_for_context']
+
     if 'store_underage_cost' in overriding_params:
         if 'range' in config_setting['store_params']['underage_cost']:
             current_range = config_setting['store_params']['underage_cost']['range']

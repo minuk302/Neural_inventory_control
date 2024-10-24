@@ -387,6 +387,8 @@ class SymmetryAware(MyNeuralNetwork):
         super().__init__(args, problem_params, device)
         self.include_primitive_features = 'include_primitive_features' in args and args['include_primitive_features']
         self.apply_normalization = 'apply_normalization' in args and args['apply_normalization']
+        self.store_orders_for_warehouse = 'store_orders_for_warehouse' in args and args['store_orders_for_warehouse']
+        self.n_sub_sample_for_context = args['n_sub_sample_for_context'] if 'n_sub_sample_for_context' in args else 0
 
     def get_store_inventory_and_context_params(self, observation):
         return observation['store_inventories']
@@ -395,12 +397,23 @@ class SymmetryAware(MyNeuralNetwork):
         store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
         return torch.cat([observation['store_inventories'], store_params], dim=2)
 
+    def random_subsample(self, tensor):
+        n_stores = tensor.size(1)
+        if self.n_sub_sample_for_context > 0:
+            n_samples = min(self.n_sub_sample_for_context, n_stores)
+            indices = torch.randperm(n_stores)[:n_samples]
+            return tensor[:, indices, :]
+        return tensor
+
     def get_context(self, observation, store_inventory_and_params):
         if self.include_primitive_features:
-            input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_params, observation['warehouse_inventories']])
+            sampled_store_inventory_and_params = self.random_subsample(store_inventory_and_params)
+            input_tensor = self.flatten_then_concatenate_tensors([sampled_store_inventory_and_params, observation['warehouse_inventories']])
         else:
             store_inventory_and_context_param = self.get_store_inventory_and_context_params(observation)
-            input_tensor = self.flatten_then_concatenate_tensors([store_inventory_and_context_param, observation['warehouse_inventories']])
+            sampled_store_inventory_and_context_param = self.random_subsample(store_inventory_and_context_param)
+            input_tensor = self.flatten_then_concatenate_tensors([sampled_store_inventory_and_context_param, observation['warehouse_inventories']])
+        
         return self.net['context'](input_tensor)
 
     def normalize_observation(self, observation):
@@ -433,13 +446,17 @@ class SymmetryAware(MyNeuralNetwork):
             store_inventory_and_params = self.get_store_inventory_and_params(observation)
             context = self.get_context(observation, store_inventory_and_params)
 
-            # Concatenate context vector to warehouse local state, and get intermediate outputs
-            warehouses_and_context = \
-                    self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
-            warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
             stores_and_context = \
                     self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
-            store_intermediate_outputs = self.net['store'](stores_and_context)[:, :, 0]  # third dimension has length 1, so we remove it
+            store_net_results = self.net['store'](stores_and_context)
+            store_intermediate_outputs = store_net_results[:, :, 0]
+
+            if self.store_orders_for_warehouse:
+                warehouse_intermediate_outputs = store_net_results[:, :, 1].sum(dim=1, keepdim=True)
+            else:
+                warehouses_and_context = \
+                        self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
+                warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
         else:
             warehouse_intermediate_outputs = self.net['warehouse'](observation['warehouse_inventories'])[:, :, 0]
             store_intermediate_outputs = self.net['store'](self.get_store_inventory_and_params(observation))[:, :, 0]
@@ -684,6 +701,116 @@ class DataDrivenNet(MyNeuralNetwork):
             warehouse_allocation = warehouse_allocation * R
         
         return {'stores': store_allocation, 'warehouses': warehouse_allocation}
+
+class TransformedNV_NoQuantile(MyNeuralNetwork):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
+        self.n_stores = problem_params['n_stores']
+    
+    def forward(self, observation):
+        demand_mean, demand_std, underage_costs, holding_costs, store_inventories, warehouse_inventories = [
+            observation[key] for key in ['mean', 'std', 'underage_costs', 'holding_costs', 'store_inventories', 'warehouse_inventories']
+        ]
+        
+        # Calculate critical ratio for each store
+        critical_ratio = underage_costs / (underage_costs + holding_costs)
+        # Prepare input for store network
+        store_input = torch.cat([demand_mean.unsqueeze(-1), demand_std.unsqueeze(-1), critical_ratio.unsqueeze(-1)], dim=2)
+        
+        # Get store base stock levels and caps
+        store_output = self.net['store'](store_input)
+        stores_base_stock_levels, stores_caps = store_output[:, :, 0], store_output[:, :, 1]
+        
+        # Calculate store allocation with cap
+        uncapped_store_allocation = stores_base_stock_levels - store_inventories.sum(dim=2)
+        store_intermediate_allocation = torch.min(torch.clip(uncapped_store_allocation, min=0), stores_caps)
+        store_allocation = self.apply_proportional_allocation(store_intermediate_allocation, warehouse_inventories)
+        
+        warehouse_output = self.net['warehouse'](torch.tensor([0.0]).to(self.device))
+        warehouse_base_stock_level = warehouse_output[0] * self.n_stores
+        warehouse_cap = warehouse_output[1] * self.n_stores
+
+        warehouse_pos = warehouse_inventories.sum(dim=2)
+        uncapped_warehouse_allocation = warehouse_base_stock_level - warehouse_pos
+        warehouse_allocation = torch.min(torch.clip(uncapped_warehouse_allocation, min=0), warehouse_cap)
+        
+        return {
+            'stores': store_allocation,
+            'warehouses': warehouse_allocation
+        }
+
+class TransformedNV_NoQuantile_SeparateStores(MyNeuralNetwork):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
+        self.n_stores = problem_params['n_stores']
+        self.net['stores'] = nn.ModuleList([
+            nn.Sequential(*[
+                nn.LazyLinear(self.net['store'][i].out_features)
+                if isinstance(self.net['store'][i], nn.Linear)
+                else self.net['store'][i].__class__()
+                for i in range(len(self.net['store']))
+            ])
+            for _ in range(self.n_stores)
+        ])
+    
+    def forward(self, observation):
+        store_inventories, warehouse_inventories = [
+            observation[key] for key in ['store_inventories', 'warehouse_inventories']
+        ]
+        n_samples = store_inventories.shape[0]
+        stores_output = torch.stack([self.net['stores'][i](torch.tensor([0.0]).to(self.device)).repeat(n_samples, 1) for i in range(self.n_stores)])
+        stores_output = stores_output.permute(1, 0, 2)  # Reshape to (n_samples, n_stores, 2)
+        stores_base_stock_levels, stores_caps = stores_output[:, :, 0], stores_output[:, :, 1]
+        
+        # Calculate store allocation with cap
+        uncapped_store_allocation = stores_base_stock_levels - store_inventories.sum(dim=2)
+        store_intermediate_allocation = torch.min(torch.clip(uncapped_store_allocation, min=0), stores_caps)
+        store_allocation = self.apply_proportional_allocation(store_intermediate_allocation, warehouse_inventories)
+        
+        warehouse_output = self.net['warehouse'](torch.tensor([0.0]).to(self.device))
+        warehouse_base_stock_level = warehouse_output[0]
+        warehouse_cap = warehouse_output[1]
+
+        warehouse_pos = warehouse_inventories.sum(dim=2)
+        uncapped_warehouse_allocation = warehouse_base_stock_level - warehouse_pos
+        warehouse_allocation = torch.min(torch.clip(uncapped_warehouse_allocation, min=0), warehouse_cap)
+        
+        return {
+            'stores': store_allocation,
+            'warehouses': warehouse_allocation
+        }
+
+class TransformedNV_CalculatedQuantile(MyNeuralNetwork):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
+    
+    def forward(self, observation):
+        demand_mean, demand_std, underage_costs, holding_costs, store_inventories, warehouse_inventories = [
+            observation[key] for key in ['mean', 'std', 'underage_costs', 'holding_costs', 'store_inventories', 'warehouse_inventories']
+        ]
+        critical_ratio = underage_costs / (underage_costs + holding_costs)
+        
+        store_quantiles = self.net['store'](critical_ratio.unsqueeze(-1)).squeeze(-1)
+        # Clip store_quantiles to avoid extreme values
+        store_quantiles = torch.clamp(store_quantiles, max=1-1e-7)
+        stores_base_stock_levels = demand_mean + demand_std * torch.erfinv(2 * store_quantiles - 1) * math.sqrt(2)
+        
+        uncapped_store_allocation = stores_base_stock_levels - store_inventories.sum(dim=2)
+        store_allocation = torch.clip(uncapped_store_allocation, min=0)
+        store_allocation = self.apply_proportional_allocation(store_allocation, warehouse_inventories)
+        
+        warehouse_output = self.net['warehouse'](torch.tensor([0.0]).to(self.device))
+        warehouse_base_stock_level = warehouse_output[0]
+        warehouse_cap = warehouse_output[1]
+
+        warehouse_pos = warehouse_inventories.sum(dim=2)
+        uncapped_warehouse_allocation = warehouse_base_stock_level - warehouse_pos
+        warehouse_allocation = torch.min(torch.clip(uncapped_warehouse_allocation, min=0), warehouse_cap)
+        
+        return {
+            'stores': store_allocation,
+            'warehouses': warehouse_allocation
+        }
 
 class QuantilePolicy(MyNeuralNetwork):
     """
@@ -975,6 +1102,9 @@ class NeuralNetworkCreator:
             'SymmetryGNN_MessagePassingRealData': SymmetryGNN_MessagePassingRealData,
             'weekly_forecast_NN': WeeklyForecastNN,
             'GNN_Separation': GNN_Separation,
+            'transformed_nv_noquantile': TransformedNV_NoQuantile,
+            'transformed_nv_calculated_quantile': TransformedNV_CalculatedQuantile,
+            'transformed_nv_noquantile_sep_stores': TransformedNV_NoQuantile_SeparateStores,
             }
         return architectures[name]
     

@@ -32,7 +32,7 @@ if len(sys.argv) >= 5:
 else:
     gpus_to_use = list(range(torch.cuda.device_count()))
 total_cpus = os.cpu_count()
-num_instances_per_gpu = 8
+num_instances_per_gpu = 4
 n_cpus_per_instance = min(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
 
 load_model = False
@@ -159,44 +159,49 @@ num_instances = num_gpus * num_instances_per_gpu
 gpus_per_instance = num_gpus / num_instances
 ray.init(num_cpus = num_instances * n_cpus_per_instance, num_gpus = num_gpus, object_store_memory=4000000000, address='local')
 
-if 'symmetry_GNN_NoCtx' == hyperparams_name:
+if 'symmetry_aware_store_orders_for_warehouse' == hyperparams_name:
     search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "training_n_samples": tune.grid_search([1, 2, 4, 8]),
+        "learning_rate": tune.grid_search([0.03, 0.01, 0.003, 0.001, 0.0001]),
+        'context': tune.grid_search([256]),
+        "store": tune.grid_search([128]),
+        "overriding_networks": ["context", "store"],
+        "overriding_outputs": ["context"],
+        "training_n_samples": tune.grid_search([1, 8]),
         "repeats": tune.grid_search([1, 2, 3]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+        "samples": tune.grid_search([1, 2, 3]),
+        "n_sub_sample_for_context": tune.grid_search([100, 300, 500, 1000]),
     }
-    save_path = 'ray_results/sample_efficiency/GNN_NoCtx'
+    save_path = 'ray_results/sample_efficiency/symmetry_aware_store_orders_for_warehouse'
 elif 'symmetry_aware_grid_search' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         'context': tune.grid_search([256]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
-        "training_n_samples": tune.grid_search([8192, 256, 16]),
+        "training_n_samples": tune.grid_search([1, 2, 4, 8]),
         "repeats": tune.grid_search([1, 2, 3]),
-        "samples": tune.grid_search([1]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
-    save_path = 'ray_results/sample_efficiency_random_primitives/ctx'
+    save_path = 'ray_results/sample_efficiency/ctx'
 elif 'vanilla_one_warehouse' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "master": tune.grid_search([512, 128]),
         "overriding_networks": ["master"],
-        "training_n_samples": tune.grid_search([8192, 256, 16]),
+        "training_n_samples": tune.grid_search([1, 2, 4, 8]),
         "repeats": tune.grid_search([1, 2, 3]),
-        "samples": tune.grid_search([1]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
-    save_path = 'ray_results/sample_efficiency_random_primitives/vanilla'
+    save_path = 'ray_results/sample_efficiency/vanilla'
 elif 'symmetry_aware_decentralized' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         'context': tune.grid_search([0]),
         "overriding_networks": ["context"],
         "overriding_outputs": ["context"],
-        "training_n_samples": tune.grid_search([8192, 256, 16]),
+        "training_n_samples": tune.grid_search([1, 2, 4, 8]),
         "repeats": tune.grid_search([1, 2, 3]),
-        "samples": tune.grid_search([1]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
     save_path = 'ray_results/sample_efficiency/ctx_decentralized'
 elif 'symmetry_GNN' == hyperparams_name:
@@ -210,6 +215,39 @@ elif 'symmetry_GNN' == hyperparams_name:
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     }
     save_path = 'ray_results/sample_efficiency/GNN'
+elif 'transformed_nv_no_quantile_one_warehouse' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.03, 0.01, 0.003, 0.001]), # 0.03, 0.01, 0.003, 0.001
+        "training_n_samples": tune.grid_search([1, 2, 4, 8]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+    }
+    save_path = 'ray_results/sample_efficiency/transformed_nv_no_quantile_one_warehouse'
+elif 'transformed_nv_no_quantile_no_upper_bound_one_warehouse' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.03, 0.01, 0.003, 0.001]),
+        "training_n_samples": tune.grid_search([16, 256, 8192]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1]), # just one sample when training_n_samples = 16, 256, 8192
+    }
+    save_path = 'ray_results/sample_efficiency/transformed_nv_no_quantile_no_upper_bound_one_warehouse'
+elif 'transformed_nv_calculated_quantile_one_warehouse' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.03, 0.01, 0.003, 0.001]),
+        "training_n_samples": tune.grid_search([16, 256, 8192]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1]), # just one sample when training_n_samples = 16, 256, 8192
+    }
+    save_path = 'ray_results/sample_efficiency/transformed_nv_calculated_quantile_one_warehouse'
+elif 'transformed_nv_no_quantile_sep_stores_one_warehouse' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.03, 0.01, 0.003, 0.001, 0.0003, 0.0001]),
+        "training_n_samples": tune.grid_search([16, 256, 8192]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        "samples": tune.grid_search([1]), # just one sample when training_n_samples = 16, 256, 8192
+    }
+    save_path = 'ray_results/sample_efficiency/transformed_nv_no_quantile_sep_stores_one_warehouse'
+
 elif 'symmetry_GNN_No_Aggregation_Randomize' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -288,14 +326,6 @@ elif 'symmetry_GNN_large' == hyperparams_name:
     }
     save_path = 'ray_results/sample_efficiency/GNN_large'
 
-elif 'symmetry_GNN_NoCtx_PNA' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "training_n_samples": tune.grid_search([1, 2, 4]),
-        "repeats": tune.grid_search([1, 2, 3]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
-    }
-    save_path = 'ray_results/sample_efficiency/GNN_NoCtx_PNA'
 elif 'GNN_Separation' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),

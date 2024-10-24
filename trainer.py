@@ -61,8 +61,18 @@ class Trainer():
             where to save the model, the filename for the model, whether to save the model, the number of epochs between saving the model
             and the metric to use for choosing the best model
         """
+
+        # trace_handler = tensorboard_trace_handler(dir_name="/user/ml4723/Prj/NIC/analysis/HTA", use_gzip=False)
+        # with profile(
+        # activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA],
+        # on_trace_ready = trace_handler,
+        # profile_memory = True,
+        # record_shapes = True,
+        # with_stack = True
+        # ) as prof:
         n_passed_epochs_without_improvement = 0
         for epoch in range(epochs): # Make multiple passes through the dataset
+            # prof.step()
             if 'stop_if_no_improve_for_epochs' in trainer_params and n_passed_epochs_without_improvement >= trainer_params['stop_if_no_improve_for_epochs']:
                 break
             n_passed_epochs_without_improvement += 1

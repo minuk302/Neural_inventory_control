@@ -111,9 +111,12 @@ class MainRun:
             self.test_dataset = self.dataset_creator.create_datasets(self.scenario, split=False)
 
     def create_data_loaders(self):
-        train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
-        dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
-        test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
+        train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True)
+        dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False)
+        test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False)
+        # train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
+        # dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
+        # test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
         self.data_loaders = {'train': train_loader, 'dev': dev_loader, 'test': test_loader}
 
     def create_model_and_optimizer(self):
