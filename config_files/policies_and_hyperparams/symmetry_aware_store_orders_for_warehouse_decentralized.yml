@@ -16,18 +16,14 @@ optimizer_params:
 nn_params: 
   'name': 'symmetry_aware'
   'inner_layer_activations': 
-    'context': 'elu'
     'store': 'elu'
   'output_layer_activation':
-    'context': 'sigmoid'
     'store': 'softplus'
   'neurons_per_hidden_layer':
-    'context': [256]
     'store': [128, 128]
   'output_sizes':
-    'context': 256
     'store': 2
   'initial_bias': null
   'include_primitive_features': True
   'store_orders_for_warehouse': True
-  'n_sub_sample_for_context': 100
+  'decentralized': True

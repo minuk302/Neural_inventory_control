@@ -442,24 +442,24 @@ class SymmetryAware(MyNeuralNetwork):
         if self.apply_normalization:
             observation, R = self.normalize_observation(observation)
 
+        store_inventory_and_params = self.get_store_inventory_and_params(observation)
         if 'context' in self.net:
-            store_inventory_and_params = self.get_store_inventory_and_params(observation)
             context = self.get_context(observation, store_inventory_and_params)
-
-            stores_and_context = \
-                    self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
-            store_net_results = self.net['store'](stores_and_context)
-            store_intermediate_outputs = store_net_results[:, :, 0]
-
-            if self.store_orders_for_warehouse:
-                warehouse_intermediate_outputs = store_net_results[:, :, 1].sum(dim=1, keepdim=True)
-            else:
-                warehouses_and_context = \
-                        self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
-                warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
+            stores_input = self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
         else:
-            warehouse_intermediate_outputs = self.net['warehouse'](observation['warehouse_inventories'])[:, :, 0]
-            store_intermediate_outputs = self.net['store'](self.get_store_inventory_and_params(observation))[:, :, 0]
+            stores_input = store_inventory_and_params
+        
+        store_net_results = self.net['store'](stores_input)
+        store_intermediate_outputs = store_net_results[:, :, 0]
+        
+        if self.store_orders_for_warehouse:
+            warehouse_intermediate_outputs = store_net_results[:, :, 1].sum(dim=1, keepdim=True)
+        else:
+            if 'context' in self.net:
+                warehouses_and_context = self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
+                warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
+            else:
+                warehouse_intermediate_outputs = self.net['warehouse'](observation['warehouse_inventories'])[:, :, 0]
 
         if self.__class__.__name__ == 'SymmetryAwareTransshipment':
             store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs, observation['warehouse_inventories'], transshipment=True)

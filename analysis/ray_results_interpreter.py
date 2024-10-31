@@ -41,6 +41,7 @@ class RayResultsinterpreter:
                         'repeats': 'repeats',
                         'training_n_samples': 'training_n_samples',
                         'store': 'store',
+                        'n_sub_sample_for_context': 'n_sub_sample_for_context',
                     }
                     result = {}
                     for key, value in param_dict.items():

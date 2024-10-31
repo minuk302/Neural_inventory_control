@@ -21,7 +21,7 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 50  # Tested values: 3, 5, 10, 20, 30, 50
+  'n_stores': 1000  # Tested values: 3, 5, 10, 20, 30, 50
   'n_warehouses': 1
   'n_extra_echelons': 0
   'lost_demand': True
