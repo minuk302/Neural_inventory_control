@@ -25,8 +25,8 @@ nn_params:
     'warehouse': 'relu'
   'neurons_per_hidden_layer':
     'context': [16]
-    'store': [32, 32]
-    'warehouse': [16, 16]
+    'store': [64, 64]
+    'warehouse': [32, 32]
   'output_sizes':
     'context': 16
     'store': 1

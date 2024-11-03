@@ -822,9 +822,11 @@ class QuantilePolicy(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
 
         super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
-        self.fixed_nets = {'quantile_forecaster': self.load_forecaster(args, requires_grad=False)}
+        self.fixed_nets = {'quantile_forecaster': self.load_forecaster(args, requires_grad=False), 'long_quantile_forecaster': self.load_long_forecaster(args, requires_grad=False)}
         self.allow_back_orders = False  # We will set to True only for non-admissible ReturnsNV policy
-        
+        self.n_stores = problem_params['n_stores']
+        self.warehouse_lead_time = 6  # warehouse lead time
+
     def load_forecaster(self, nn_params, requires_grad=True):
         """"
         Create quantile forecaster and load weights from file
@@ -838,13 +840,26 @@ class QuantilePolicy(MyNeuralNetwork):
             p.requires_grad_(requires_grad)
         return quantile_forecaster.to(self.device)
     
-    def forecast_base_stock_allocation(self, past_demands, days_from_christmas, store_inventories, lead_times, quantiles, allow_back_orders=False):
+    def load_long_forecaster(self, nn_params, requires_grad=True):
+        """"
+        Create quantile forecaster and load weights from file
+        """
+        quantile_forecaster = FullyConnectedForecaster([128, 128], lead_times=nn_params['long_forecaster_lead_times'], qs=np.arange(0.05, 1, 0.05))
+        quantile_forecaster = quantile_forecaster
+        quantile_forecaster.load_state_dict(torch.load(f"{nn_params['long_forecaster_location']}"))
+        
+        # Set requires_grad to False for all parameters if we are not training the forecaster
+        for p in quantile_forecaster.parameters():
+            p.requires_grad_(requires_grad)
+        return quantile_forecaster.to(self.device)
+    
+    def forecast_base_stock_allocation(self, quantile_forecaster, past_demands, days_from_christmas, store_inventories, lead_times, quantiles, allow_back_orders=False):
         """"
         Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
         """
 
         base_stock_levels = \
-            self.fixed_nets['quantile_forecaster'].get_quantile(
+            quantile_forecaster.get_quantile(
                 torch.cat([
                     past_demands, 
                     # for warehouse..
@@ -874,32 +889,54 @@ class QuantilePolicy(MyNeuralNetwork):
         raise NotImplementedError
     
     def forward(self, observation):
-        """
-        Get store allocation by mapping features to quantiles for each store.
-        Then, with the quantile forecaster, we "invert" the quantiles to get base-stock levels and obtain the store allocation.
-        """
+        try:
+            """
+            Get store allocation by mapping features to quantiles for each store.
+            Then, with the quantile forecaster, we "invert" the quantiles to get base-stock levels and obtain the store allocation.
+            """
 
-        underage_costs, holding_costs, lead_times, past_demands, days_from_christmas, store_inventories = [observation[key] for key in ['underage_costs', 'holding_costs', 'lead_times', 'past_demands', 'days_from_christmas', 'store_inventories']]
+            underage_costs, holding_costs, lead_times, past_demands, days_from_christmas, store_inventories = [observation[key] for key in ['underage_costs', 'holding_costs', 'lead_times', 'past_demands', 'days_from_christmas', 'store_inventories']]
 
-        # Get the desired quantiles for each store, which will be used to forecast the base stock levels
-        # This function is different for each type of QuantilePolicy
-        # quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs, 'holding_costs': holding_costs})
-        # for warehouse..
-        quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
+            # Get the desired quantiles for each store, which will be used to forecast the base stock levels
+            # This function is different for each type of QuantilePolicy
+            # quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs, 'holding_costs': holding_costs})
+            # for warehouse..
+            quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
 
-        # Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
-        stores_base_stock_levels, result = self.forecast_base_stock_allocation(
-            past_demands, days_from_christmas, store_inventories, lead_times, quantiles, allow_back_orders=self.allow_back_orders
+            # Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
+            stores_base_stock_levels, result = self.forecast_base_stock_allocation(
+                self.fixed_nets['quantile_forecaster'], past_demands, days_from_christmas, store_inventories, lead_times, quantiles, allow_back_orders=self.allow_back_orders
+                )
+            if 'warehouse_inventories' not in observation:
+                return result
+
+            warehouse_inventories = observation['warehouse_inventories']
+            result['stores'] = self.apply_proportional_allocation(result['stores'], warehouse_inventories)
+            long_desired_quantiles = self.net['long_desired_quantiles'](underage_costs.unsqueeze(-1)/(underage_costs.unsqueeze(-1) + holding_costs.unsqueeze(-1)))
+
+            # # Get base stock levels for longer horizon using long quantile forecaster
+            stores_long_base_stock_levels, _ = self.forecast_base_stock_allocation(
+                self.fixed_nets['long_quantile_forecaster'], 
+                past_demands,
+                days_from_christmas, 
+                store_inventories,
+                lead_times + self.warehouse_lead_time,
+                long_desired_quantiles,
+                allow_back_orders=self.allow_back_orders
             )
-        if 'warehouse_inventories' not in observation:
+            warehouse_base_stock_level = stores_long_base_stock_levels.sum(dim=1)
+            warehouse_pos = warehouse_inventories.sum(dim=2) + store_inventories.sum(dim=2).sum(dim=1, keepdim=True)
+            result['warehouses'] = torch.clip(warehouse_base_stock_level - warehouse_pos, min=0)
             return result
-
-        warehouse_inventories = observation['warehouse_inventories']
-        warehouse_pos = warehouse_inventories.sum(dim=2) + store_inventories.sum(dim=2).sum(dim=1, keepdim=True)
-        warehouse_base_stock_level = self.net['warehouse'](torch.tensor([0.0]).to(self.device)) + stores_base_stock_levels.sum(dim=1)
-        result['warehouses'] = torch.clip(warehouse_base_stock_level - warehouse_pos, min=0)
-        result['stores'] = self.apply_proportional_allocation(result['stores'], warehouse_inventories)
-        return result
+        except Exception as e:
+            with open(f"/user/ml4723/Prj/NIC/error_log.txt", "a") as f:
+                f.write(f"Process ID: {os.getpid()}\n")
+                f.write(f"Error in forward method: {str(e)}\n")
+                import traceback
+                f.write(f"Traceback:\n{traceback.format_exc()}\n")
+                f.write(f"Call stack:\n{''.join(traceback.format_stack())}\n")
+                f.write("-" * 50 + "\n")
+                raise e
         
 class TransformedNV(QuantilePolicy):
 
@@ -907,7 +944,6 @@ class TransformedNV(QuantilePolicy):
         """"
         Maps the newsvendor quantile (u/[u+h]) to a new quantile
         """
-
         return self.net['master'](args['underage_costs']/(args['underage_costs'] + args['holding_costs']))
 
 class QuantileNV(QuantilePolicy):

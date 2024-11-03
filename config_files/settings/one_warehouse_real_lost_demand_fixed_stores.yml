@@ -18,12 +18,12 @@ test_seeds :  # Seeds for test set
 
 sample_data_params:
   'split_by_period': True
-  'train_periods': (0, 120)
-  'dev_periods': (104, 170)
-  'test_periods': (122, 170)
+  'train_periods': (0, 121)
+  'dev_periods': (105, 171)
+  'test_periods': (122, 171)
 
 problem_params : 
-  'n_stores': 16
+  'n_stores': 46
   'n_warehouses': 1
   'n_extra_echelons': 0
   'lost_demand': True
@@ -32,13 +32,13 @@ problem_params :
 
 params_by_dataset : 
   'train': 
-    'n_samples': 416
-    'batch_size': 416 
-    'periods': 104
+    'n_samples': 109
+    'batch_size': 109 
+    'periods': 105
     'ignore_periods': 16
   'dev': 
-    'n_samples': 416 
-    'batch_size': 416 
+    'n_samples': 109
+    'batch_size': 109
     'periods': 50
     'ignore_periods': 16 
   'test': 

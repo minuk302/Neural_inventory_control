@@ -17,18 +17,22 @@ nn_params:
   'name': 'transformed_nv'
   'inner_layer_activations': 
     'master': 'elu'
-    'warehouse': null
+    'long_desired_quantiles': 'elu'
   'output_layer_activation':
     'master': 'sigmoid'
+    'long_desired_quantiles': 'sigmoid'
   'neurons_per_hidden_layer': 
     'master': [32, 32]
-    'warehouse': []
+    'long_desired_quantiles': [32, 32]
   'initial_bias':
     'master': null
-    'warehouse': 10
+    'long_desired_quantiles': null
   'output_sizes':
     'master': 1
-    'warehouse': 1
+    'long_desired_quantiles': 1
   'forecaster_location': 
-    '/user/ml4723/Prj/NIC/quantile_forecasters/1727157161.pt'
+    '/user/ml4723/Prj/NIC/quantile_forecasters/one_warehouse_short.pt'
+  'long_forecaster_location': 
+    '/user/ml4723/Prj/NIC/quantile_forecasters/one_warehouse_long.pt'
   'forecaster_lead_times': [2, 3]
+  'long_forecaster_lead_times': [8, 9]

@@ -19,7 +19,7 @@ class RayResultsinterpreter:
                     continue
                 try:
                     data = pd.read_csv(progress_file)
-                    if data['dev_loss'].isna().any() or data['test_loss'].isna().any() or data['train_loss'].isna().any():
+                    if data['dev_loss'].isna().any() or ('test_loss' in data and data['test_loss'].isna().any()) or data['train_loss'].isna().any():
                         print(f"Error, NaN values found in loss columns {subfolder_path}: ")
                         continue
                     data.fillna(0, inplace=True)
@@ -42,6 +42,8 @@ class RayResultsinterpreter:
                         'training_n_samples': 'training_n_samples',
                         'store': 'store',
                         'n_sub_sample_for_context': 'n_sub_sample_for_context',
+                        'apply_normalization': 'apply_normalization',
+                        'store_orders_for_warehouse': 'store_orders_for_warehouse',
                     }
                     result = {}
                     for key, value in param_dict.items():

@@ -90,6 +90,8 @@ class FullyConnectedForecaster(nn.Module):
         # prev_quantile = torch.gather(x, 2, (indices - 1).unsqueeze(2)).squeeze(2)
         # next_quantile = torch.gather(x, 2, indices.unsqueeze(2)).squeeze(2)
         # for warehouse case..
+        # Ensure indices are at least 1 to avoid out of bounds error in gather operation
+        indices = torch.clamp(indices, min=1)
         prev_quantile = torch.gather(x, 2, (indices - 1))
         next_quantile = torch.gather(x, 2, indices)
 

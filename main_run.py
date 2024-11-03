@@ -7,7 +7,7 @@ import research_utils
 import json
 
 class MainRun:
-    def __init__(self, train_or_test, setting_name, hyperparams_name, recorder_config_path=None):
+    def __init__(self, train_or_test, setting_name, hyperparams_name, recorder_config_path=None, recorder_identifier=None):
         self.train_or_test = train_or_test
         self.setting_name = setting_name
         self.hyperparams_name = hyperparams_name
@@ -24,7 +24,7 @@ class MainRun:
 
         if recorder_config_path is not None:
             self.override_configs()
-            self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams, True)
+            self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams, True, recorder_identifier)
         else:
             self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams)
 
@@ -184,8 +184,9 @@ if __name__ == "__main__":
     setting_name = sys.argv[2]
     hyperparams_name = sys.argv[3]
     recorder_config_path = sys.argv[4] if len(sys.argv) > 4 else None
+    recorder_identifier = sys.argv[5] if recorder_config_path is not None and len(sys.argv) > 5 else None
 
-    main_run = MainRun(train_or_test, setting_name, hyperparams_name, recorder_config_path)
+    main_run = MainRun(train_or_test, setting_name, hyperparams_name, recorder_config_path, recorder_identifier)
     import time
 
     start_time = time.time()

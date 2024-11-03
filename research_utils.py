@@ -31,6 +31,12 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'apply_normalization' in overriding_params:
         config_hyperparams['nn_params']['apply_normalization'] = overriding_params['apply_normalization']
 
+    if 'store_orders_for_warehouse' in overriding_params:
+        config_hyperparams['nn_params']['store_orders_for_warehouse'] = overriding_params['store_orders_for_warehouse']
+        if overriding_params['store_orders_for_warehouse']:
+            config_hyperparams['nn_params']['output_sizes']['store'] = 2
+            del config_hyperparams['nn_params']['output_sizes']['warehouse']
+
     if 'store_underage_cost' in overriding_params:
         if 'range' in config_setting['store_params']['underage_cost']:
             current_range = config_setting['store_params']['underage_cost']['range']
@@ -71,10 +77,11 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
 
 
 class Recorder():
-    def __init__(self, config_setting, config_hyperparams, start_recording = False):
+    def __init__(self, config_setting, config_hyperparams, start_recording = False, recorder_identifier=None):
         self.is_recording = start_recording
         self.config_setting = config_setting
         self.config_hyperparams = config_hyperparams
+        self.recorder_identifier = recorder_identifier
 
     def start_recording(self):
         self.is_recording = True
@@ -98,10 +105,8 @@ class Recorder():
             return
 
         underage_cost_range = self.config_setting['store_params']['underage_cost']['range']
-        normalized = 'apply_normalization' in self.config_hyperparams['nn_params'] and self.config_hyperparams['nn_params']['apply_normalization']
-        decentralized = 'decentralized' in self.config_hyperparams['nn_params'] and self.config_hyperparams['nn_params']['decentralized']
         underage_cost = round(sum(underage_cost_range) / 2)
-        file_name = f"analysis/results/one_warehouse_real/{self.config_hyperparams['nn_params']['name']}_{normalized}_{decentralized}/{underage_cost}.csv"
+        file_name = f"analysis/results/one_warehouse_real/{self.recorder_identifier}/{underage_cost}.csv"
         def append_tensors_to_csv(filename, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs
