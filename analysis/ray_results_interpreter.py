@@ -44,6 +44,7 @@ class RayResultsinterpreter:
                         'n_sub_sample_for_context': 'n_sub_sample_for_context',
                         'apply_normalization': 'apply_normalization',
                         'store_orders_for_warehouse': 'store_orders_for_warehouse',
+                        'omit_context_from_store_input': 'omit_context_from_store_input',
                     }
                     result = {}
                     for key, value in param_dict.items():

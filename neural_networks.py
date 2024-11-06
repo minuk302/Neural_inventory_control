@@ -389,6 +389,7 @@ class SymmetryAware(MyNeuralNetwork):
         self.apply_normalization = 'apply_normalization' in args and args['apply_normalization']
         self.store_orders_for_warehouse = 'store_orders_for_warehouse' in args and args['store_orders_for_warehouse']
         self.n_sub_sample_for_context = args['n_sub_sample_for_context'] if 'n_sub_sample_for_context' in args else 0
+        self.omit_context_from_store_input = 'omit_context_from_store_input' in args and args['omit_context_from_store_input']
 
     def get_store_inventory_and_context_params(self, observation):
         return observation['store_inventories']
@@ -445,7 +446,10 @@ class SymmetryAware(MyNeuralNetwork):
         store_inventory_and_params = self.get_store_inventory_and_params(observation)
         if 'context' in self.net:
             context = self.get_context(observation, store_inventory_and_params)
-            stores_input = self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
+            if self.omit_context_from_store_input:
+                stores_input = store_inventory_and_params
+            else:   
+                stores_input = self.concatenate_signal_to_object_state_tensor(store_inventory_and_params, context)
         else:
             stores_input = store_inventory_and_params
         
@@ -475,11 +479,76 @@ class SymmetryAware(MyNeuralNetwork):
         if R is not None:
             store_allocation = store_allocation * R
             warehouse_allocation = warehouse_allocation * R
+        
+        # log_path = '/user/ml4723/Prj/NIC/log.txt'
+        # with open(log_path, 'a') as f:
+        #     f.write('\n' + '='*80 + '\n')
+        #     f.write(f'Warehouse Orders: {warehouse_allocation.detach().cpu().numpy()}\n')
+        #     f.write(f'Store Orders: {store_allocation.detach().cpu().numpy()}\n') 
+        #     f.write(f'Warehouse Inventory: {observation["warehouse_inventories"].detach().cpu().numpy()}\n')
+        #     f.write(f'Store Inventory: {observation["store_inventories"].detach().cpu().numpy()}\n')
 
         return {
             'stores': store_allocation, 
             'warehouses': warehouse_allocation
             }
+
+class SymmetryGNN(SymmetryAware):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+        self.n_stores = problem_params['n_stores']
+        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
+                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
+                          / torch.tensor(self.n_stores + 1, device=self.device)
+        self.use_pna = 'use_pna' in args and args['use_pna']
+        self.use_WISTEMB = 'use_WISTEMB' in args and args['use_WISTEMB']
+        self.no_aggregation = 'no_aggregation' in args and args['no_aggregation']
+        self.randomize = 'randomize' in args and args['randomize']
+        self.stop_gradient_at_store_embedding = 'stop_gradient_at_store_embedding' in args and args['stop_gradient_at_store_embedding']
+    def get_context(self, observation, store_inventory_and_params):
+        if self.use_WISTEMB:
+            warehouse_inventories = observation['warehouse_inventories'].expand(-1, self.n_stores, -1)
+            combined_input = torch.cat([store_inventory_and_params, warehouse_inventories], dim=-1)
+            store_embeddings = self.net['store_embedding'](combined_input)
+        else:
+            if self.stop_gradient_at_store_embedding:
+                store_embeddings = self.net['store_embedding'](store_inventory_and_params.detach())
+            else:
+                store_embeddings = self.net['store_embedding'](store_inventory_and_params)
+
+        if 'attention' in self.net:
+            warehouse_inventories = observation['warehouse_inventories'].expand(-1, self.n_stores, -1)
+            attention_input = torch.cat([store_inventory_and_params, warehouse_inventories], dim=-1)
+            attention_scores = self.net['attention'](attention_input).squeeze(-1)
+            attention_weights = F.softmax(attention_scores, dim=1)
+            aggregated_store_embeddings = torch.sum(store_embeddings * attention_weights.unsqueeze(-1), dim=1)
+        elif self.use_pna:
+            aggregators = [
+                lambda x: x.mean(dim=1),
+                lambda x: x.min(dim=1)[0],
+                lambda x: x.max(dim=1)[0],
+                lambda x: x.std(dim=1)
+            ]
+            aggregated = torch.stack([agg(store_embeddings) for agg in aggregators], dim=1)
+            scalers = [
+                lambda x: x,  # identity
+                lambda x: x * (torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)) / self.pna_delta),  # amplification
+                lambda x: x * (self.pna_delta / torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)))  # attenuation
+            ]
+            
+            scaled = torch.cat([scale(aggregated) for scale in scalers], dim=1)
+            aggregated_store_embeddings = scaled.view(scaled.size(0), -1)
+        elif self.no_aggregation:
+            if self.randomize:
+                random_indices = torch.randperm(store_inventory_and_params.size(1))
+                aggregated_store_embeddings = store_inventory_and_params[:, random_indices, :]
+            else:
+                aggregated_store_embeddings = store_embeddings
+        else:
+            aggregated_store_embeddings = store_embeddings.mean(dim=1)
+
+        input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
+        return self.net['context'](input_tensor)
 
 class GNN_Separation(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
@@ -563,59 +632,6 @@ class SymmetryAwareRealData(SymmetryAware):
         return torch.cat([observation['store_inventories'][:, :, 0].unsqueeze(-1)] \
              + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs', 'holding_costs']] \
              + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
-
-class SymmetryGNN(SymmetryAware):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.n_stores = problem_params['n_stores']
-        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
-                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
-                          / torch.tensor(self.n_stores + 1, device=self.device)
-        self.use_pna = 'use_pna' in args and args['use_pna']
-        self.use_WISTEMB = 'use_WISTEMB' in args and args['use_WISTEMB']
-        self.no_aggregation = 'no_aggregation' in args and args['no_aggregation']
-        self.randomize = 'randomize' in args and args['randomize']
-    def get_context(self, observation, store_inventory_and_params):
-        if self.use_WISTEMB:
-            warehouse_inventories = observation['warehouse_inventories'].expand(-1, self.n_stores, -1)
-            combined_input = torch.cat([store_inventory_and_params, warehouse_inventories], dim=-1)
-            store_embeddings = self.net['store_embedding'](combined_input)
-        else:
-            store_embeddings = self.net['store_embedding'](store_inventory_and_params)
-
-        if 'attention' in self.net:
-            warehouse_inventories = observation['warehouse_inventories'].expand(-1, self.n_stores, -1)
-            attention_input = torch.cat([store_inventory_and_params, warehouse_inventories], dim=-1)
-            attention_scores = self.net['attention'](attention_input).squeeze(-1)
-            attention_weights = F.softmax(attention_scores, dim=1)
-            aggregated_store_embeddings = torch.sum(store_embeddings * attention_weights.unsqueeze(-1), dim=1)
-        elif self.use_pna:
-            aggregators = [
-                lambda x: x.mean(dim=1),
-                lambda x: x.min(dim=1)[0],
-                lambda x: x.max(dim=1)[0],
-                lambda x: x.std(dim=1)
-            ]
-            aggregated = torch.stack([agg(store_embeddings) for agg in aggregators], dim=1)
-            scalers = [
-                lambda x: x,  # identity
-                lambda x: x * (torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)) / self.pna_delta),  # amplification
-                lambda x: x * (self.pna_delta / torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)))  # attenuation
-            ]
-            
-            scaled = torch.cat([scale(aggregated) for scale in scalers], dim=1)
-            aggregated_store_embeddings = scaled.view(scaled.size(0), -1)
-        elif self.no_aggregation:
-            if self.randomize:
-                random_indices = torch.randperm(store_inventory_and_params.size(1))
-                aggregated_store_embeddings = store_inventory_and_params[:, random_indices, :]
-            else:
-                aggregated_store_embeddings = store_embeddings
-        else:
-            aggregated_store_embeddings = store_embeddings.mean(dim=1)
-
-        input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
-        return self.net['context'](input_tensor)
 
 class SymmetryGNNRealData(SymmetryAwareRealData, SymmetryGNN):
     pass

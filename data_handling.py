@@ -143,7 +143,7 @@ class Scenario():
         Read real demand data
         """
 
-        demand = torch.load(demand_params['file_location'])[: self.num_samples]
+        demand = torch.load(demand_params['file_location'])[: self.num_samples, :problem_params['n_stores']]
         return demand
 
     def generate_demand_parameters(self, problem_params, demand_params, seeds):

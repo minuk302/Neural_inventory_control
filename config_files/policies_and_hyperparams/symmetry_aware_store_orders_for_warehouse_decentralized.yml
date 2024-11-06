@@ -26,4 +26,3 @@ nn_params:
   'initial_bias': null
   'include_primitive_features': True
   'store_orders_for_warehouse': True
-  'decentralized': True

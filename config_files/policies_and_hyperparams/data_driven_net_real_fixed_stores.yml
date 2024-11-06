@@ -20,7 +20,7 @@ nn_params:
   'output_layer_activation':
     'master': 'relu'
   'neurons_per_hidden_layer': 
-    'master': [128, 128]
+    'master': [256, 256]
   'initial_bias':
     'master': 1.0
   'output_sizes':

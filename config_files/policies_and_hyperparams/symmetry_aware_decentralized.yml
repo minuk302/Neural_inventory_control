@@ -16,21 +16,16 @@ optimizer_params:
 nn_params: 
   'name': 'symmetry_aware'
   'inner_layer_activations': 
-    'context': 'elu'
     'store': 'elu'
     'warehouse': 'elu'
   'output_layer_activation':
-    'context': 'sigmoid'
     'store': 'softplus'
     'warehouse': 'sigmoid'
   'neurons_per_hidden_layer':
-    'context': [16]
     'store': [32, 32]
     'warehouse': [16, 16]
   'output_sizes':
-    'context': 16
     'store': 1
     'warehouse': 1
   'initial_bias': null
   'warehouse_upper_bound_mult': 4
-  'decentralized': True

@@ -36,6 +36,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         if overriding_params['store_orders_for_warehouse']:
             config_hyperparams['nn_params']['output_sizes']['store'] = 2
             del config_hyperparams['nn_params']['output_sizes']['warehouse']
+    
+    if 'omit_context_from_store_input' in overriding_params:
+        config_hyperparams['nn_params']['omit_context_from_store_input'] = overriding_params['omit_context_from_store_input']
 
     if 'store_underage_cost' in overriding_params:
         if 'range' in config_setting['store_params']['underage_cost']:

@@ -32,4 +32,3 @@ nn_params:
     'store': 1
     'warehouse': 1
   'initial_bias': null
-  'decentralized': True
