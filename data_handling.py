@@ -26,6 +26,7 @@ class Scenario():
         self.initial_warehouse_inventories = self.generate_initial_warehouse_inventory(warehouse_params)
         self.warehouse_lead_times = self.generate_warehouse_data(warehouse_params, 'lead_time')
         self.warehouse_holding_costs = self.generate_warehouse_data(warehouse_params, 'holding_cost')
+        self.lost_order_mask = self.generate_lost_order_mask(warehouse_params, self.demands, seeds['demand'])
 
         self.initial_echelon_inventories = self.generate_initial_echelon_inventory(echelon_params)
         self.echelon_lead_times = self.generate_echelon_data(echelon_params, 'lead_time')
@@ -67,6 +68,7 @@ class Scenario():
                 'initial_echelon_inventories': self.initial_echelon_inventories,
                 'echelon_holding_costs': self.echelon_holding_costs,
                 'echelon_lead_times': self.echelon_lead_times,
+                'lost_order_mask': self.lost_order_mask
                 }
         
         for k, v in self.time_features.items():
@@ -90,8 +92,10 @@ class Scenario():
 
         if self.store_params['demand']['distribution'] == 'real':
             split_by['period'].append('demands')
+            split_by['period'].append('lost_order_mask')
         else:
             split_by['sample_index'].append('demands')
+            split_by['sample_index'].append('lost_order_mask')
         
         for k in self.time_features.keys():
             split_by['period'].append(k)
@@ -299,6 +303,25 @@ class Scenario():
         
         return torch.tensor([warehouse_params[key]]).expand(self.num_samples, self.problem_params['n_warehouses'])
     
+    def generate_lost_order_mask(self, warehouse_params, demands, seed):
+        """
+        Generate lost order mask based on lost_order_average_interval
+        """
+        if warehouse_params is None or 'lost_order_average_interval' not in warehouse_params or warehouse_params['lost_order_average_interval'] is None:
+            return None
+        
+        # Set seed for reproducibility
+        torch.manual_seed(seed)
+        
+        interval = warehouse_params['lost_order_average_interval']
+        mask = torch.zeros(self.num_samples, self.problem_params['n_warehouses'], demands.size(2), dtype=torch.bool)
+        
+        # For each period, set True with probability 1/interval
+        random_values = torch.rand(self.num_samples, self.problem_params['n_warehouses'], demands.size(2))
+        mask[random_values < (1.0/interval)] = True
+        
+        return mask
+
     def generate_echelon_data(self, echelon_params, key):
         """
         Generate echelon_params data
@@ -393,4 +416,3 @@ class DatasetCreator():
         num_samples = len(data['initial_inventories'])
 
         return MyDataset(num_samples, data)
-    

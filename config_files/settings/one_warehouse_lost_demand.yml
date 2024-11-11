@@ -26,6 +26,7 @@ problem_params :
   'lost_demand': True
   'maximize_profit': False
   'report_test_loss': True
+  'demand_seed': 42  # Optional: Set seed for reproducibility
 
 params_by_dataset : 
   'train': 
@@ -59,6 +60,7 @@ observation_params:
     'arrivals': 0
     'orders': 0
   'include_days_to_christmas': False
+  'include_arrival_failures': true  # Optional: Include failure sequence in observation
 
 store_params: 
   'demand': 
@@ -95,3 +97,5 @@ warehouse_params:
 
 echelon_params: 
   None
+warehouse_arrival_interval: 10  # Failures occur on average every 10 periods (set to null to disable)
+

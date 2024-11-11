@@ -109,7 +109,7 @@ class Recorder():
 
         underage_cost_range = self.config_setting['store_params']['underage_cost']['range']
         underage_cost = round(sum(underage_cost_range) / 2)
-        file_name = f"analysis/results/one_warehouse_real/{self.recorder_identifier}/{underage_cost}.csv"
+        file_name = f"analysis/results/one_warehouse_real/{self.config_setting['problem_params']['n_stores']}/{self.recorder_identifier}/{underage_cost}.csv"
         def append_tensors_to_csv(filename, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs

@@ -49,6 +49,7 @@ class Simulator(gym.Env):
         self._internal_data = {
             'demands': data['demands'],
             'period_shift': observation_params['demand']['period_shift'],
+            'lost_order_mask': data['lost_order_mask']
             }
         
         if observation_params['time_features'] is not None:
@@ -236,6 +237,14 @@ class Simulator(gym.Env):
         warehouse_inventory = self.observation['warehouse_inventories']
         warehouse_inventory_on_hand = warehouse_inventory[:, :, 0]
         post_warehouse_inventory_on_hand = warehouse_inventory_on_hand - action['stores'].sum(dim=1).unsqueeze(1)
+
+        # If there is a lost order at current step, zero out the first inventory position
+        if self._internal_data['lost_order_mask'] is not None:
+            current_period = self.observation['current_period'].item()
+            lost_order = self._internal_data['lost_order_mask'][:, :, current_period]
+            mask = torch.ones_like(warehouse_inventory)
+            mask[:, :, 1][lost_order == 1] = 0
+            warehouse_inventory = warehouse_inventory * mask
 
         holding_costs = observation['warehouse_holding_costs'] * torch.clip(post_warehouse_inventory_on_hand, min=0)
         reward = holding_costs.sum(dim=1)

@@ -11,6 +11,8 @@ class RayResultsinterpreter:
         for submain_folder in os.listdir(top_folder):
             main_folder = os.path.join(top_folder, submain_folder)
             for subfolder in os.listdir(main_folder):
+                if subfolder.isdigit():
+                    continue
                 subfolder_path = os.path.join(main_folder, subfolder)
                 progress_file = os.path.join(subfolder_path, 'progress.csv')
                 params_file = os.path.join(subfolder_path, 'params.json')
@@ -19,9 +21,9 @@ class RayResultsinterpreter:
                     continue
                 try:
                     data = pd.read_csv(progress_file)
-                    if data['dev_loss'].isna().any() or ('test_loss' in data and data['test_loss'].isna().any()) or data['train_loss'].isna().any():
-                        print(f"Error, NaN values found in loss columns {subfolder_path}: ")
-                        continue
+                    # if data['dev_loss'].isna().any() or ('test_loss' in data and data['test_loss'].isna().any()) or data['train_loss'].isna().any():
+                    #     print(f"Error, NaN values found in loss columns {subfolder_path}: ")
+                    #     continue
                     data.fillna(0, inplace=True)
                     with open(params_file, 'r') as file:
                         params = json.load(file)
@@ -71,7 +73,7 @@ class RayResultsinterpreter:
                     print(f"Error processing files in {subfolder_path}: {e}")
         return results
 
-    def make_table(self, paths, conditions, custom_data_filler = None, sort_by = 'dev_loss', pick_row_from_run_by='dev_loss'):
+    def make_table(self, paths, conditions, default_condition_setter = None, custom_data_filler = None, sort_by = 'dev_loss', pick_row_from_run_by='dev_loss'):
         results = []
         for num_stores, path in paths.items():
             data = self.extract_data(path, pick_row_from_run_by)
@@ -80,6 +82,8 @@ class RayResultsinterpreter:
             df = pd.DataFrame(data).sort_values(by=f'{sort_by}(at best_{pick_row_from_run_by})', ascending=True)
 
             for condition_key, condition_values in conditions.items():
+                if default_condition_setter is not None and default_condition_setter(condition_key) is not None:
+                    df[condition_key] = df[condition_key].fillna(default_condition_setter(condition_key))
                 df = df[df[condition_key].isin(condition_values)]
 
             if len(conditions.keys()) == 0:

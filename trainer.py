@@ -75,6 +75,7 @@ class Trainer():
             # prof.step()
             if 'stop_if_no_improve_for_epochs' in trainer_params and n_passed_epochs_without_improvement >= trainer_params['stop_if_no_improve_for_epochs']:
                 break
+            
             n_passed_epochs_without_improvement += 1
             
             # Do one epoch of training, including updating the model parameters
@@ -308,6 +309,13 @@ class Trainer():
         """
         is_updated = False
         data_for_compare = {'train_loss': train_loss, 'dev_loss': dev_loss}
+        
+        # Check if either loss is nan
+        train_loss_is_nan = torch.isnan(train_loss) if isinstance(train_loss, torch.Tensor) else math.isnan(train_loss)
+        dev_loss_is_nan = torch.isnan(dev_loss) if isinstance(dev_loss, torch.Tensor) else math.isnan(dev_loss)
+        if train_loss_is_nan or dev_loss_is_nan:
+            return is_updated
+            
         if data_for_compare[trainer_params['choose_best_model_on']] < self.best_performance_data[trainer_params['choose_best_model_on']]:  
             self.best_performance_data['train_loss'] = train_loss
             self.best_performance_data['dev_loss'] = dev_loss
