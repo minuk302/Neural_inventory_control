@@ -93,7 +93,6 @@ store_params:
 warehouse_params: 
   'holding_cost': 0.3
   'lead_time': 6
-  'lost_order_average_interval': 6
 
 echelon_params: 
   null

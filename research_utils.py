@@ -36,22 +36,39 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         if overriding_params['store_orders_for_warehouse']:
             config_hyperparams['nn_params']['output_sizes']['store'] = 2
             del config_hyperparams['nn_params']['output_sizes']['warehouse']
-    
+
+    if 'warehouse_lost_order_average_interval' in overriding_params:
+        config_setting['warehouse_params']['lost_order_average_interval'] = overriding_params['warehouse_lost_order_average_interval']
+
     if 'omit_context_from_store_input' in overriding_params:
         config_hyperparams['nn_params']['omit_context_from_store_input'] = overriding_params['omit_context_from_store_input']
 
+    def update_cost_range(cost_params, new_mean):
+        current_range = cost_params['range']
+        current_mean = sum(current_range) / 2
+        current_low_deviation_ratio = (current_mean - current_range[0]) / current_mean
+        current_high_deviation_ratio = (current_range[1] - current_mean) / current_mean
+
+        new_lower = new_mean * (1 - current_low_deviation_ratio)
+        new_upper = new_mean * (1 + current_high_deviation_ratio)
+        
+        return [new_lower, new_upper]
+
+    if 'store_holding_cost' in overriding_params:
+        if 'range' in config_setting['store_params']['holding_cost']:
+            config_setting['store_params']['holding_cost']['range'] = update_cost_range(
+                config_setting['store_params']['holding_cost'],
+                overriding_params['store_holding_cost']
+            )
+        else:
+            config_setting['store_params']['holding_cost']['value'] = overriding_params['store_holding_cost']
+        
     if 'store_underage_cost' in overriding_params:
         if 'range' in config_setting['store_params']['underage_cost']:
-            current_range = config_setting['store_params']['underage_cost']['range']
-            current_mean = sum(current_range) / 2
-            current_low_deviation_ratio = (current_mean - current_range[0]) / current_mean
-            current_high_deviation_ratio = (current_range[1] - current_mean) / current_mean
-
-            new_mean = overriding_params['store_underage_cost']
-            new_lower = new_mean * (1 - current_low_deviation_ratio)
-            new_upper = new_mean * (1 + current_high_deviation_ratio)
-            
-            config_setting['store_params']['underage_cost']['range'] = [new_lower, new_upper]
+            config_setting['store_params']['underage_cost']['range'] = update_cost_range(
+                config_setting['store_params']['underage_cost'], 
+                overriding_params['store_underage_cost']
+            )
         else:
             config_setting['store_params']['underage_cost']['value'] = overriding_params['store_underage_cost']
 

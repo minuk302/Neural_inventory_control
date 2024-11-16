@@ -31,17 +31,17 @@ problem_params :
 params_by_dataset : 
   'train': 
     'n_samples': 8192  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
-    'batch_size': 1024 
+    'batch_size': 8192 
     'periods': 50 
     'ignore_periods': 30 
   'dev': 
     'n_samples': 4096 
-    'batch_size': 1024 
+    'batch_size': 4096 
     'periods': 50 
     'ignore_periods': 30 
   'test': 
     'n_samples': 4096 
-    'batch_size': 1024 
+    'batch_size': 4096 
     'periods': 500 
     'ignore_periods': 300
 
@@ -60,7 +60,6 @@ observation_params:
     'arrivals': 0
     'orders': 0
   'include_days_to_christmas': False
-  'include_arrival_failures': true  # Optional: Include failure sequence in observation
 
 store_params: 
   'demand': 
@@ -96,6 +95,5 @@ warehouse_params:
   'lead_time': 6     
 
 echelon_params: 
-  None
-warehouse_arrival_interval: 10  # Failures occur on average every 10 periods (set to null to disable)
+  null
 

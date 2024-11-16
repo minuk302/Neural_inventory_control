@@ -49,7 +49,7 @@ class Simulator(gym.Env):
         self._internal_data = {
             'demands': data['demands'],
             'period_shift': observation_params['demand']['period_shift'],
-            'lost_order_mask': data['lost_order_mask']
+            'lost_order_mask': data['lost_order_mask'] if 'lost_order_mask' in data else None
             }
         
         if observation_params['time_features'] is not None:

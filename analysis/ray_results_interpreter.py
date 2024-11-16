@@ -47,6 +47,7 @@ class RayResultsinterpreter:
                         'apply_normalization': 'apply_normalization',
                         'store_orders_for_warehouse': 'store_orders_for_warehouse',
                         'omit_context_from_store_input': 'omit_context_from_store_input',
+                        'warehouse_lost_order_average_interval': 'warehouse_lost_order_average_interval',
                     }
                     result = {}
                     for key, value in param_dict.items():

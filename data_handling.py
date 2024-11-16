@@ -68,8 +68,10 @@ class Scenario():
                 'initial_echelon_inventories': self.initial_echelon_inventories,
                 'echelon_holding_costs': self.echelon_holding_costs,
                 'echelon_lead_times': self.echelon_lead_times,
-                'lost_order_mask': self.lost_order_mask
                 }
+
+        if self.lost_order_mask is not None:
+            data['lost_order_mask'] = self.lost_order_mask
         
         for k, v in self.time_features.items():
             data[k] = v
@@ -92,10 +94,12 @@ class Scenario():
 
         if self.store_params['demand']['distribution'] == 'real':
             split_by['period'].append('demands')
-            split_by['period'].append('lost_order_mask')
+            if self.lost_order_mask is not None:
+                split_by['period'].append('lost_order_mask')
         else:
             split_by['sample_index'].append('demands')
-            split_by['sample_index'].append('lost_order_mask')
+            if self.lost_order_mask is not None:
+                split_by['sample_index'].append('lost_order_mask')
         
         for k in self.time_features.keys():
             split_by['period'].append(k)
