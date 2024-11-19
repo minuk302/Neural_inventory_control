@@ -42,8 +42,7 @@ class MyNeuralNetwork(nn.Module):
             }
         
         # If warehouse_upper_bound is not None, then we will use it to multiply the output of the warehouse neural network
-        self.warehouse_upper_bound = 0
-        self.use_warehouse_upper_bound = False
+        self.warehouse_upper_bound_mult = None
 
         self.layers = {}
         # Create nn.ModuleDict to store multiple neural networks
@@ -473,8 +472,9 @@ class SymmetryAware(MyNeuralNetwork):
                 observation['warehouse_inventories']
                 )
         warehouse_allocation = warehouse_intermediate_outputs
-        if self.use_warehouse_upper_bound:
-            warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
+        if self.warehouse_upper_bound_mult is not None:
+            upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult.unsqueeze(1)
+            warehouse_allocation = warehouse_intermediate_outputs * upper_bound
 
         if R is not None:
             store_allocation = store_allocation * R
@@ -1160,16 +1160,6 @@ class NeuralNetworkCreator:
             }
         return architectures[name]
     
-    def get_warehouse_upper_bound(self, warehouse_upper_bound_mult, scenario, device='cpu'):
-        """
-        Get the warehouse upper bound, which is the sum of all store demands multiplied 
-        by warehouse_upper_bound_mult (specified in config file)
-        """
-        mean = scenario.store_params['demand']['mean']
-        if type(mean) == float:
-            mean = [mean]
-        return torch.tensor([warehouse_upper_bound_mult*sum(mean)], device=device).float()
-    
     def create_neural_network(self, scenario, nn_params, device='cpu'):
 
         nn_params_copy = copy.deepcopy(nn_params)
@@ -1187,7 +1177,6 @@ class NeuralNetworkCreator:
         
         # Calculate warehouse upper bound if specified in config file
         if 'warehouse_upper_bound_mult' in nn_params.keys():
-            model.warehouse_upper_bound = self.get_warehouse_upper_bound(nn_params['warehouse_upper_bound_mult'], scenario, device)
-            model.use_warehouse_upper_bound = True
+            warehouse_upper_bound_mult = nn_params['warehouse_upper_bound_mult']
         
         return model.to(device)

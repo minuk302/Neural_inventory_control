@@ -279,7 +279,6 @@ class Trainer():
                     'all_train_losses': self.all_train_losses,
                     'all_dev_losses': self.all_dev_losses,
                     'all_test_losses': self.all_test_losses,
-                    'warehouse_upper_bound': model.warehouse_upper_bound
                     }, 
                     f"{path}/{trainer_params['save_model_filename']}.pt"
                     )
@@ -377,7 +376,6 @@ class Trainer():
         self.all_train_losses = checkpoint['all_train_losses']
         self.all_dev_losses = checkpoint['all_dev_losses']
         self.all_test_losses = checkpoint['all_test_losses']
-        model.warehouse_upper_bound = checkpoint['warehouse_upper_bound']
         return model, optimizer
     
     def get_time_stamp(self):

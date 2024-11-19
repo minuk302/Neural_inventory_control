@@ -198,7 +198,15 @@ class Simulator(gym.Env):
         # Reward given by underage_costs + holding_costs
         else:
             underage_costs = observation['underage_costs'] * torch.clip(-post_inventory_on_hand, min=0)
-        holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
+
+        base_holding_costs = observation['holding_costs'] * torch.clip(post_inventory_on_hand, min=0)
+        if self.problem_params.get('amplify_store_holding_cost', False):
+            # Calculate P = product(1 + log(store_holding_cost_i + 1)) across stores
+            P = torch.prod(1 + torch.log(base_holding_costs + 1), dim=1, keepdim=True)
+            holding_costs = P * base_holding_costs.sum(dim=1, keepdim=True)
+        else:
+            holding_costs = base_holding_costs
+        
         reward = underage_costs.sum(dim=1) + holding_costs.sum(dim=1)
         
         # If we are in a lost demand setting, we cannot have negative inventory

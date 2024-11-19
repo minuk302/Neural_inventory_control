@@ -172,19 +172,30 @@ class Scenario():
             np.random.seed(seed)
         
         if problem_params['n_stores'] == 1:
-            demand = np.random.normal(demand_params['mean'], 
-                                      demand_params['std'], 
+            demand = np.random.normal(demand_params['mean'][:, 0], 
+                                      demand_params['std'][:, 0], 
                                       size=(self.num_samples, 1, self.periods)
                                       )
         else:
-            # Calculate covariance matrix and sample from multivariate normal
+            # Calculate covariance matrix and sample from multivariate normal for all samples at once
             correlation = demand_params['correlation']
-            cov_matrix = [[correlation*v1*v2 if i!= j else v1*v2 
-                           for i, v1 in enumerate(demand_params['std'])
-                           ] 
-                           for j, v2 in enumerate(demand_params['std'])
-                           ]
-            demand = np.random.multivariate_normal(demand_params['mean'], cov=cov_matrix, size=(self.num_samples, self.periods))
+            n_stores = problem_params['n_stores']
+            
+            # Create block diagonal covariance matrix for all samples
+            # Shape: (num_samples, n_stores, n_stores)
+            cov_matrices = np.zeros((self.num_samples, n_stores, n_stores))
+            for i in range(n_stores):
+                for j in range(n_stores):
+                    if i == j:
+                        cov_matrices[:, i, j] = demand_params['std'][:, i] * demand_params['std'][:, i]
+                    else:
+                        cov_matrices[:, i, j] = correlation * demand_params['std'][:, i] * demand_params['std'][:, j]
+            
+            # Generate correlated normal samples for all samples at once
+            demand = np.array([np.random.multivariate_normal(m, cov, size=self.periods) 
+                             for m, cov in zip(demand_params['mean'], cov_matrices)])
+            
+            # Transpose to get shape (num_samples, n_stores, periods)
             demand = np.transpose(demand, (0, 2, 1))
 
         return demand
@@ -217,9 +228,25 @@ class Scenario():
         # Set seed
         np.random.seed(seeds['mean'])
 
-        means = np.random.uniform(demand_params['mean_range'][0], demand_params['mean_range'][1], problem_params['n_stores']).round(3)
-        np.random.seed(seeds['coef_of_var'])
-        coef_of_var = np.random.uniform(demand_params['coef_of_var_range'][0], demand_params['coef_of_var_range'][1], problem_params['n_stores'])
+        if demand_params.get('vary_across_samples', False):
+            means = np.random.uniform(demand_params['mean_range'][0], 
+                                    demand_params['mean_range'][1], 
+                                    (self.num_samples, problem_params['n_stores'])).round(3)
+            np.random.seed(seeds['coef_of_var'])
+            coef_of_var = np.random.uniform(demand_params['coef_of_var_range'][0],
+                                          demand_params['coef_of_var_range'][1], 
+                                          (self.num_samples, problem_params['n_stores']))
+        else:
+            means = np.random.uniform(demand_params['mean_range'][0],
+                                    demand_params['mean_range'][1],
+                                    problem_params['n_stores']).round(3)
+            means = np.tile(means, (self.num_samples, 1))
+            np.random.seed(seeds['coef_of_var'])
+            coef_of_var = np.random.uniform(demand_params['coef_of_var_range'][0],
+                                          demand_params['coef_of_var_range'][1],
+                                          problem_params['n_stores'])
+            coef_of_var = np.tile(coef_of_var, (self.num_samples, 1))
+
         stds = (means * coef_of_var).round(3)
         return {'mean': means, 'std': stds}
     
@@ -345,7 +372,7 @@ class Scenario():
         to_return = {'mean': None, 'std': None}
         for k in ['mean', 'std']:
             if k in observation_params['include_static_features'] and observation_params['include_static_features'][k]:
-                to_return[k] = torch.tensor(store_params['demand'][k]).unsqueeze(0).expand(self.num_samples, -1)
+                to_return[k] = torch.tensor(store_params['demand'][k])# .unsqueeze(0).expand(self.num_samples, -1)
         return to_return['mean'], to_return['std']
 
 class MyDataset(Dataset):

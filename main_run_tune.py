@@ -30,7 +30,7 @@ if len(sys.argv) >= 5:
 else:
     gpus_to_use = list(range(torch.cuda.device_count()))
 total_cpus = os.cpu_count()
-num_instances_per_gpu = 4
+num_instances_per_gpu = 6
 n_cpus_per_instance = min(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
 
 load_model = False
@@ -167,7 +167,7 @@ if 'symmetry_aware' == hyperparams_name:
         "store_orders_for_warehouse": tune.grid_search([True]),
         "omit_context_from_store_input": tune.grid_search([False]),
         "warehouse_lead_time": tune.grid_search([6]),
-        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
+        "store_underage_cost": tune.grid_search([9, 12, 3, 6]),
         "samples": tune.grid_search([1, 2, 3, 4, 5]),
     }
     save_path = 'ray_results/warehouse_amplify_holdingcost/symmetry_aware'
@@ -178,7 +178,7 @@ if 'decentralized' == hyperparams_name:
         "store_orders_for_warehouse": tune.grid_search([True]),
         "omit_context_from_store_input": tune.grid_search([False]),
         "warehouse_lead_time": tune.grid_search([6]),
-        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
+        "store_underage_cost": tune.grid_search([9, 12, 3, 6]),
         "samples": tune.grid_search([1, 2, 3, 4, 5]),
     }
     save_path = 'ray_results/warehouse_amplify_holdingcost/decentralized'
