@@ -48,6 +48,7 @@ class RayResultsinterpreter:
                         'store_orders_for_warehouse': 'store_orders_for_warehouse',
                         'omit_context_from_store_input': 'omit_context_from_store_input',
                         'warehouse_lost_order_average_interval': 'warehouse_lost_order_average_interval',
+                        'include_context_for_warehouse_input': 'include_context_for_warehouse_input',
                     }
                     result = {}
                     for key, value in param_dict.items():
@@ -84,7 +85,12 @@ class RayResultsinterpreter:
 
             for condition_key, condition_values in conditions.items():
                 if default_condition_setter is not None and default_condition_setter(condition_key) is not None:
-                    df[condition_key] = df[condition_key].fillna(default_condition_setter(condition_key))
+                    if condition_key not in df:
+                        df[condition_key] = default_condition_setter(condition_key)
+                    else:
+                        df[condition_key] = df[condition_key].fillna(default_condition_setter(condition_key))
+                if type(condition_values) is not list:
+                    condition_values = [condition_values]
                 df = df[df[condition_key].isin(condition_values)]
 
             if len(conditions.keys()) == 0:

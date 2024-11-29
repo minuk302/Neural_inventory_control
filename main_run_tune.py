@@ -30,7 +30,7 @@ if len(sys.argv) >= 5:
 else:
     gpus_to_use = list(range(torch.cuda.device_count()))
 total_cpus = os.cpu_count()
-num_instances_per_gpu = 6
+num_instances_per_gpu = 16
 n_cpus_per_instance = min(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
 
 load_model = False
@@ -87,6 +87,10 @@ def run(tuning_configs):
     seeds, test_seeds, problem_params, params_by_dataset, observation_params, store_params, warehouse_params, echelon_params, sample_data_params = [
         config_setting_overrided[key] for key in setting_keys
         ]
+    
+    # temporary for debugging
+    problem_params['underage_cost'] = sum(store_params['underage_cost']['range']) / 2
+
     trainer_params, optimizer_params, nn_params = [config_hyperparams_overrided[key] for key in hyperparams_keys]
     observation_params = DefaultDict(lambda: None, observation_params)
     
@@ -160,28 +164,50 @@ num_instances = num_gpus * num_instances_per_gpu
 gpus_per_instance = num_gpus / num_instances
 ray.init(num_cpus = num_instances * n_cpus_per_instance, num_gpus = num_gpus, object_store_memory=4000000000, address='local')
 
-if 'symmetry_aware' == hyperparams_name:
+if 'vanilla_one_store_for_warehouse' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "apply_normalization": tune.grid_search([False]),
-        "store_orders_for_warehouse": tune.grid_search([True]),
-        "omit_context_from_store_input": tune.grid_search([False]),
-        "warehouse_lead_time": tune.grid_search([6]),
-        "store_underage_cost": tune.grid_search([9, 12, 3, 6]),
+        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
         "samples": tune.grid_search([1, 2, 3, 4, 5]),
     }
-    save_path = 'ray_results/warehouse_amplify_holdingcost/symmetry_aware'
+    save_path = 'ray_results/one_store/'
+
 if 'decentralized' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         "apply_normalization": tune.grid_search([False]),
-        "store_orders_for_warehouse": tune.grid_search([True]),
-        "omit_context_from_store_input": tune.grid_search([False]),
-        "warehouse_lead_time": tune.grid_search([6]),
-        "store_underage_cost": tune.grid_search([9, 12, 3, 6]),
+        "store_orders_for_warehouse": tune.grid_search([False]),
+        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
         "samples": tune.grid_search([1, 2, 3, 4, 5]),
     }
-    save_path = 'ray_results/warehouse_amplify_holdingcost/decentralized'
+    save_path = 'ray_results/one_store_and_one_warehouse/'
+if 'decentralized_independent_store_debug' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "include_context_for_warehouse_input": tune.grid_search([True, False]),
+        "warehouse_lead_time": tune.grid_search([6]),
+        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5]),
+    }
+    save_path = 'ray_results/one_store_for_warehouse_lost/decentralized_independent_store_debug'
+if 'decentralized_independent_store_and_warehouse_debug' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "include_context_for_warehouse_input": tune.grid_search([True]),
+        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5]),
+    }
+    save_path = 'ray_results/one_store_for_warehouse_lost/decentralized_independent_store_and_warehouse_debug'
+if 'symmetry_aware' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "apply_normalization": tune.grid_search([False]),
+        "store_orders_for_warehouse": tune.grid_search([False]),
+        "omit_context_from_store_input": tune.grid_search([True]),
+        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5]),
+    }
+    save_path = 'ray_results/one_store_and_one_warehouse/'
 
 
 if 'symmetry_aware_real' == hyperparams_name:

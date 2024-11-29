@@ -43,6 +43,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'omit_context_from_store_input' in overriding_params:
         config_hyperparams['nn_params']['omit_context_from_store_input'] = overriding_params['omit_context_from_store_input']
 
+    if 'include_context_for_warehouse_input' in overriding_params:
+        config_hyperparams['nn_params']['include_context_for_warehouse_input'] = overriding_params['include_context_for_warehouse_input']
+
     def update_cost_range(cost_params, new_mean):
         current_range = cost_params['range']
         current_mean = sum(current_range) / 2

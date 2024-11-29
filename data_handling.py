@@ -172,10 +172,9 @@ class Scenario():
             np.random.seed(seed)
         
         if problem_params['n_stores'] == 1:
-            demand = np.random.normal(demand_params['mean'][:, 0], 
-                                      demand_params['std'][:, 0], 
-                                      size=(self.num_samples, 1, self.periods)
-                                      )
+            mean = demand_params['mean'][:, 0].reshape(-1, 1, 1)
+            std = demand_params['std'][:, 0].reshape(-1, 1, 1)
+            demand = np.random.normal(mean, std, size=(self.num_samples, 1, self.periods))
         else:
             # Calculate covariance matrix and sample from multivariate normal for all samples at once
             correlation = demand_params['correlation']
