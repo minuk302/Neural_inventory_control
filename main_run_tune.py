@@ -164,14 +164,6 @@ num_instances = num_gpus * num_instances_per_gpu
 gpus_per_instance = num_gpus / num_instances
 ray.init(num_cpus = num_instances * n_cpus_per_instance, num_gpus = num_gpus, object_store_memory=4000000000, address='local')
 
-if 'vanilla_one_store_for_warehouse' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5]),
-    }
-    save_path = 'ray_results/one_store/'
-
 if 'decentralized' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -209,6 +201,13 @@ if 'symmetry_aware' == hyperparams_name:
     }
     save_path = 'ray_results/one_store_and_one_warehouse/'
 
+if 'vanilla_one_store_for_warehouse' == hyperparams_name:
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5]),
+    }
+    save_path = 'ray_results/one_store/'
 
 if 'symmetry_aware_real' == hyperparams_name:
     search_space = {

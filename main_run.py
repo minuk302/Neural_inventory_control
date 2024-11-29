@@ -59,6 +59,9 @@ class MainRun:
         self.trainer_params, self.optimizer_params, self.nn_params = [self.config_hyperparams[key] for key in hyperparams_keys]
         self.observation_params = DefaultDict(lambda: None, self.observation_params)
 
+        # temporary for debugging
+        self.problem_params['underage_cost'] = sum(self.store_params['underage_cost']['range']) / 2
+
     def create_scenario_and_datasets(self):
         if self.sample_data_params['split_by_period']:
             self.scenario = Scenario(

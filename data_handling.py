@@ -17,10 +17,13 @@ class Scenario():
         self.observation_params = observation_params
         self.seeds = seeds
         self.demands = self.generate_demand_samples(problem_params, store_params, store_params['demand'], seeds)
+        self.store_random_yields = None
+        if 'random_yield' in store_params:
+            self.store_random_yields = self.generate_demand_samples(problem_params, store_params, store_params['random_yield'], seeds)
         self.underage_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['underage_cost'], seeds['underage_cost'], discrete=False)
         self.holding_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['holding_cost'], seeds['holding_cost'], discrete=False)
         self.lead_times = self.generate_data_for_samples_and_stores(problem_params, store_params['lead_time'], seeds['lead_time'], discrete=True).to(torch.int64)
-        self.means, self.stds = self.generate_means_and_stds(observation_params, store_params)
+        self.means, self.stds, self.store_random_yield_mean, self.store_random_yield_std = self.generate_means_and_stds(observation_params, store_params)
         self.initial_inventories = self.generate_initial_inventories(problem_params, store_params, self.demands, self.lead_times, seeds['initial_inventory'])
         
         self.initial_warehouse_inventories = self.generate_initial_warehouse_inventory(warehouse_params)
@@ -68,6 +71,9 @@ class Scenario():
                 'initial_echelon_inventories': self.initial_echelon_inventories,
                 'echelon_holding_costs': self.echelon_holding_costs,
                 'echelon_lead_times': self.echelon_lead_times,
+                'store_random_yields': self.store_random_yields,
+                'store_random_yield_mean': self.store_random_yield_mean,
+                'store_random_yield_std': self.store_random_yield_std,
                 }
 
         if self.lost_order_mask is not None:
@@ -89,7 +95,7 @@ class Scenario():
         """
 
         split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories', 'initial_warehouse_inventories'\
-                                    , 'warehouse_lead_times', 'warehouse_holding_costs'], 
+                                    , 'warehouse_lead_times', 'warehouse_holding_costs', 'store_random_yields'], 
                     'period': []}
 
         if self.store_params['demand']['distribution'] == 'real':
@@ -124,22 +130,22 @@ class Scenario():
             }
 
         # Changing demand seed for consistency with results prensented in the manuscript
-        self.adjust_seeds_for_consistency(problem_params, store_params, seeds)
+        self.adjust_seeds_for_consistency(problem_params, store_params, demand_params, seeds)
 
         # Sample demand traces
         demand = demand_generator_functions[demand_params['distribution']](problem_params, demand_params, seeds['demand'])
 
         if demand_params['clip']:  # Truncate at 0 from below if specified
-            demand = np.clip(demand, 0, None)
+            demand = np.clip(demand, 0, demand_params.get('clip_max', None))
         
         return torch.tensor(demand)
 
-    def adjust_seeds_for_consistency(self, problem_params, store_params, seeds):
+    def adjust_seeds_for_consistency(self, problem_params, store_params, demand_params, seeds):
         """
         Adjust seeds for consistency with results prensented in the manuscript
         """
 
-        if problem_params['n_warehouses'] == 0 and problem_params['n_stores'] == 1 and store_params['demand']['distribution'] != 'real':
+        if problem_params['n_warehouses'] == 0 and problem_params['n_stores'] == 1 and demand_params['distribution'] != 'real':
             try:
                 # Changing demand seed for consistency with results prensented in the manuscript
                 seeds['demand'] = seeds['demand'] + int(store_params['lead_time']['value'] + 10*store_params['underage_cost']['value'])
@@ -231,22 +237,26 @@ class Scenario():
             means = np.random.uniform(demand_params['mean_range'][0], 
                                     demand_params['mean_range'][1], 
                                     (self.num_samples, problem_params['n_stores'])).round(3)
-            np.random.seed(seeds['coef_of_var'])
-            coef_of_var = np.random.uniform(demand_params['coef_of_var_range'][0],
-                                          demand_params['coef_of_var_range'][1], 
-                                          (self.num_samples, problem_params['n_stores']))
+            sample_shape = (self.num_samples, problem_params['n_stores'])
         else:
             means = np.random.uniform(demand_params['mean_range'][0],
                                     demand_params['mean_range'][1],
                                     problem_params['n_stores']).round(3)
             means = np.tile(means, (self.num_samples, 1))
-            np.random.seed(seeds['coef_of_var'])
-            coef_of_var = np.random.uniform(demand_params['coef_of_var_range'][0],
-                                          demand_params['coef_of_var_range'][1],
-                                          problem_params['n_stores'])
-            coef_of_var = np.tile(coef_of_var, (self.num_samples, 1))
+            sample_shape = problem_params['n_stores']
 
-        stds = (means * coef_of_var).round(3)
+        np.random.seed(seeds['coef_of_var'])
+        if 'coef_of_var_range' in demand_params:
+            coef = np.random.uniform(demand_params['coef_of_var_range'][0],
+                                   demand_params['coef_of_var_range'][1],
+                                   sample_shape)
+            stds = (means * coef).round(3)
+        else:
+            stds = np.random.uniform(demand_params['coef_of_std_range'][0],
+                                   demand_params['coef_of_std_range'][1],
+                                   sample_shape).round(3)
+            if demand_params.get('vary_across_samples', False) == False:
+                stds = np.tile(stds, (self.num_samples, 1))
         return {'mean': means, 'std': stds}
     
     def generate_data_for_samples_and_stores(self, problem_params, cost_params, seed, discrete=False):
@@ -368,11 +378,16 @@ class Scenario():
         Will be used as inputs for the symmetry-aware NN.
         """
 
-        to_return = {'mean': None, 'std': None}
+        to_return = {'mean': None, 'std': None, 'store_random_yield_mean': None, 'store_random_yield_std': None}
         for k in ['mean', 'std']:
             if k in observation_params['include_static_features'] and observation_params['include_static_features'][k]:
                 to_return[k] = torch.tensor(store_params['demand'][k])# .unsqueeze(0).expand(self.num_samples, -1)
-        return to_return['mean'], to_return['std']
+        
+        if 'store_random_yield_mean' in observation_params['include_static_features'] and observation_params['include_static_features']['store_random_yield_mean']:
+            to_return['store_random_yield_mean'] = torch.tensor(store_params['random_yield']['mean'])
+        if 'store_random_yield_std' in observation_params['include_static_features'] and observation_params['include_static_features']['store_random_yield_std']:
+            to_return['store_random_yield_std'] = torch.tensor(store_params['random_yield']['std'])
+        return to_return['mean'], to_return['std'], to_return['store_random_yield_mean'], to_return['store_random_yield_std']
 
 class MyDataset(Dataset):
 

@@ -493,7 +493,7 @@ class SymmetryAware(MyNeuralNetwork):
             'warehouses': warehouse_allocation
             }
 
-class SymmetryAware_OneStoreAndOneWarehousForWarehouse(MyNeuralNetwork):
+class SymmetryAware_OneStoreAndOneWarehouseForWarehouse(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         self.fixed_nets = {}
         self.include_context_for_warehouse_input = 'include_context_for_warehouse_input' in args and args['include_context_for_warehouse_input']

@@ -49,7 +49,8 @@ class Simulator(gym.Env):
         self._internal_data = {
             'demands': data['demands'],
             'period_shift': observation_params['demand']['period_shift'],
-            'lost_order_mask': data['lost_order_mask'] if 'lost_order_mask' in data else None
+            'lost_order_mask': data['lost_order_mask'] if 'lost_order_mask' in data else None,
+            'store_random_yields': data['store_random_yields'] if 'store_random_yields' in data else None
             }
         
         if observation_params['time_features'] is not None:
@@ -120,10 +121,7 @@ class Simulator(gym.Env):
             Each value is a tensor of size batch_size x n_locations, where n_locations is the number of stores or warehouses
         """
 
-        current_demands = self.get_current_demands(
-            self._internal_data, 
-            current_period=self.observation['current_period'].item()
-            )
+        current_demands = self.get_current_demands(self._internal_data)
         
         # Update observation corresponding to past occurrences (e.g., arrivals, orders, demands).
         # Do this before updating current period (as we consider current period + 1)
@@ -174,13 +172,16 @@ class Simulator(gym.Env):
 
         return self.observation, reward, terminated, None, None
     
-    def get_current_demands(self, data, current_period):
+    def get_current_period(self):
+        return self.observation['current_period'].item() + self._internal_data['period_shift']
+
+    def get_current_demands(self, data):
         """
         Get the current demands for the current period.
         period_shift specifies what we should consider as the first period in the data
         """
         
-        return data['demands'][:, :, current_period + self._internal_data['period_shift']]
+        return data['demands'][:, :, self.get_current_period()]
     
     def calculate_store_reward_and_update_store_inventories(self, current_demands, action, observation, maximize_profit=False):
         """
@@ -222,7 +223,8 @@ class Simulator(gym.Env):
             post_inventory_on_hand, 
             action['stores'], 
             observation['lead_times'], 
-            self._internal_data['allocation_shift']
+            self._internal_data['allocation_shift'],
+            self._internal_data['store_random_yields']
             )
         
         # # Uncomment the following line to simplify the update of store inventories.
@@ -262,6 +264,7 @@ class Simulator(gym.Env):
             action['warehouses'], 
             observation['warehouse_lead_times'], 
             self._internal_data['warehouse_allocation_shift'],
+            None,
             False
             )
 
@@ -383,7 +386,7 @@ class Simulator(gym.Env):
                 for k, v in initial_observation.items()
                 })
     
-    def update_inventory_for_lead_times(self, inventory, inventory_on_hand, allocation, lead_times, allocation_shifter, is_heterogeneous = True):
+    def update_inventory_for_lead_times(self, inventory, inventory_on_hand, allocation, lead_times, allocation_shifter, store_random_yields = None, is_heterogeneous = True):
         """
         Update the inventory for heterogeneous lead times (something simpler can be done for homogeneous lead times).
         We add the inventory into corresponding position by flatenning out the state vector of the
@@ -391,12 +394,17 @@ class Simulator(gym.Env):
         for each store and each sample. We then add the corresponding lead time to obtain the actual position in 
         which to insert the action
         """
+        if store_random_yields is not None:
+            random_yields = store_random_yields[torch.arange(self.batch_size), :, self.get_current_period()]
+        else:
+            random_yields = torch.ones_like(inventory_on_hand)
+
         if is_heterogeneous == False: # for performance
-            return torch.cat([(inventory_on_hand + inventory[:, :, 1]).unsqueeze(-1), inventory[:, :, 2:], allocation.unsqueeze(-1)], dim=2)
+            return torch.cat([(inventory_on_hand + inventory[:, :, 1] * random_yields).unsqueeze(-1), inventory[:, :, 2:], allocation.unsqueeze(-1)], dim=2)
 
         return torch.cat(
             [
-                (inventory_on_hand + inventory[:, :, 1]).unsqueeze(-1), 
+                (inventory_on_hand + inventory[:, :, 1] * random_yields).unsqueeze(-1), 
                 inventory[:, :, 2:],
                 torch.zeros_like(allocation).unsqueeze(-1)
             ], 
