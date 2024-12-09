@@ -19,7 +19,10 @@ class Scenario():
         self.demands = self.generate_demand_samples(problem_params, store_params, store_params['demand'], seeds)
         self.store_random_yields = None
         if 'random_yield' in store_params:
-            self.store_random_yields = self.generate_demand_samples(problem_params, store_params, store_params['random_yield'], seeds)
+            if 'lost_order_average_interval' in store_params['random_yield']:
+                self.store_random_yields = self.generate_lost_yield_mask(store_params['random_yield'], self.demands, seeds['demand'])
+            else:
+                self.store_random_yields = self.generate_demand_samples(problem_params, store_params, store_params['random_yield'], seeds)
         self.underage_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['underage_cost'], seeds['underage_cost'], discrete=False)
         self.holding_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['holding_cost'], seeds['holding_cost'], discrete=False)
         self.lead_times = self.generate_data_for_samples_and_stores(problem_params, store_params['lead_time'], seeds['lead_time'], discrete=True).to(torch.int64)
@@ -52,6 +55,23 @@ class Scenario():
 
         # Creates a dictionary specifying which data has to be split by sample index and which by period (when dividing into train, dev, test sets)
         self.split_by = self.define_how_to_split_data()
+
+    def generate_lost_yield_mask(self, random_yield_params, demands, seed):
+        """
+        Generate lost yield mask based on lost_order_average_interval
+        Returns a tensor of 1s and 0s where 0s appear on average every lost_order_average_interval periods
+        """
+        # Set seed for reproducibility
+        torch.manual_seed(seed)
+        
+        interval = random_yield_params['lost_order_average_interval']
+        mask = torch.ones(self.num_samples, self.problem_params['n_stores'], demands.size(2))
+        
+        # For each period, set 0 with probability 1/interval
+        random_values = torch.rand(self.num_samples, self.problem_params['n_stores'], demands.size(2))
+        mask[random_values < (1.0/interval)] = 0
+        
+        return mask
 
     def get_data(self):
         """
