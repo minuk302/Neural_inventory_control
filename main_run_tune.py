@@ -30,7 +30,7 @@ if len(sys.argv) >= 5:
 else:
     gpus_to_use = list(range(torch.cuda.device_count()))
 total_cpus = os.cpu_count()
-num_instances_per_gpu = 16
+num_instances_per_gpu = 3
 n_cpus_per_instance = min(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus)
 
 load_model = False
@@ -167,39 +167,32 @@ ray.init(num_cpus = num_instances * n_cpus_per_instance, num_gpus = num_gpus, ob
 if 'decentralized' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "apply_normalization": tune.grid_search([False]),
-        "store_orders_for_warehouse": tune.grid_search([False]),
-        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5]),
+        "store_orders_for_warehouse": tune.grid_search([True]),
+        "training_batch_size": tune.grid_search([4096]),
+        "store_underage_cost": tune.grid_search([9]),
+        "samples": tune.grid_search([1, 2, 3, 4]),
     }
-    save_path = 'ray_results/one_store_and_one_warehouse/'
-if 'decentralized_independent_store_debug' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "include_context_for_warehouse_input": tune.grid_search([True, False]),
-        "warehouse_lead_time": tune.grid_search([6]),
-        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5]),
-    }
-    save_path = 'ray_results/one_store_for_warehouse_lost/decentralized_independent_store_debug'
-if 'decentralized_independent_store_and_warehouse_debug' == hyperparams_name:
-    search_space = {
-        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "include_context_for_warehouse_input": tune.grid_search([True]),
-        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5]),
-    }
-    save_path = 'ray_results/one_store_for_warehouse_lost/decentralized_independent_store_and_warehouse_debug'
+    save_path = 'ray_results/store_disruption_2/decentralized'
 if 'symmetry_aware' == hyperparams_name:
     search_space = {
         "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        "apply_normalization": tune.grid_search([False]),
         "store_orders_for_warehouse": tune.grid_search([False]),
         "omit_context_from_store_input": tune.grid_search([True]),
-        "store_underage_cost": tune.grid_search([3, 6, 9, 12]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5]),
+        "training_batch_size": tune.grid_search([4096]),
+        "store_underage_cost": tune.grid_search([9]),
+        "samples": tune.grid_search([1, 2, 3, 4]),
     }
-    save_path = 'ray_results/one_store_and_one_warehouse/'
+    save_path = 'ray_results/store_disruption_2/symmetry_aware'
+if 'decentralized_independent_store' == hyperparams_name:
+    # train one store from symmetry_aware
+    search_space = {
+        "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        "include_context_for_warehouse_input": tune.grid_search([True]),
+        "training_batch_size": tune.grid_search([4096]),
+        "store_underage_cost": tune.grid_search([9]),
+        "samples": tune.grid_search([1, 2, 3, 4]),
+    }
+    save_path = 'ray_results/store_disruption_2/decentralized_independent_store'
 
 if 'vanilla_one_store_for_warehouse' == hyperparams_name:
     search_space = {

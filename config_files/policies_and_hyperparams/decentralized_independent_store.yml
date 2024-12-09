@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.01
 
 nn_params: 
-  'name': 'symmetry_aware_one_store_for_warehouse'
+  'name': 'symmetry_aware_independent_store'
   'inner_layer_activations': 
     'context': 'elu'
     'warehouse': 'elu'
@@ -28,4 +28,4 @@ nn_params:
     'context': 256
     'warehouse': 1
   'initial_bias': null
-  'warehouse_upper_bound_mult': 4
+  'warehouse_upper_bound_mult': 6

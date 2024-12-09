@@ -12,6 +12,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'training_n_samples' in overriding_params:
         config_setting['params_by_dataset']['train']['n_samples'] = overriding_params['training_n_samples']
         config_setting['params_by_dataset']['train']['batch_size'] = min(1024, overriding_params['training_n_samples'])
+
+    if 'training_batch_size' in overriding_params:
+        config_setting['params_by_dataset']['train']['batch_size'] = overriding_params['training_batch_size']
     
     if 'learning_rate' in overriding_params:
         config_hyperparams['optimizer_params']['learning_rate'] = overriding_params['learning_rate']
@@ -38,6 +41,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
             del config_hyperparams['nn_params']['output_sizes']['warehouse']
 
     if 'warehouse_lost_order_average_interval' in overriding_params:
+        config_setting['warehouse_params']['lost_order_average_interval'] = overriding_params['warehouse_lost_order_average_interval']
+
+    if 'store_yield' in overriding_params:
         config_setting['warehouse_params']['lost_order_average_interval'] = overriding_params['warehouse_lost_order_average_interval']
 
     if 'omit_context_from_store_input' in overriding_params:

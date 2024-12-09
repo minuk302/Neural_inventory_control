@@ -20,7 +20,7 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 1  # tested values: 3, 5, 10, 20, 30, 50
+  'n_stores': 1
   'n_warehouses': 1
   'n_extra_echelons': 0
   'lost_demand': True
@@ -29,18 +29,18 @@ problem_params :
 
 params_by_dataset : 
   'train': 
-    'n_samples': 8192  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
-    'batch_size': 8192 
+    'n_samples': 131072 
+    'batch_size': 16384  # Values tested: 1024, 8192
     'periods': 50 
     'ignore_periods': 30 
   'dev': 
-    'n_samples': 4096 
-    'batch_size': 4096 
+    'n_samples': 65536 
+    'batch_size': 16384 
     'periods': 50 
     'ignore_periods': 30 
   'test': 
-    'n_samples': 4096 
-    'batch_size': 4096 
+    'n_samples': 65536 
+    'batch_size': 16384 
     'periods': 500 
     'ignore_periods': 300
 
@@ -65,16 +65,15 @@ observation_params:
 store_params: 
   'demand': 
     'sample_across_stores': True
-    'vary_across_samples': False
+    'vary_across_samples': True
     'mean_range': [2.5, 7.5]
     'coef_of_var_range': [0.25, 0.50]
     'distribution': 'normal'
-    'correlation': 0.5
     'clip': True
     'decimals': 3
   'random_yield':
     'sample_across_stores': True
-    'vary_across_samples': False
+    'vary_across_samples': True
     'mean_range': [1.0, 1.0]
     'coef_of_std_range': [0.25, 0.50]
     'distribution': 'normal'
@@ -83,24 +82,23 @@ store_params:
     'clip_max': 1
   'lead_time': 
     'sample_across_stores': True
-    'vary_across_samples': False
+    'vary_across_samples': True
     'expand': False
-    'range': [1, 3] # recall that upper range is excluded from the possible values
+    'range': [1, 3]
   'holding_cost': 
-    'sample_across_stores': True 
-    'vary_across_samples': False
+    'sample_across_stores': True
+    'vary_across_samples': True
     'expand': False
     'range': [0.7, 1.3]
   'underage_cost': 
     'sample_across_stores': True
-    'vary_across_samples': False 
+    'vary_across_samples': True 
     'expand': False
     'range': [6.3, 11.7]
   'initial_inventory': 
     'sample': True
     'range_mult': [0, 1]
     'inventory_periods': 3
-
 warehouse_params: 
   'holding_cost': 0.7
   'lead_time': 6     

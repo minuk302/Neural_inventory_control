@@ -33,4 +33,4 @@ nn_params:
     'warehouse': 1
   'initial_bias': null
   'include_primitive_features': False
-  'warehouse_upper_bound_mult': 4
+  'warehouse_upper_bound_mult': 6

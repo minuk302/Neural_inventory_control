@@ -402,7 +402,10 @@ class SymmetryAware(MyNeuralNetwork):
         return observation['store_inventories']
 
     def get_store_inventory_and_params(self, observation):
-        store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
+        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
+        if 'store_random_yield_mean' in observation:
+            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
+        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
         return torch.cat([observation['store_inventories'], store_params], dim=2)
 
     def random_subsample(self, tensor):
@@ -493,7 +496,7 @@ class SymmetryAware(MyNeuralNetwork):
             'warehouses': warehouse_allocation
             }
 
-class SymmetryAware_OneStoreAndOneWarehouseForWarehouse(MyNeuralNetwork):
+class SymmetryAware_IndependentStore(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         self.fixed_nets = {}
         self.include_context_for_warehouse_input = 'include_context_for_warehouse_input' in args and args['include_context_for_warehouse_input']
@@ -529,10 +532,7 @@ class SymmetryAware_OneStoreAndOneWarehouseForWarehouse(MyNeuralNetwork):
 
         current_uc = int(round(problem_params['underage_cost']))
         underage_costs_to_model = {
-            3: '/user/ml4723/Prj/NIC/ray_results/one_store_and_one_warehouse/1/run_2024-11-28_10-30-36/run_b7465_00004_4_apply_normalization=False,learning_rate=0.0010,omit_context_from_store_input=True,samples=2,store_orders_for_war_2024-11-28_10-30-37',
-            6: '/user/ml4723/Prj/NIC/ray_results/one_store_and_one_warehouse/1/run_2024-11-28_10-30-36/run_b7465_00028_28_apply_normalization=False,learning_rate=0.0010,omit_context_from_store_input=True,samples=5,store_orders_for_wa_2024-11-28_10-30-37',
-            9: '/user/ml4723/Prj/NIC/ray_results/one_store_and_one_warehouse/1/run_2024-11-28_10-30-36/run_b7465_00043_43_apply_normalization=False,learning_rate=0.0010,omit_context_from_store_input=True,samples=5,store_orders_for_wa_2024-11-28_10-30-37',
-            12: '/user/ml4723/Prj/NIC/ray_results/one_store_and_one_warehouse/1/run_2024-11-28_10-30-36/run_b7465_00052_52_apply_normalization=False,learning_rate=0.0010,omit_context_from_store_input=True,samples=3,store_orders_for_wa_2024-11-28_10-30-37'
+            9: '/user/ml4723/Prj/NIC/ray_results/store_disruption_independent_store_debug_2/run_2024-12-01_20-24-01/run_1cbb3_00010_10_learning_rate=0.0010,omit_context_from_store_input=True,samples=4,store_orders_for_warehouse=False,store_undera_2024-12-01_20-24-01',
         }
         model_path = f"{underage_costs_to_model[current_uc]}/model.pt"
         checkpoint = torch.load(model_path, map_location=device)  # Load to specified device
@@ -545,7 +545,10 @@ class SymmetryAware_OneStoreAndOneWarehouseForWarehouse(MyNeuralNetwork):
         super().__init__(args, problem_params, device)
 
     def get_store_inventory_and_params(self, observation):
-        store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
+        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
+        if 'store_random_yield_mean' in observation:
+            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
+        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
         return torch.cat([observation['store_inventories'], store_params], dim=2)
 
     def forward(self, observation):
@@ -559,162 +562,6 @@ class SymmetryAware_OneStoreAndOneWarehouseForWarehouse(MyNeuralNetwork):
         stores_input = store_inventory_and_params
 
         store_net_results = self.fixed_nets['store'].net['store'](stores_input)
-        store_intermediate_outputs = store_net_results[:, :, 0]
-
-        if self.include_context_for_warehouse_input:
-            input_tensor = self.flatten_then_concatenate_tensors([observation['store_inventories'], observation['warehouse_inventories']])
-            context = self.net['context'](input_tensor)
-            warehouse_input = self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
-            warehouse_intermediate_outputs = self.net['warehouse'](warehouse_input)[:, :, 0]
-        else:
-            warehouse_intermediate_outputs = self.net['warehouse'](observation['warehouse_inventories'])[:, :, 0]
-
-        store_allocation = self.apply_proportional_allocation(
-            store_intermediate_outputs, 
-            observation['warehouse_inventories']
-            )
-        warehouse_allocation = warehouse_intermediate_outputs
-        if self.warehouse_upper_bound_mult is not None:
-            upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult
-            warehouse_allocation = warehouse_intermediate_outputs * upper_bound
-
-        return {
-            'stores': store_allocation, 
-            'warehouses': warehouse_allocation
-            }
-
-class SymmetryAware_OneStoreForWarehouse(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        self.fixed_nets = {}
-        self.include_context_for_warehouse_input = 'include_context_for_warehouse_input' in args and args['include_context_for_warehouse_input']
-        
-        store_net = VanillaOneStoreForWarehouse({
-            'name': 'vanilla_one_store_for_warehouse',
-            'neurons_per_hidden_layer': {
-                'master': [64, 64]
-            },
-            'inner_layer_activations': {
-                'master': 'elu'  
-            },
-            'output_layer_activation': {
-                'master': 'softplus'
-            },
-            'output_sizes': {
-                'master': 1
-            },
-            'initial_bias': None
-        }, problem_params, device)
-
-        current_uc = int(round(problem_params['underage_cost']))
-        underage_costs_to_model = {
-            3: '/user/ml4723/Prj/NIC/ray_results/one_store/run_2024-11-22_22-41-17/run_cc2c4_00009_9_learning_rate=0.0100,samples=4,store_underage_cost=3_2024-11-22_22-41-18',
-            6: '/user/ml4723/Prj/NIC/ray_results/one_store/run_2024-11-22_22-41-17/run_cc2c4_00025_25_learning_rate=0.0010,samples=4,store_underage_cost=6_2024-11-22_22-41-18',
-            9: '/user/ml4723/Prj/NIC/ray_results/one_store/run_2024-11-22_22-41-17/run_cc2c4_00037_37_learning_rate=0.0010,samples=3,store_underage_cost=9_2024-11-22_22-41-18',
-            12: '/user/ml4723/Prj/NIC/ray_results/one_store/run_2024-11-22_22-41-17/run_cc2c4_00052_52_learning_rate=0.0010,samples=3,store_underage_cost=12_2024-11-22_22-41-18'
-        }
-        model_path = f"{underage_costs_to_model[current_uc]}/model.pt"
-        checkpoint = torch.load(model_path, map_location=device)  # Load to specified device
-        store_net.load_state_dict(checkpoint['model_state_dict'])
-        store_net = store_net.to(device)  # Move model to specified device
-        # Turn off gradients for fixed nets
-        for param in store_net.parameters():
-            param.requires_grad = False
-        self.fixed_nets[f'store'] = copy.deepcopy(store_net)
-        super().__init__(args, problem_params, device)
-
-    def get_store_inventory_and_params(self, observation):
-        store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def forward(self, observation):
-        """
-        Use store and warehouse inventories and output a context vector.
-        Then, use the context vector alongside warehouse/store local state to output intermediate outputs for warehouses/store.
-        For stores, interpret intermediate outputs as ordered, and apply proportional allocation whenever inventory is scarce.
-        For warehouses, apply sigmoid to intermediate outputs and multiply by warehouse upper bound.
-        """
-        store_inventory_and_params = self.get_store_inventory_and_params(observation)
-        stores_input = store_inventory_and_params
-
-        store_net_results = self.fixed_nets['store'].net['master'](stores_input)
-        store_intermediate_outputs = store_net_results[:, :, 0]
-
-        if self.include_context_for_warehouse_input:
-            input_tensor = self.flatten_then_concatenate_tensors([observation['store_inventories'], observation['warehouse_inventories']])
-            context = self.net['context'](input_tensor)
-            warehouse_input = self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context)
-            warehouse_intermediate_outputs = self.net['warehouse'](warehouse_input)[:, :, 0]
-        else:
-            warehouse_intermediate_outputs = self.net['warehouse'](observation['warehouse_inventories'])[:, :, 0]
-
-        store_allocation = self.apply_proportional_allocation(
-            store_intermediate_outputs, 
-            observation['warehouse_inventories']
-            )
-        warehouse_allocation = warehouse_intermediate_outputs
-        if self.warehouse_upper_bound_mult is not None:
-            upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult
-            warehouse_allocation = warehouse_intermediate_outputs * upper_bound
-
-        return {
-            'stores': store_allocation, 
-            'warehouses': warehouse_allocation
-            }
-
-class SymmetryAware_OneStoreForWarehouse(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        self.fixed_nets = {}
-        self.include_context_for_warehouse_input = 'include_context_for_warehouse_input' in args and args['include_context_for_warehouse_input']
-        
-        store_net = VanillaOneStoreForWarehouse({
-            'name': 'vanilla_one_store_for_warehouse',
-            'neurons_per_hidden_layer': {
-                'master': [64, 64]
-            },
-            'inner_layer_activations': {
-                'master': 'elu'  
-            },
-            'output_layer_activation': {
-                'master': 'softplus'
-            },
-            'output_sizes': {
-                'master': 1
-            },
-            'initial_bias': None
-        }, problem_params, device)
-
-        current_uc = int(round(problem_params['underage_cost']))
-        underage_costs_to_model = {
-            3: '/user/ml4723/Prj/NIC/ray_results/one_store/run_2024-11-22_22-41-17/run_cc2c4_00009_9_learning_rate=0.0100,samples=4,store_underage_cost=3_2024-11-22_22-41-18',
-            6: '/user/ml4723/Prj/NIC/ray_results/one_store/run_2024-11-22_22-41-17/run_cc2c4_00025_25_learning_rate=0.0010,samples=4,store_underage_cost=6_2024-11-22_22-41-18',
-            9: '/user/ml4723/Prj/NIC/ray_results/one_store/run_2024-11-22_22-41-17/run_cc2c4_00037_37_learning_rate=0.0010,samples=3,store_underage_cost=9_2024-11-22_22-41-18',
-            12: '/user/ml4723/Prj/NIC/ray_results/one_store/run_2024-11-22_22-41-17/run_cc2c4_00052_52_learning_rate=0.0010,samples=3,store_underage_cost=12_2024-11-22_22-41-18'
-        }
-        model_path = f"{underage_costs_to_model[current_uc]}/model.pt"
-        checkpoint = torch.load(model_path, map_location=device)  # Load to specified device
-        store_net.load_state_dict(checkpoint['model_state_dict'])
-        store_net = store_net.to(device)  # Move model to specified device
-        # Turn off gradients for fixed nets
-        for param in store_net.parameters():
-            param.requires_grad = False
-        self.fixed_nets[f'store'] = copy.deepcopy(store_net)
-        super().__init__(args, problem_params, device)
-
-    def get_store_inventory_and_params(self, observation):
-        store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def forward(self, observation):
-        """
-        Use store and warehouse inventories and output a context vector.
-        Then, use the context vector alongside warehouse/store local state to output intermediate outputs for warehouses/store.
-        For stores, interpret intermediate outputs as ordered, and apply proportional allocation whenever inventory is scarce.
-        For warehouses, apply sigmoid to intermediate outputs and multiply by warehouse upper bound.
-        """
-        store_inventory_and_params = self.get_store_inventory_and_params(observation)
-        stores_input = store_inventory_and_params
-
-        store_net_results = self.fixed_nets['store'].net['master'](stores_input)
         store_intermediate_outputs = store_net_results[:, :, 0]
 
         if self.include_context_for_warehouse_input:
@@ -1404,8 +1251,7 @@ class NeuralNetworkCreator:
             'transformed_nv_noquantile': TransformedNV_NoQuantile,
             'transformed_nv_calculated_quantile': TransformedNV_CalculatedQuantile,
             'transformed_nv_noquantile_sep_stores': TransformedNV_NoQuantile_SeparateStores,
-            'symmetry_aware_one_store_for_warehouse': SymmetryAware_OneStoreForWarehouse,
-            'symmetry_aware_one_store_and_one_warehouse_for_warehouse': SymmetryAware_OneStoreAndOneWarehouseForWarehouse
+            'symmetry_aware_independent_store': SymmetryAware_IndependentStore
             }
         return architectures[name]
     
