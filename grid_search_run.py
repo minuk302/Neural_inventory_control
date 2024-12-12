@@ -95,7 +95,7 @@ def run(tuning_configs):
             echelon_params=echelon_params, 
             num_samples=params_by_dataset['train']['n_samples'],  # in this case, num_samples=number of products, which has to be the same across all datasets
             observation_params=observation_params, 
-            seeds=seeds
+            seeds=seeds,
             )
         train_dataset, dev_dataset, test_dataset = dataset_creator.create_datasets(
             scenario, 
@@ -123,7 +123,8 @@ def run(tuning_configs):
             echelon_params, 
             params_by_dataset['test']['n_samples'], 
             observation_params, 
-            test_seeds
+            test_seeds,
+            True
             )
         test_dataset = dataset_creator.create_datasets(scenario, split=False)
 

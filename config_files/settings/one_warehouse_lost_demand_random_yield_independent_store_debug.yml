@@ -70,7 +70,7 @@ store_params:
     'coef_of_var_range': [0.25, 0.50]
     'distribution': 'normal'
     'clip': True
-    'decimals': 3
+    'decimals': 3 
   'random_yield':
     'sample_across_stores': True
     'vary_across_samples': True

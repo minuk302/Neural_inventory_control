@@ -60,7 +60,10 @@ class MainRun:
         self.observation_params = DefaultDict(lambda: None, self.observation_params)
 
         # temporary for debugging
-        self.problem_params['underage_cost'] = sum(self.store_params['underage_cost']['range']) / 2
+        if 'range' in self.store_params['underage_cost']:
+            self.problem_params['underage_cost'] = sum(self.store_params['underage_cost']['range']) / 2 
+        else:
+            self.problem_params['underage_cost'] = self.store_params['underage_cost']['value']
 
     def create_scenario_and_datasets(self):
         if self.sample_data_params['split_by_period']:
@@ -108,7 +111,8 @@ class MainRun:
                 self.echelon_params,
                 self.params_by_dataset['test']['n_samples'],
                 self.observation_params,
-                self.test_seeds
+                self.test_seeds,
+                True
             )
 
             self.test_dataset = self.dataset_creator.create_datasets(self.scenario, split=False)

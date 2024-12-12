@@ -3,6 +3,23 @@ from shared_imports import *
 def override_configs(overriding_params, config_setting, config_hyperparams):
     config_setting = copy.deepcopy(config_setting)
     config_hyperparams = copy.deepcopy(config_hyperparams)
+    
+    # Define all possible override keys
+    valid_override_keys = {
+        'n_stores', 'samples', 'training_n_samples', 'censoring_threshold', 
+        'training_batch_size', 'learning_rate', 'warehouse_holding_cost',
+        'warehouse_lead_time', 'stores_correlation', 'n_sub_sample_for_context',
+        'apply_normalization', 'store_orders_for_warehouse', 
+        'warehouse_lost_order_average_interval', 'store_yield',
+        'omit_context_from_store_input', 'include_context_for_warehouse_input'
+        , 'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks'
+    }
+
+    # Check that all keys in overriding_params are valid
+    for key in overriding_params:
+        if key not in valid_override_keys:
+            raise ValueError(f"Invalid override key: {key}. Valid keys are: {valid_override_keys}")
+
     if 'n_stores' in overriding_params:
         config_setting['problem_params']['n_stores'] = overriding_params['n_stores']
 
@@ -12,6 +29,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'training_n_samples' in overriding_params:
         config_setting['params_by_dataset']['train']['n_samples'] = overriding_params['training_n_samples']
         config_setting['params_by_dataset']['train']['batch_size'] = min(1024, overriding_params['training_n_samples'])
+
+    if 'censoring_threshold' in overriding_params:
+        config_setting['problem_params']['censoring_threshold'] = overriding_params['censoring_threshold']
 
     if 'training_batch_size' in overriding_params:
         config_setting['params_by_dataset']['train']['batch_size'] = overriding_params['training_batch_size']

@@ -20,7 +20,7 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 1  # tested values: 3, 5, 10, 20, 30, 50
+  'n_stores': 3  # tested values: 3, 5, 10, 20, 30, 50
   'n_warehouses': 1
   'n_extra_echelons': 0
   'lost_demand': True
@@ -31,7 +31,7 @@ params_by_dataset :
   'train': 
     'n_samples': 8192  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
     'batch_size': 8192 
-    'periods': 50 
+    'periods': 50
     'ignore_periods': 30 
   'dev': 
     'n_samples': 4096 

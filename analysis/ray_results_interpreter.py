@@ -49,6 +49,7 @@ class RayResultsinterpreter:
                         'omit_context_from_store_input': 'omit_context_from_store_input',
                         'warehouse_lost_order_average_interval': 'warehouse_lost_order_average_interval',
                         'include_context_for_warehouse_input': 'include_context_for_warehouse_input',
+                        'censoring_threshold': 'censoring_threshold',
                     }
                     result = {}
                     for key, value in param_dict.items():

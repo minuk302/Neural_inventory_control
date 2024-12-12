@@ -379,7 +379,9 @@ class VanillaOneWarehouse(MyNeuralNetwork):
                 )
         
         # Apply sigmoid to warehouse intermediate outputs and multiply by warehouse upper bound
-        warehouse_allocation = self.activation_functions['sigmoid'](warehouse_intermediate_outputs)*(self.warehouse_upper_bound.unsqueeze(1))
+        if self.warehouse_upper_bound_mult is not None:
+            upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult
+            warehouse_allocation = self.activation_functions['sigmoid'](warehouse_intermediate_outputs)*upper_bound
 
         return {
             'stores': store_allocation, 
@@ -527,7 +529,7 @@ class SymmetryAware_IndependentStore(MyNeuralNetwork):
             'store_orders_for_warehouse': False,
             'omit_context_from_store_input': True,
             'apply_normalization': False,
-            'warehouse_upper_bound_mult': 4
+            'warehouse_upper_bound_mult': 6
         }, problem_params, device)
 
         current_uc = int(round(problem_params['underage_cost']))

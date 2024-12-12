@@ -16,7 +16,7 @@ optimizer_params:
 nn_params: 
   'name': 'vanilla_one_store_for_warehouse'
   'neurons_per_hidden_layer': 
-    'master': [64, 64]  # For lost demand setting, tested with 2 and 3 hidden layers
+    'master': [256, 256]  # For lost demand setting, tested with 2 and 3 hidden layers
   'inner_layer_activations': 
     'master': 'elu'
   # We will add 1 to the output and apply a softplus within the forward method of the NN!

@@ -1,4 +1,43 @@
 from shared_imports import *
+import scipy.stats as stats
+import scipy.optimize as optimize
+
+
+class PoissonDemandGenerator:
+    def __init__(self, num_samples, periods):
+        self.num_samples = num_samples
+        self.periods = periods
+
+    def estimate_exponential_tail_rate(self, samples, M, n_tail_buckets=3):
+        flat_samples = samples.flatten()
+
+        tail_samples = flat_samples[(flat_samples >= M-n_tail_buckets) & (flat_samples < M)]
+        
+        def neg_log_likelihood(rate):
+            return -np.sum(np.log(stats.expon.pdf(tail_samples - (M-n_tail_buckets), scale=1/rate)))
+        result = optimize.minimize_scalar(neg_log_likelihood, bounds=(0.01, 10), method='bounded')
+        
+        return result.x
+
+    def generate_censored_demand(self, problem_params, demand_params, seed=None):
+        if seed is not None:
+            np.random.seed(seed)
+        
+        M = problem_params.get('censoring_threshold', 7)
+        
+        orig_samples = np.random.poisson(
+            demand_params['mean'], 
+            size=(self.num_samples, problem_params['n_stores'], self.periods)
+        )
+        imputed_samples = np.minimum(orig_samples, M)
+        censored_mask = orig_samples >= M
+        lambda_exp = self.estimate_exponential_tail_rate(orig_samples, M)
+        censored_tails = np.round(
+            M + np.random.exponential(1/lambda_exp, size=np.sum(censored_mask))
+        ).astype(int)
+        
+        imputed_samples[censored_mask] = censored_tails
+        return imputed_samples
 
 class Scenario():
     '''
@@ -6,7 +45,7 @@ class Scenario():
     First samples parameters (e.g, mean demand and std for each store, costs, lead times, etc...) if there are parameters to be sampled.
     Then, creates demand traces, and the initial values (e.g., of inventory) to be used.
     '''
-    def __init__(self, periods, problem_params, store_params, warehouse_params, echelon_params, num_samples, observation_params, seeds=None):
+    def __init__(self, periods, problem_params, store_params, warehouse_params, echelon_params, num_samples, observation_params, seeds=None, is_test=False):
 
         self.problem_params = problem_params
         self.store_params = store_params
@@ -16,7 +55,7 @@ class Scenario():
         self.periods = periods
         self.observation_params = observation_params
         self.seeds = seeds
-        self.demands = self.generate_demand_samples(problem_params, store_params, store_params['demand'], seeds)
+        self.demands = self.generate_demand_samples(problem_params, store_params, store_params['demand'], seeds, is_test)
         self.store_random_yields = None
         if 'random_yield' in store_params:
             if 'lost_order_average_interval' in store_params['random_yield']:
@@ -135,7 +174,7 @@ class Scenario():
         
         return split_by
     
-    def generate_demand_samples(self, problem_params, store_params, demand_params, seeds):
+    def generate_demand_samples(self, problem_params, store_params, demand_params, seeds, is_test=False):
         """
         Generate demand data
         """
@@ -153,7 +192,7 @@ class Scenario():
         self.adjust_seeds_for_consistency(problem_params, store_params, demand_params, seeds)
 
         # Sample demand traces
-        demand = demand_generator_functions[demand_params['distribution']](problem_params, demand_params, seeds['demand'])
+        demand = demand_generator_functions[demand_params['distribution']](problem_params, demand_params, seeds['demand'], is_test)
 
         if demand_params['clip']:  # Truncate at 0 from below if specified
             demand = np.clip(demand, 0, demand_params.get('clip_max', None))
@@ -172,7 +211,7 @@ class Scenario():
             except Exception as e:
                 print(f'Error: {e}')
     
-    def read_real_demand_data(self, problem_params, demand_params, seed):
+    def read_real_demand_data(self, problem_params, demand_params, seed, is_test=False):
         """
         Read real demand data
         """
@@ -188,7 +227,7 @@ class Scenario():
         if demand_params['sample_across_stores']:  # only supported for normal demand
             demand_params.update(self.sample_normal_mean_and_std(problem_params, demand_params, seeds))
     
-    def generate_normal_demand(self, problem_params, demand_params, seed):
+    def generate_normal_demand(self, problem_params, demand_params, seed, is_test=False):
         """
         Generate normal demand data
         """
@@ -225,11 +264,13 @@ class Scenario():
 
         return demand
 
-    def generate_poisson_demand(self, problem_params, demand_params, seed):
-
-        # Set seed
+    def generate_poisson_demand(self, problem_params, demand_params, seed, is_test=False):
         if seed is not None:
             np.random.seed(seed)
+        
+        if is_test == False and 'censor_demands_for_train_and_dev' in problem_params and problem_params['censor_demands_for_train_and_dev']:
+            demand_generator = PoissonDemandGenerator(self.num_samples, self.periods)
+            return demand_generator.generate_censored_demand(problem_params, demand_params, seed)
         
         return np.random.poisson(demand_params['mean'], size=(self.num_samples, problem_params['n_stores'], self.periods))
 
