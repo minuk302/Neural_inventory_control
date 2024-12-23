@@ -152,7 +152,8 @@ class MainRun:
                 self.problem_params,
                 self.observation_params,
                 self.params_by_dataset,
-                self.trainer_params
+                self.trainer_params,
+                self.store_params
             )
         elif self.train_or_test == 'test':
             with torch.no_grad():

@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.01
 
 nn_params: 
-  'name': 'symmetry_aware_independent_store'
+  'name': 'pretrained_store'
   'inner_layer_activations': 
     'context': 'elu'
     'warehouse': 'elu'

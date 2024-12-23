@@ -62,8 +62,19 @@ class Scenario():
                 self.store_random_yields = self.generate_lost_yield_mask(store_params['random_yield'], self.demands, seeds['demand'])
             else:
                 self.store_random_yields = self.generate_demand_samples(problem_params, store_params, store_params['random_yield'], seeds)
-        self.underage_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['underage_cost'], seeds['underage_cost'], discrete=False)
-        self.holding_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['holding_cost'], seeds['holding_cost'], discrete=False)
+        
+        if problem_params.get('exp_underage_cost', False):
+            store_params['underage_cost']['range'][0] = max(np.log10(warehouse_params['holding_cost']), store_params['underage_cost']['range'][0])
+            self.underage_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['underage_cost'], seeds['underage_cost'], discrete=False)
+            self.underage_costs = 10**self.underage_costs
+        else:
+            self.underage_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['underage_cost'], seeds['underage_cost'], discrete=False)
+            
+        if problem_params.get('varying_underage_cost', False):
+            self.holding_costs = self.underage_costs * 0.1
+        else:
+            self.holding_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['holding_cost'], seeds['holding_cost'], discrete=False)
+        
         self.lead_times = self.generate_data_for_samples_and_stores(problem_params, store_params['lead_time'], seeds['lead_time'], discrete=True).to(torch.int64)
         self.means, self.stds, self.store_random_yield_mean, self.store_random_yield_std = self.generate_means_and_stds(observation_params, store_params)
         self.initial_inventories = self.generate_initial_inventories(problem_params, store_params, self.demands, self.lead_times, seeds['initial_inventory'])
@@ -198,6 +209,28 @@ class Scenario():
             demand = np.clip(demand, 0, demand_params.get('clip_max', None))
         
         return torch.tensor(demand)
+
+    def generate_costs_for_exponential_underage_costs(self, problem_params, store_params, seed):
+        np.random.seed(seed)
+
+        if store_params['underage_cost']['sample_across_stores'] and store_params['underage_cost']['vary_across_samples']:
+            store_exponents = np.random.uniform(*store_params['underage_cost']['range'], size=(self.num_samples * problem_params['n_stores'])).reshape(self.num_samples, problem_params['n_stores'])
+        elif store_params['underage_cost']['sample_across_stores']:
+            store_exponents = np.random.uniform(*store_params['underage_cost']['range'], size=problem_params['n_stores']).reshape(1, -1).repeat(self.num_samples, axis=0)
+        elif store_params['underage_cost']['vary_across_samples']:
+            store_exponents = np.random.uniform(*store_params['underage_cost']['range'], size=self.num_samples).reshape(-1, 1).repeat(problem_params['n_stores'], axis=1)
+        elif store_params['underage_cost']['expand']:
+            store_exponents = np.array(store_params['underage_cost']['value']).reshape(1, 1).repeat(self.num_samples, axis=0).repeat(problem_params['n_stores'], axis=1)
+        else:
+            store_exponents = np.random.uniform(*store_params['underage_cost']['range'], size=1).repeat(self.num_samples * problem_params['n_stores']).reshape(self.num_samples, problem_params['n_stores'])
+        store_underage_costs = np.power(10, store_exponents)
+        store_holding_costs = 0.1 * store_underage_costs
+        warehouse_holding_cost = 0.3 * store_holding_costs.sum(axis=1, keepdims=True)
+        return (
+            torch.tensor(store_underage_costs),
+            torch.tensor(store_holding_costs), 
+            torch.tensor(warehouse_holding_cost)
+        )
 
     def adjust_seeds_for_consistency(self, problem_params, store_params, demand_params, seeds):
         """

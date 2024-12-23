@@ -498,7 +498,7 @@ class SymmetryAware(MyNeuralNetwork):
             'warehouses': warehouse_allocation
             }
 
-class SymmetryAware_IndependentStore(MyNeuralNetwork):
+class Pretrained_Store(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         self.fixed_nets = {}
         self.include_context_for_warehouse_input = 'include_context_for_warehouse_input' in args and args['include_context_for_warehouse_input']
@@ -534,7 +534,7 @@ class SymmetryAware_IndependentStore(MyNeuralNetwork):
 
         current_uc = int(round(problem_params['underage_cost']))
         underage_costs_to_model = {
-            9: '/user/ml4723/Prj/NIC/ray_results/store_disruption_independent_store_debug_2/run_2024-12-01_20-24-01/run_1cbb3_00010_10_learning_rate=0.0010,omit_context_from_store_input=True,samples=4,store_orders_for_warehouse=False,store_undera_2024-12-01_20-24-01',
+            11: '/user/ml4723/Prj/NIC/ray_results/warehouse_varying_underage_cost/pretrained_store/run_2024-12-12_21-22-59/run_2c34f_00007_7_learning_rate=0.0010,omit_context_from_store_input=True,samples=3,store_orders_for_warehouse=False_2024-12-12_21-23-00',
         }
         model_path = f"{underage_costs_to_model[current_uc]}/model.pt"
         checkpoint = torch.load(model_path, map_location=device)  # Load to specified device
@@ -1253,7 +1253,7 @@ class NeuralNetworkCreator:
             'transformed_nv_noquantile': TransformedNV_NoQuantile,
             'transformed_nv_calculated_quantile': TransformedNV_CalculatedQuantile,
             'transformed_nv_noquantile_sep_stores': TransformedNV_NoQuantile_SeparateStores,
-            'symmetry_aware_independent_store': SymmetryAware_IndependentStore
+            'pretrained_store': Pretrained_Store
             }
         return architectures[name]
     

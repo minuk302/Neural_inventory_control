@@ -28,7 +28,7 @@ class Trainer():
         self.all_dev_losses = []
         self.all_test_losses = []
 
-    def train(self, epochs, loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params):
+    def train(self, epochs, loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params, store_params):
         """
         Train a parameterized policy
 
@@ -132,6 +132,7 @@ class Trainer():
                                 observation_params,
                                 train=False, 
                                 ignore_periods=params_by_dataset['test']['ignore_periods'],
+                                discrete_allocation=store_params['demand']['distribution'] == 'poisson'
                                 )
                             report_dict['test_loss'] = average_test_loss_to_report
                     train.report(report_dict)

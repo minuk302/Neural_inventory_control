@@ -11,8 +11,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'warehouse_lead_time', 'stores_correlation', 'n_sub_sample_for_context',
         'apply_normalization', 'store_orders_for_warehouse', 
         'warehouse_lost_order_average_interval', 'store_yield',
-        'omit_context_from_store_input', 'include_context_for_warehouse_input'
-        , 'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks'
+        'omit_context_from_store_input', 'include_context_for_warehouse_input',
+        'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
+        'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs'
     }
 
     # Check that all keys in overriding_params are valid
@@ -22,6 +23,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
 
     if 'n_stores' in overriding_params:
         config_setting['problem_params']['n_stores'] = overriding_params['n_stores']
+
+    if 'stop_if_no_improve_for_epochs' in overriding_params:
+        config_hyperparams['trainer_params']['stop_if_no_improve_for_epochs'] = overriding_params['stop_if_no_improve_for_epochs']
 
     if 'different_for_each_sample' in config_setting['seeds'] and config_setting['seeds']['different_for_each_sample'] == True:
         config_setting['seeds']['demand'] = config_setting['seeds']['demand'] + overriding_params['samples'] * 100
@@ -100,6 +104,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
             )
         else:
             config_setting['store_params']['underage_cost']['value'] = overriding_params['store_underage_cost']
+
+    if 'store_lead_time' in overriding_params:
+        config_setting['store_params']['lead_time']['value'] = overriding_params['store_lead_time']
 
     if 'overriding_networks' in overriding_params:
         for net in overriding_params['overriding_networks']:
