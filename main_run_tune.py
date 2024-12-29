@@ -30,7 +30,7 @@ if len(sys.argv) >= 5:
 else:
     gpus_to_use = list(range(torch.cuda.device_count()))
 total_cpus = os.cpu_count()
-num_instances_per_gpu = 40
+num_instances_per_gpu = 1
 n_cpus_per_instance = max(1, min(16, total_cpus // (gpus_in_machine * num_instances_per_gpu) if gpus_in_machine > 0 else total_cpus))
 
 load_model = False
@@ -164,6 +164,7 @@ if "censored_demands" == testset_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.1, 0.01]),
         }
+
 if "generic_architecture" == testset_name:
     # config = "one_warehouse_lost_demand_exp_underage_cost_random_yield"
     config = "one_warehouse_lost_demand"
@@ -172,11 +173,11 @@ if "generic_architecture" == testset_name:
         "train_n_samples": tune.grid_search([32768]),
         "dev_n_samples": tune.grid_search([32768]),
         "test_n_samples": tune.grid_search([32768]),
-        "train_batch_size": tune.grid_search([4096]),
+        "train_batch_size": tune.grid_search([1024]),
         "dev_batch_size": tune.grid_search([4096]),
         "test_batch_size": tune.grid_search([4096]),
-        "stop_if_no_improve_for_epochs": tune.grid_search([150]),
-        "samples": tune.grid_search([1, 2, 3, 4]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([100]),
+        "samples": tune.grid_search([1, 2, 3]),
     }
     if 'symmetry_aware' == hyperparams_name:
         search_space = { **common_setups,
@@ -184,10 +185,38 @@ if "generic_architecture" == testset_name:
             "store_orders_for_warehouse": tune.grid_search([False]),
             "omit_context_from_store_input": tune.grid_search([False]),
         }
-    if 'GNN' == hyperparams_name:
+    if 'GNN_MP' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         }
+    if 'GNN_MP_NN_Per_Layer' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        }
+
+if "generic_architecture_transshipment" == testset_name:
+    config = "transshipment_backlogged"
+    common_setups = {
+        "config": tune.grid_search([config]),
+        "store_lead_time": tune.grid_search([2, 6]),
+        "store_underage_cost": tune.grid_search([4, 9]),
+        "stores_correlation": tune.grid_search([0.0, 0.5]),
+        "samples": tune.grid_search([1, 2, 3]),
+        "early_stop_check_epochs": tune.grid_search([25]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([100]),
+    }
+    if 'vanilla_transshipment' == hyperparams_name:  
+        search_space = {**common_setups}
+    if 'GNN_MP_transshipment' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        }
+    if 'GNN_MP_NN_Per_Layer_transshipment' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        }
+
+
 else:
     if 'symmetry_aware' == hyperparams_name:
         search_space = {
@@ -618,29 +647,6 @@ else:
             "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
         }
         save_path = 'ray_results/warehouse_real/GNN_message_passing'
-
-
-
-
-
-
-    elif 'symmetry_aware_transshipment' == hyperparams_name:
-            search_space = {
-                'n_stores': n_stores,
-                "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-                'context': tune.grid_search([0, 1, 256]),
-                "overriding_networks": ["context"],
-                "overriding_outputs": ["context"],
-                "samples": tune.grid_search([1, 2, 3]),
-            }
-            save_path = 'ray_results/transshipment'
-    elif 'vanilla_transshipment' == hyperparams_name:
-        search_space = {
-            'n_stores': n_stores,
-            "learning_rate": tune.grid_search([0.0001]),
-            "samples": tune.grid_search([0, 1, 2]),
-        }
-        save_path = 'ray_results/transshipment/vanilla'
 trainable_with_resources = tune.with_resources(run, {"cpu": n_cpus_per_instance, "gpu": gpus_per_instance})
 if n_stores != None:
     save_path += f'/{n_stores}'

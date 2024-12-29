@@ -14,13 +14,18 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'warehouse_lost_order_average_interval', 'store_yield',
         'omit_context_from_store_input', 'include_context_for_warehouse_input',
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
-        'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs'
+        'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs'
     }
 
     # Check that all keys in overriding_params are valid
     for key in overriding_params:
         if key not in valid_override_keys:
             raise ValueError(f"Invalid override key: {key}. Valid keys are: {valid_override_keys}")
+
+    if 'early_stop_check_epochs' in overriding_params:
+        config_hyperparams['trainer_params']['do_dev_every_n_epochs'] = overriding_params['early_stop_check_epochs']
+        config_hyperparams['trainer_params']['print_results_every_n_epochs'] = overriding_params['early_stop_check_epochs']
+        config_hyperparams['trainer_params']['epochs_between_save'] = overriding_params['early_stop_check_epochs']
 
     if 'weibull_fixed_lambda' in overriding_params:
         config_setting['problem_params']['weibull_fixed_lambda'] = overriding_params['weibull_fixed_lambda']

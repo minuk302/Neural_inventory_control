@@ -388,6 +388,131 @@ class VanillaOneWarehouse(MyNeuralNetwork):
             'warehouses': warehouse_allocation
             }
 
+class GNN_MP(MyNeuralNetwork):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+
+    def get_store_inventory_and_params(self, observation):
+        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
+        if 'store_random_yield_mean' in observation:
+            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
+        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
+        return torch.cat([observation['store_inventories'], store_params], dim=2)
+
+    def forward(self, observation):
+        store_inventory_and_params = self.get_store_inventory_and_params(observation)
+        store_nodes = self.net['initial_store_embedding'](store_inventory_and_params)
+        warehouse_node = self.net['initial_warehouse_embedding'](observation['warehouse_inventories'])
+
+        # Message passing iterations
+        for _ in range(2):
+            # Apply node embedding before aggregation
+            store_nodes_embedded = self.net['node_embedding'](store_nodes)
+            warehouse_node_embedded = self.net['node_embedding'](warehouse_node)
+            
+            # Store nodes aggregate from warehouse
+            warehouse_node_expanded = warehouse_node_embedded.expand(-1, store_nodes.size(1), -1)
+            store_aggregation = self.net['aggregation_embedding'](warehouse_node_expanded)
+            
+            # Warehouse node aggregates from stores 
+            warehouse_aggregation = self.net['aggregation_embedding'](store_nodes_embedded.mean(dim=1, keepdim=True))
+            
+            # Update nodes
+            store_nodes = self.net['update_embedding'](
+                torch.cat([store_nodes, store_aggregation], dim=-1)
+            )
+            warehouse_node = self.net['update_embedding'](
+                torch.cat([warehouse_node, warehouse_aggregation], dim=-1)
+            )
+
+        # Final node embeddings to outputs
+        store_intermediate_outputs = self.net['store'](store_nodes)
+        warehouse_intermediate_outputs = self.net['warehouse'](warehouse_node)
+
+        # Calculate allocations
+        if self.__class__.__name__ == 'GNN_MP_transshipment':
+            store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
+        else:
+            store_allocation = self.apply_proportional_allocation(
+                store_intermediate_outputs[:,:,0], 
+                observation['warehouse_inventories']
+                )
+        
+        warehouse_allocation = warehouse_intermediate_outputs[:,:,0]
+        if self.warehouse_upper_bound_mult is not None:
+            upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult
+            warehouse_allocation = warehouse_intermediate_outputs[:,:,0] * upper_bound
+
+        return {
+            'stores': store_allocation,
+            'warehouses': warehouse_allocation
+        }
+class GNN_MP_transshipment(GNN_MP):
+    pass
+
+class GNN_MP_NN_Per_Layer(MyNeuralNetwork):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+
+    def get_store_inventory_and_params(self, observation):
+        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
+        if 'store_random_yield_mean' in observation:
+            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
+        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
+        return torch.cat([observation['store_inventories'], store_params], dim=2)
+
+    def forward(self, observation):
+        store_inventory_and_params = self.get_store_inventory_and_params(observation)
+        store_nodes = self.net['initial_store_embedding'](store_inventory_and_params)
+        warehouse_node = self.net['initial_warehouse_embedding'](observation['warehouse_inventories'])
+
+        # Message passing iterations
+        for i in range(2):
+            # Apply node embedding before aggregation
+            store_nodes_embedded = self.net[f'node_embedding_{i+1}'](store_nodes)
+            warehouse_node_embedded = self.net[f'node_embedding_{i+1}'](warehouse_node)
+            
+            # Store nodes aggregate from warehouse
+            warehouse_node_expanded = warehouse_node_embedded.expand(-1, store_nodes.size(1), -1)
+            store_aggregation = self.net[f'aggregation_embedding_{i+1}'](warehouse_node_expanded)
+            
+            # Warehouse node aggregates from stores 
+            warehouse_aggregation = self.net[f'aggregation_embedding_{i+1}'](store_nodes_embedded.mean(dim=1, keepdim=True))
+            
+            # Update nodes
+            store_nodes = self.net[f'update_embedding_{i+1}'](
+                torch.cat([store_nodes, store_aggregation], dim=-1)
+            )
+            warehouse_node = self.net[f'update_embedding_{i+1}'](
+                torch.cat([warehouse_node, warehouse_aggregation], dim=-1)
+            )
+
+        # Final node embeddings to outputs
+        store_intermediate_outputs = self.net['store'](store_nodes)
+        warehouse_intermediate_outputs = self.net['warehouse'](warehouse_node)
+
+        # Calculate allocations
+        if self.__class__.__name__ == 'GNN_MP_NN_Per_Layer_transshipment':
+            store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
+        else:
+            store_allocation = self.apply_proportional_allocation(
+                store_intermediate_outputs[:,:,0], 
+                observation['warehouse_inventories']
+                )
+        
+        warehouse_allocation = warehouse_intermediate_outputs[:,:,0]
+        if self.warehouse_upper_bound_mult is not None:
+            upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult
+            warehouse_allocation = warehouse_intermediate_outputs[:,:,0] * upper_bound
+
+        return {
+            'stores': store_allocation,
+            'warehouses': warehouse_allocation
+        }
+
+class GNN_MP_NN_Per_Layer_transshipment(GNN_MP_NN_Per_Layer):
+    pass
+
 class SymmetryAware(MyNeuralNetwork):
     """
     Symmetry-aware neural network for settings with one warehouse and many stores
@@ -1227,7 +1352,11 @@ class NeuralNetworkCreator:
             'transformed_nv_noquantile': TransformedNV_NoQuantile,
             'transformed_nv_calculated_quantile': TransformedNV_CalculatedQuantile,
             'transformed_nv_noquantile_sep_stores': TransformedNV_NoQuantile_SeparateStores,
-            'pretrained_store': Pretrained_Store
+            'pretrained_store': Pretrained_Store,
+            'GNN_MP': GNN_MP,
+            'GNN_MP_NN_Per_Layer': GNN_MP_NN_Per_Layer,
+            'GNN_MP_transshipment': GNN_MP_transshipment,
+            'GNN_MP_NN_Per_Layer_transshipment': GNN_MP_NN_Per_Layer_transshipment
             }
         return architectures[name]
     
