@@ -51,6 +51,9 @@ class RayResultsinterpreter:
                         'include_context_for_warehouse_input': 'include_context_for_warehouse_input',
                         'censoring_threshold': 'censoring_threshold',
                         'store_lead_time': 'store_lead_time',
+                        'censor_demands_for_train_and_dev': 'censor_demands_for_train_and_dev',
+                        'weibull_fixed_lambda': 'weibull_fixed_lambda',
+                        'weibull_k': 'weibull_k',
                     }
                     result = {}
                     for key, value in param_dict.items():

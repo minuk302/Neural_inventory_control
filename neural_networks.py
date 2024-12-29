@@ -730,30 +730,6 @@ class SymmetryAwareRealData(SymmetryAware):
 
 class SymmetryGNNRealData(SymmetryAwareRealData, SymmetryGNN):
     pass
-    
-class SymmetryGNN_MessagePassing(SymmetryAware):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-
-    def get_context(self, observation, store_inventory_and_params):
-        store_embeddings = self.net['store_embedding'](store_inventory_and_params)
-        aggregated_store_embeddings = store_embeddings.mean(dim=1)
-
-        warehouse_embedding_input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
-        warehouse_embedding = self.net['warehouse_embedding'](warehouse_embedding_input_tensor)
-
-        combined_embeddings = torch.cat([
-            store_embeddings,
-            warehouse_embedding.unsqueeze(1).expand(-1, store_embeddings.size(1), -1)
-        ], dim=-1)
-        updated_store_embeddings = self.net['store_embedding_update'](combined_embeddings)
-        aggregated_updated_store_embeddings = updated_store_embeddings.mean(dim=1)
-
-        input_tensor = self.flatten_then_concatenate_tensors([aggregated_updated_store_embeddings, warehouse_embedding])
-        return self.net['context'](input_tensor)
-
-class SymmetryGNN_MessagePassingRealData(SymmetryAwareRealData, SymmetryGNN_MessagePassing):
-    pass
 
 class VanillaTransshipment(VanillaOneWarehouse):
     """
@@ -1246,8 +1222,6 @@ class NeuralNetworkCreator:
             'just_in_time': JustInTime,
             'symmetry_aware_transshipment': SymmetryAwareTransshipment,
             'SymmetryGNN': SymmetryGNN,
-            'SymmetryGNN_MessagePassing': SymmetryGNN_MessagePassing,
-            'SymmetryGNN_MessagePassingRealData': SymmetryGNN_MessagePassingRealData,
             'weekly_forecast_NN': WeeklyForecastNN,
             'GNN_Separation': GNN_Separation,
             'transformed_nv_noquantile': TransformedNV_NoQuantile,

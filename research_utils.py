@@ -6,8 +6,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     
     # Define all possible override keys
     valid_override_keys = {
-        'n_stores', 'samples', 'training_n_samples', 'censoring_threshold', 
-        'training_batch_size', 'learning_rate', 'warehouse_holding_cost',
+        'config', 'repeats', 'censor_demands_for_train_and_dev', 'weibull_fixed_lambda', 'weibull_k',
+        'n_stores', 'samples', 'train_n_samples', 'dev_n_samples', 'test_n_samples', 'censoring_threshold', 
+        'train_batch_size', 'dev_batch_size', 'test_batch_size', 'learning_rate', 'warehouse_holding_cost',
         'warehouse_lead_time', 'stores_correlation', 'n_sub_sample_for_context',
         'apply_normalization', 'store_orders_for_warehouse', 
         'warehouse_lost_order_average_interval', 'store_yield',
@@ -21,6 +22,15 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         if key not in valid_override_keys:
             raise ValueError(f"Invalid override key: {key}. Valid keys are: {valid_override_keys}")
 
+    if 'weibull_fixed_lambda' in overriding_params:
+        config_setting['problem_params']['weibull_fixed_lambda'] = overriding_params['weibull_fixed_lambda']
+
+    if 'weibull_k' in overriding_params:
+        config_setting['problem_params']['weibull_k'] = overriding_params['weibull_k']
+
+    if 'censor_demands_for_train_and_dev' in overriding_params:
+        config_setting['problem_params']['censor_demands_for_train_and_dev'] = overriding_params['censor_demands_for_train_and_dev']
+
     if 'n_stores' in overriding_params:
         config_setting['problem_params']['n_stores'] = overriding_params['n_stores']
 
@@ -30,15 +40,26 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'different_for_each_sample' in config_setting['seeds'] and config_setting['seeds']['different_for_each_sample'] == True:
         config_setting['seeds']['demand'] = config_setting['seeds']['demand'] + overriding_params['samples'] * 100
 
-    if 'training_n_samples' in overriding_params:
-        config_setting['params_by_dataset']['train']['n_samples'] = overriding_params['training_n_samples']
-        config_setting['params_by_dataset']['train']['batch_size'] = min(1024, overriding_params['training_n_samples'])
+    if 'train_n_samples' in overriding_params:
+        config_setting['params_by_dataset']['train']['n_samples'] = overriding_params['train_n_samples']
+
+    if 'train_batch_size' in overriding_params:
+        config_setting['params_by_dataset']['train']['batch_size'] = overriding_params['train_batch_size']
+
+    if 'dev_n_samples' in overriding_params:
+        config_setting['params_by_dataset']['dev']['n_samples'] = overriding_params['dev_n_samples']
+
+    if 'dev_batch_size' in overriding_params:
+        config_setting['params_by_dataset']['dev']['batch_size'] = overriding_params['dev_batch_size']
+
+    if 'test_n_samples' in overriding_params:
+        config_setting['params_by_dataset']['test']['n_samples'] = overriding_params['test_n_samples']
+
+    if 'test_batch_size' in overriding_params:
+        config_setting['params_by_dataset']['test']['batch_size'] = overriding_params['test_batch_size']
 
     if 'censoring_threshold' in overriding_params:
         config_setting['problem_params']['censoring_threshold'] = overriding_params['censoring_threshold']
-
-    if 'training_batch_size' in overriding_params:
-        config_setting['params_by_dataset']['train']['batch_size'] = overriding_params['training_batch_size']
     
     if 'learning_rate' in overriding_params:
         config_hyperparams['optimizer_params']['learning_rate'] = overriding_params['learning_rate']

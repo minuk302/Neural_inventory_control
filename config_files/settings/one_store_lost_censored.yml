@@ -26,7 +26,7 @@ problem_params :
   'lost_demand': True
   'maximize_profit': False
   'report_test_loss': True
-  'censor_demands_for_train_and_dev': True
+  'censor_demands_for_train_and_dev': 'weibull'
   'censoring_threshold': 5
 
 params_by_dataset : 

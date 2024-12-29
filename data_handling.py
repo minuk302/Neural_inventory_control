@@ -1,43 +1,82 @@
 from shared_imports import *
 import scipy.stats as stats
 import scipy.optimize as optimize
+import warnings
 
+class WeibullDemandGenerator:
+   def __init__(self, num_samples, periods):
+       self.num_samples = num_samples
+       self.periods = periods
 
-class PoissonDemandGenerator:
-    def __init__(self, num_samples, periods):
-        self.num_samples = num_samples
-        self.periods = periods
+   def estimate_weibull_scale(self, samples, M, n_tail_buckets=3, fixed_lambda=None):
+       if fixed_lambda is not None:
+           return fixed_lambda
+           
+       flat_samples = samples.flatten()
+       tail_samples = flat_samples[(flat_samples >= M-n_tail_buckets) & (flat_samples <= M)]
+       n_at_threshold = np.sum(flat_samples == M)
+       
+       def neg_log_likelihood(scale):
+           eps = 1e-10
+           scale = max(scale, eps)
+           
+           uncensored = tail_samples[tail_samples < M]
+           pdf_term = np.sum(np.log(eps + stats.weibull_min.pdf(
+               uncensored - (M-n_tail_buckets), 
+               c=self.k,
+               scale=scale
+           )))
+           
+           if n_at_threshold > 0:
+               sf = stats.weibull_min.sf(n_tail_buckets - 1, c=self.k, scale=scale)
+               threshold_term = n_at_threshold * np.log(eps + sf)
+           else:
+               threshold_term = 0
+               
+           return -(pdf_term + threshold_term)
+       
+       result = optimize.minimize_scalar(
+           neg_log_likelihood, 
+           bounds=(1e-6, 20), 
+           method='bounded',
+           options={'xatol': 1e-8}
+       )
 
-    def estimate_exponential_tail_rate(self, samples, M, n_tail_buckets=3):
-        flat_samples = samples.flatten()
+       if not result.success:
+           warnings.warn(f"Scale estimation did not converge: {result.message}")
+           
+       return result.x
 
-        tail_samples = flat_samples[(flat_samples >= M-n_tail_buckets) & (flat_samples < M)]
-        
-        def neg_log_likelihood(rate):
-            return -np.sum(np.log(stats.expon.pdf(tail_samples - (M-n_tail_buckets), scale=1/rate)))
-        result = optimize.minimize_scalar(neg_log_likelihood, bounds=(0.01, 10), method='bounded')
-        
-        return result.x
-
-    def generate_censored_demand(self, problem_params, demand_params, seed=None):
-        if seed is not None:
-            np.random.seed(seed)
-        
-        M = problem_params.get('censoring_threshold', 7)
-        
-        orig_samples = np.random.poisson(
-            demand_params['mean'], 
-            size=(self.num_samples, problem_params['n_stores'], self.periods)
-        )
-        imputed_samples = np.minimum(orig_samples, M)
-        censored_mask = orig_samples >= M
-        lambda_exp = self.estimate_exponential_tail_rate(orig_samples, M)
-        censored_tails = np.round(
-            M + np.random.exponential(1/lambda_exp, size=np.sum(censored_mask))
-        ).astype(int)
-        
-        imputed_samples[censored_mask] = censored_tails
-        return imputed_samples
+   def fit_and_sample(self, problem_params, demand_params, seed=None):
+       if seed is not None:
+           np.random.seed(seed)
+       
+       M = problem_params.get('censoring_threshold', 7)
+       fixed_lambda = problem_params.get('weibull_fixed_lambda', None)
+       self.k = problem_params.get('weibull_k', 2.0)
+       n_tail_buckets = problem_params.get('n_tail_buckets', 3)
+       
+       orig_samples = np.random.poisson(
+           demand_params['mean'], 
+           size=(self.num_samples, problem_params['n_stores'], self.periods)
+       )
+       
+       imputed_samples = np.minimum(orig_samples, M)
+       censored_mask = orig_samples >= M
+       
+       weibull_scale = self.estimate_weibull_scale(orig_samples, M, n_tail_buckets, fixed_lambda)
+       
+       n_censored = np.sum(censored_mask)
+       lower_bound = stats.weibull_min.cdf(n_tail_buckets, c=self.k, scale=weibull_scale)
+       uniform_samples = np.random.uniform(lower_bound, 1-1e-10, size=n_censored)
+       
+       censored_tails = np.floor(
+           M + stats.weibull_min.ppf(uniform_samples, c=self.k, scale=weibull_scale) - n_tail_buckets
+       ).astype(int)
+       
+       imputed_samples[censored_mask] = censored_tails
+       
+       return imputed_samples
 
 class Scenario():
     '''
@@ -70,7 +109,7 @@ class Scenario():
         else:
             self.underage_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['underage_cost'], seeds['underage_cost'], discrete=False)
             
-        if problem_params.get('varying_underage_cost', False):
+        if problem_params.get('holding_cost_is_ratio_of_underage_cost', False):
             self.holding_costs = self.underage_costs * 0.1
         else:
             self.holding_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['holding_cost'], seeds['holding_cost'], discrete=False)
@@ -301,9 +340,12 @@ class Scenario():
         if seed is not None:
             np.random.seed(seed)
         
-        if is_test == False and 'censor_demands_for_train_and_dev' in problem_params and problem_params['censor_demands_for_train_and_dev']:
-            demand_generator = PoissonDemandGenerator(self.num_samples, self.periods)
-            return demand_generator.generate_censored_demand(problem_params, demand_params, seed)
+        if is_test == False and 'censor_demands_for_train_and_dev' in problem_params and problem_params['censor_demands_for_train_and_dev'] != None:
+            if problem_params['censor_demands_for_train_and_dev'] == 'weibull':
+                demand_generator = WeibullDemandGenerator(self.num_samples, self.periods)
+                return demand_generator.fit_and_sample(problem_params, demand_params, seed)
+            else:
+                raise Exception('Censoring method not supported')
         
         return np.random.poisson(demand_params['mean'], size=(self.num_samples, problem_params['n_stores'], self.periods))
 
