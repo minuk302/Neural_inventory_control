@@ -24,7 +24,7 @@ class RayResultsinterpreter:
                     # if data['dev_loss'].isna().any() or ('test_loss' in data and data['test_loss'].isna().any()) or data['train_loss'].isna().any():
                     #     print(f"Error, NaN values found in loss columns {subfolder_path}: ")
                     #     continue
-                    data.fillna(0, inplace=True)
+                    data.fillna(99999, inplace=True)
                     with open(params_file, 'r') as file:
                         params = json.load(file)
                     param_dict = {
@@ -46,7 +46,6 @@ class RayResultsinterpreter:
                         'n_sub_sample_for_context': 'n_sub_sample_for_context',
                         'apply_normalization': 'apply_normalization',
                         'store_orders_for_warehouse': 'store_orders_for_warehouse',
-                        'omit_context_from_store_input': 'omit_context_from_store_input',
                         'warehouse_lost_order_average_interval': 'warehouse_lost_order_average_interval',
                         'include_context_for_warehouse_input': 'include_context_for_warehouse_input',
                         'censoring_threshold': 'censoring_threshold',

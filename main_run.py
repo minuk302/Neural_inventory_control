@@ -24,7 +24,10 @@ class MainRun:
 
         if recorder_config_path is not None:
             self.override_configs()
-            self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams, True, recorder_identifier)
+            start_record = True
+            if recorder_identifier is None:
+                start_record = False
+            self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams, start_record, recorder_identifier)
         else:
             self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams)
 

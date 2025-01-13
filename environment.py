@@ -151,20 +151,27 @@ class Simulator(gym.Env):
                 self.observation,
                 )
             reward += w_reward
-            if self.recorder.is_recording:
-                self.recorder.on_step(s_underage_costs.detach().cpu().mean(dim=1), s_holding_costs.detach().cpu().mean(dim=1), w_holding_costs.detach().cpu().squeeze(-1), action['warehouses'].detach().cpu().squeeze(-1))
-        else:
-            if self.recorder.is_recording:
-                self.recorder.on_step_store(s_underage_costs.cpu().mean(dim=1), s_holding_costs.cpu().mean(dim=1))
         # Calculate reward and update other echelon inventories
         if self.problem_params['n_extra_echelons'] > 0:
 
-            e_reward = self.calculate_echelon_reward_and_update_echelon_inventories(
+            e_reward, e_reward_per_store = self.calculate_echelon_reward_and_update_echelon_inventories(
                 action,
                 self.observation,
                 )
             reward += e_reward
         
+        if self.recorder.is_recording:
+            data = {
+                's_underage_costs': s_underage_costs.cpu().mean(dim=1),
+                's_holding_costs': s_holding_costs.cpu().mean(dim=1),
+                }
+            if self.problem_params['n_warehouses'] > 0:
+                data['w_holding_costs'] = w_holding_costs.detach().cpu().squeeze(-1)
+                data['warehouse_orders'] = action['warehouses'].detach().cpu().squeeze(-1)
+            if  self.problem_params['n_extra_echelons'] > 0:
+                data['e1_holding_costs'] = e_reward_per_store[:, 0].cpu()
+                data['e2_holding_costs'] = e_reward_per_store[:, 1].cpu()
+            self.recorder.on_step(data)
         # Update current period
         self.observation['current_period'] += 1
 
@@ -290,7 +297,7 @@ class Simulator(gym.Env):
             self._internal_data['echelon_allocation_shift']
             )
 
-        return reward.sum(dim=1)
+        return reward.sum(dim=1), reward
 
     def initialize_observation(self, data, observation_params):
         """

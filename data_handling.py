@@ -180,10 +180,12 @@ class Scenario():
                 'initial_echelon_inventories': self.initial_echelon_inventories,
                 'echelon_holding_costs': self.echelon_holding_costs,
                 'echelon_lead_times': self.echelon_lead_times,
-                'store_random_yields': self.store_random_yields,
                 'store_random_yield_mean': self.store_random_yield_mean,
                 'store_random_yield_std': self.store_random_yield_std,
                 }
+
+        if self.store_random_yields is not None:
+            data['store_random_yields'] = self.store_random_yields
 
         if self.lost_order_mask is not None:
             data['lost_order_mask'] = self.lost_order_mask
@@ -204,8 +206,11 @@ class Scenario():
         """
 
         split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories', 'initial_warehouse_inventories'\
-                                    , 'warehouse_lead_times', 'warehouse_holding_costs', 'store_random_yields'], 
+                                    , 'warehouse_lead_times', 'warehouse_holding_costs'], 
                     'period': []}
+
+        if self.store_random_yields is not None:
+            split_by['sample_index'].append('store_random_yields')
 
         if self.store_params['demand']['distribution'] == 'real':
             split_by['period'].append('demands')
@@ -309,9 +314,12 @@ class Scenario():
             np.random.seed(seed)
         
         if problem_params['n_stores'] == 1:
-            mean = demand_params['mean'][:, 0].reshape(-1, 1, 1)
-            std = demand_params['std'][:, 0].reshape(-1, 1, 1)
-            demand = np.random.normal(mean, std, size=(self.num_samples, 1, self.periods))
+            if demand_params['sample_across_stores']:
+                mean = demand_params['mean'][:, 0].reshape(-1, 1, 1)
+                std = demand_params['std'][:, 0].reshape(-1, 1, 1)
+                demand = np.random.normal(mean, std, size=(self.num_samples, 1, self.periods))
+            else:
+                demand = np.random.normal(demand_params['mean'], demand_params['std'], size=(self.num_samples, 1, self.periods))
         else:
             # Calculate covariance matrix and sample from multivariate normal for all samples at once
             correlation = demand_params['correlation']

@@ -12,7 +12,7 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'warehouse_lead_time', 'stores_correlation', 'n_sub_sample_for_context',
         'apply_normalization', 'store_orders_for_warehouse', 
         'warehouse_lost_order_average_interval', 'store_yield',
-        'omit_context_from_store_input', 'include_context_for_warehouse_input',
+        'include_context_for_warehouse_input',
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs'
     }
@@ -96,9 +96,6 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'store_yield' in overriding_params:
         config_setting['warehouse_params']['lost_order_average_interval'] = overriding_params['warehouse_lost_order_average_interval']
 
-    if 'omit_context_from_store_input' in overriding_params:
-        config_hyperparams['nn_params']['omit_context_from_store_input'] = overriding_params['omit_context_from_store_input']
-
     if 'include_context_for_warehouse_input' in overriding_params:
         config_hyperparams['nn_params']['include_context_for_warehouse_input'] = overriding_params['include_context_for_warehouse_input']
 
@@ -168,33 +165,17 @@ class Recorder():
     def start_recording(self):
         self.is_recording = True
 
-    def on_step_store(self, s_underage_costs, s_holding_costs):
+    def on_step(self, data):
         if self.is_recording == False:
             return
-        underage_cost = self.config_setting['store_params']['underage_cost']['value']
-        filename = f"analysis/results/cons/{self.config_hyperparams['nn_params']['name']}/{underage_cost}.csv"
-        def append_tensors_to_csv():
+
+        file_name = f"analysis/results/{self.config_setting['problem_params']['n_stores']}/{self.recorder_identifier}.csv"
+        def append_tensors_to_csv(filename, data):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
-            df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs})
+            df_new = pd.DataFrame(data)
             if os.path.exists(filename):
                 df_new.to_csv(filename, mode='a', header=False, index=False)
             else:
                 df_new.to_csv(filename, index=False)
-        append_tensors_to_csv()
-
-    def on_step(self, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders):
-        if self.is_recording == False:
-            return
-
-        underage_cost_range = self.config_setting['store_params']['underage_cost']['range']
-        underage_cost = round(sum(underage_cost_range) / 2)
-        file_name = f"analysis/results/one_warehouse_real/{self.config_setting['problem_params']['n_stores']}/{self.recorder_identifier}/{underage_cost}.csv"
-        def append_tensors_to_csv(filename, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders):
-            os.makedirs(os.path.dirname(filename), exist_ok=True)
-            df_new = pd.DataFrame({'s_underage_costs': s_underage_costs, 's_holding_costs': s_holding_costs
-                                   , 'w_holding_costs': w_holding_costs, 'warehouse_orders': warehouse_orders})
-            if os.path.exists(filename):
-                df_new.to_csv(filename, mode='a', header=False, index=False)
-            else:
-                df_new.to_csv(filename, index=False)
-        append_tensors_to_csv(file_name, s_underage_costs, s_holding_costs, w_holding_costs, warehouse_orders)
+                
+        append_tensors_to_csv(file_name, data)
