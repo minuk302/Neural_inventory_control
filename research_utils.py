@@ -14,7 +14,8 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'warehouse_lost_order_average_interval', 'store_yield',
         'include_context_for_warehouse_input',
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
-        'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs'
+        'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
+        'kaplanmeier_n_fit'
     }
 
     # Check that all keys in overriding_params are valid
@@ -32,6 +33,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
 
     if 'weibull_k' in overriding_params:
         config_setting['problem_params']['weibull_k'] = overriding_params['weibull_k']
+
+    if 'kaplanmeier_n_fit' in overriding_params:
+        config_setting['problem_params']['kaplanmeier_n_fit'] = overriding_params['kaplanmeier_n_fit']
 
     if 'censor_demands_for_train_and_dev' in overriding_params:
         config_setting['problem_params']['censor_demands_for_train_and_dev'] = overriding_params['censor_demands_for_train_and_dev']

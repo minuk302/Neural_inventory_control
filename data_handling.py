@@ -1,6 +1,7 @@
 from shared_imports import *
 import scipy.stats as stats
 import scipy.optimize as optimize
+from lifelines import KaplanMeierFitter
 import warnings
 
 class WeibullDemandGenerator:
@@ -77,6 +78,122 @@ class WeibullDemandGenerator:
        imputed_samples[censored_mask] = censored_tails
        
        return imputed_samples
+
+class KMSampler:
+    def __init__(self, num_samples, periods):
+        self.kmf = None
+        self.tail_rate = None
+        self.max_uncensored = None
+        self.num_samples = num_samples
+        self.periods = periods
+    
+    def fit(self, observed_data, censoring_indicators, M, n_buckets=3):
+        """Fit KM estimator and tail rate to data"""
+        self.kmf = KaplanMeierFitter()
+        self.kmf.fit(observed_data, censoring_indicators)
+        
+        # Get CDF values
+        times = self.kmf.survival_function_.index
+        cdf = 1 - self.kmf.survival_function_.values.flatten()
+        
+        # Get the last n_buckets points and their densities
+        last_cdfs = cdf[-(n_buckets+1):]  # Get last 3 CDF values
+        densities = np.diff(last_cdfs)     # Get P(X = k) for k in [M-2, M-1, M]
+        p_greater_M = 1 - last_cdfs[-1]    # P(X > M)
+        densities = np.append(densities, p_greater_M)
+        
+        # print(f"Debug - Last CDF values: {last_cdfs}")
+        # print(f"Debug - Densities at last points: {densities}")
+        # print(f"Debug - P(X > M): {p_greater_M}")
+        
+        def neg_log_likelihood(rate):
+            if rate <= 0:
+                return np.inf
+            
+            # Calculate model probabilities
+            model_probs = np.array([
+                np.exp(-rate * i) - np.exp(-rate * (i + 1))
+                for i in range(n_buckets)
+            ])
+            # for last bucket, model prob is np.exp(-rate * n_buckets). need to add it to the last bucket
+            model_probs = np.append(model_probs, np.exp(-rate * n_buckets))
+            
+            # Avoid log(0)
+            valid_idx = (densities > 0) & (model_probs > 0)
+            if not np.any(valid_idx):
+                return np.inf
+                
+            return -np.sum(densities[valid_idx] * np.log(model_probs[valid_idx]))
+        
+        result = optimize.minimize_scalar(
+            neg_log_likelihood, 
+            bounds=(0.001, 2.0),
+            method='bounded'
+        )
+        
+        self.tail_rate = result.x
+        self.threshold = times[-1]  # This is M
+        # print(f'Estimated tail rate: {self.tail_rate}')
+        
+    def sample(self, n_samples):
+        """Generate new samples from fitted distribution"""
+        if self.kmf is None:
+            raise ValueError("Must fit model before sampling")
+            
+        # Get survival function values
+        times = np.arange(np.min(self.kmf.survival_function_.index), 
+                        np.max(self.kmf.survival_function_.index) + 1)
+        cdf = 1 - self.kmf.survival_function_at_times(times).values
+        
+        samples = np.zeros(n_samples)
+        for i in range(n_samples):
+            u = np.random.uniform(0, 1)
+            
+            # Find the smallest time where CDF is greater than u
+            mask = cdf >= u
+            if np.any(mask):  # Use KM distribution
+                samples[i] = times[np.where(mask)[0][0]]
+            else:
+                # Sample from tail using threshold (M) instead of max_uncensored
+                excess = np.random.exponential(1/self.tail_rate)
+                samples[i] = self.threshold + np.floor(excess)
+
+        
+        return samples.astype(int)
+
+    def fit_and_sample(self, n_fit, problem_params, demand_params, censoring_process, seed=None):
+        """
+        Run experiment fitting KM to n_fit samples and generating n_generate new ones
+        """
+        if seed is not None:
+            np.random.seed(seed)
+            
+        # Generate training data
+        true_demand = np.random.poisson(demand_params['mean'], size=n_fit)
+        thresholds = np.random.poisson(censoring_process['mean'], size=n_fit)
+        
+        # Apply censoring
+        observed = np.minimum(true_demand, thresholds)
+        # Changed to use <= for correct censoring indicators
+        censoring_indicators = (true_demand <= thresholds).astype(int)
+
+        # # print the largest uncensored value (this is, only consider the values that are not censored)    
+        # print(f"Largest uncensored value: {np.max(observed[censoring_indicators == 1])}")
+        # print(f"Largest censored value: {np.max(observed[censoring_indicators == 0])}")
+
+        # Fit sampler
+        self.fit(observed, censoring_indicators, M=np.max(thresholds))
+        
+        n_generate = problem_params['n_stores'] * self.periods * self.num_samples
+
+        # Generate new samples
+        generated_samples = self.sample(n_generate)
+
+        # reshape to self.num_samples, self.n_stores, self.periods
+        generated_samples = generated_samples.reshape(self.num_samples, problem_params['n_stores'], self.periods)
+
+
+        return generated_samples
 
 class Scenario():
     '''
@@ -352,6 +469,10 @@ class Scenario():
             if problem_params['censor_demands_for_train_and_dev'] == 'weibull':
                 demand_generator = WeibullDemandGenerator(self.num_samples, self.periods)
                 return demand_generator.fit_and_sample(problem_params, demand_params, seed)
+            elif problem_params['censor_demands_for_train_and_dev'] == 'kaplanmeier':
+                sampler = KMSampler(num_samples=self.num_samples, periods=self.periods)
+                censoring_process = {'mean': 6}
+                return sampler.fit_and_sample(problem_params['kaplanmeier_n_fit'], problem_params, demand_params, censoring_process, seed)
             else:
                 raise Exception('Censoring method not supported')
         

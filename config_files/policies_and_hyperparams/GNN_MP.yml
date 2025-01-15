@@ -16,37 +16,24 @@ optimizer_params:
 nn_params: 
   'name': 'GNN_MP'
   'inner_layer_activations': 
-    'initial_warehouse_embedding': 'elu'
-    'initial_store_embedding': 'elu'
+    'initial_embedding': 'elu'
     'node_embedding': 'elu'
-    'aggregation_embedding': 'elu'
     'update_embedding': 'elu'
-    'store': 'elu'
-    'warehouse': 'elu'
+    'output': 'elu'
   'output_layer_activation':
-    'initial_warehouse_embedding': 'elu'
-    'initial_store_embedding': 'elu'
+    'initial_embedding': 'elu'
     'node_embedding': 'elu'
-    'aggregation_embedding': 'elu'
     'update_embedding': 'elu'
-    'store': 'softplus'
-    'warehouse': 'sigmoid'
+    'output': 'softplus'
   'neurons_per_hidden_layer':
-    'initial_warehouse_embedding': [32, 32]
-    'initial_store_embedding': [32, 32]
+    'initial_embedding': [32, 32]
     'node_embedding': [32, 32]
-    'aggregation_embedding': [32, 32]
     'update_embedding': [32, 32]
-    'store': [32, 32]
-    'warehouse': [32, 32]
+    'output': [32, 32]
   'output_sizes':
-    'initial_warehouse_embedding': 32
-    'initial_store_embedding': 32
+    'initial_embedding': 32
     'node_embedding': 32
-    'aggregation_embedding': 32
     'update_embedding': 32
-    'store': 1
-    'warehouse': 1
+    'output': 1
   'initial_bias': null
   'include_primitive_features': False
-  'warehouse_upper_bound_mult': 6

@@ -6,6 +6,7 @@ seeds :
   'lead_time': 41 
   'demand': 57 
   'initial_inventory': 4839
+  'different_for_each_sample': True
 
 test_seeds :  # seeds for test set
   'underage_cost': 36 
@@ -26,8 +27,8 @@ problem_params :
   'lost_demand': True
   'maximize_profit': False
   'report_test_loss': True
-  'censor_demands_for_train_and_dev': 'weibull'
-  'censoring_threshold': 5
+  'censor_demands_for_train_and_dev': 'kaplanmeier'
+  'kaplanmeier_n_fit': 1000
 
 params_by_dataset : 
   'train': 

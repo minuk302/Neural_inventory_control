@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP_transshipment_merged'
+  'name': 'GNN_MP_real'
   'inner_layer_activations': 
     'initial_embedding': 'elu'
     'node_embedding': 'elu'
@@ -28,16 +28,16 @@ nn_params:
     'update_embedding': 'elu'
     'output': 'softplus'
   'neurons_per_hidden_layer':
-    'initial_embedding': [32, 32]
-    'node_embedding': [32, 32]
-    'aggregation_embedding': [32, 32]
-    'update_embedding': [32, 32]
-    'output': [32, 32]
+    'initial_embedding': [64, 64]
+    'node_embedding': [64, 64]
+    'aggregation_embedding': [64, 64]
+    'update_embedding': [64, 64]
+    'output': [64, 64]
   'output_sizes':
-    'initial_embedding': 32
-    'node_embedding': 32
-    'aggregation_embedding': 32
-    'update_embedding': 32
+    'initial_embedding': 64
+    'node_embedding': 64
+    'aggregation_embedding': 64
+    'update_embedding': 64
     'output': 1
   'initial_bias': null
   'include_primitive_features': False

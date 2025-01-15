@@ -393,74 +393,12 @@ class VanillaOneWarehouse(MyNeuralNetwork):
 class GNN_MP(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args, problem_params, device)
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def forward(self, observation):
-        store_inventory_and_params = self.get_store_inventory_and_params(observation)
-        store_nodes = self.net['initial_store_embedding'](store_inventory_and_params)
-        warehouse_node = self.net['initial_warehouse_embedding'](observation['warehouse_inventories'])
-
-        # Message passing iterations
-        for _ in range(2):
-            # Apply node embedding before aggregation
-            store_nodes_embedded = self.net['node_embedding'](store_nodes)
-            warehouse_node_embedded = self.net['node_embedding'](warehouse_node)
-            
-            # Store nodes aggregate from warehouse
-            warehouse_node_expanded = warehouse_node_embedded.expand(-1, store_nodes.size(1), -1)
-            store_aggregation = self.net['aggregation_embedding'](warehouse_node_expanded)
-            
-            # Warehouse node aggregates from stores 
-            warehouse_aggregation = self.net['aggregation_embedding'](store_nodes_embedded.mean(dim=1, keepdim=True))
-            
-            # Update nodes
-            store_nodes = self.net['update_embedding'](
-                torch.cat([store_nodes, store_aggregation], dim=-1)
-            )
-            warehouse_node = self.net['update_embedding'](
-                torch.cat([warehouse_node, warehouse_aggregation], dim=-1)
-            )
-
-        # Final node embeddings to outputs
-        store_intermediate_outputs = self.net['store'](store_nodes)
-        warehouse_intermediate_outputs = self.net['warehouse'](warehouse_node)
-
-        # Calculate allocations
-        if self.__class__.__name__ == 'GNN_MP_transshipment':
-            store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
-        else:
-            store_allocation = self.apply_proportional_allocation(
-                store_intermediate_outputs[:,:,0], 
-                observation['warehouse_inventories']
-                )
-        
-        warehouse_allocation = warehouse_intermediate_outputs[:,:,0]
-        if self.warehouse_upper_bound_mult is not None:
-            upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult
-            warehouse_allocation = warehouse_intermediate_outputs[:,:,0] * upper_bound
-
-        return {
-            'stores': store_allocation,
-            'warehouses': warehouse_allocation
-        }
-
-
-class GNN_MP_merged(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
         self.use_attention = 'use_attention' in args and args['use_attention']
         self.n_stores = problem_params['n_stores']
         self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
                           + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
                           / torch.tensor(self.n_stores + 1, device=self.device)
         self.use_pna = 'use_pna' in args and args['use_pna']
-        self.use_residual = 'use_residual' in args and args['use_residual']
 
     def get_store_inventory_and_params(self, observation):
         params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
@@ -486,8 +424,8 @@ class GNN_MP_merged(MyNeuralNetwork):
             inv = tensor[:,:,:inv_len]
             states = tensor[:,:,inv_len:]
             return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len), value=-1),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)), value=-1)
+                F.pad(inv, (0, max_inv_len - inv_len)),
+                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
             ], dim=2)
 
         # Apply padding to store and warehouse features
@@ -514,6 +452,7 @@ class GNN_MP_merged(MyNeuralNetwork):
             
             # Combine aggregation inputs for single aggregation_embedding call
             if self.use_attention:
+                # this is wrong. need to include itself. when updating the node embedding. also, can apply residual connection.
                 # Prepare attention inputs for stores and warehouse
                 store_attention_input = torch.cat([store_nodes_embedded, warehouse_node_embedded.expand(-1, store_nodes_embedded.size(1), -1)], dim=-1)
                 warehouse_attention_input = torch.cat([warehouse_node_embedded.expand(-1, store_nodes_embedded.size(1), -1), store_nodes_embedded], dim=-1)
@@ -563,26 +502,20 @@ class GNN_MP_merged(MyNeuralNetwork):
                 store_aggregation = scaled_warehouse.unsqueeze(1).expand(-1, store_nodes.size(1), -1, -1).view(scaled_warehouse.size(0),self.n_stores,-1)
                 warehouse_aggregation = scaled_stores.view(scaled_stores.size(0),1,-1)
             else:
-                warehouse_node_expanded = warehouse_node_embedded.expand(-1, store_nodes.size(1), -1)
-                store_nodes_mean = store_nodes_embedded.mean(dim=1, keepdim=True)
-                all_aggregation_inputs = torch.cat([warehouse_node_expanded, store_nodes_mean], dim=1)
-
-                all_aggregations = self.net['aggregation_embedding'](all_aggregation_inputs)
-                store_aggregation = all_aggregations[:, :store_nodes.size(1)]
-                warehouse_aggregation = all_aggregations[:, store_nodes.size(1):]
+                store_supplier_aggregation = warehouse_node_embedded.expand(-1, store_nodes.size(1), -1)
+                store_recipient_aggregation = torch.zeros_like(store_nodes)
+                
+                warehouse_supplier_aggregation = torch.zeros_like(warehouse_node)
+                warehouse_recipient_aggregation = store_nodes_embedded.mean(dim=1, keepdim=True)
             
             # Combine update inputs for single update_embedding call
-            store_update_input = torch.cat([store_nodes, store_aggregation], dim=-1)
-            warehouse_update_input = torch.cat([warehouse_node, warehouse_aggregation], dim=-1)
+            store_update_input = torch.cat([store_nodes, store_supplier_aggregation, store_recipient_aggregation], dim=-1)
+            warehouse_update_input = torch.cat([warehouse_node, warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1)
             all_update_inputs = torch.cat([store_update_input, warehouse_update_input], dim=1)
 
             all_updates = self.net['update_embedding'](all_update_inputs)
-            if self.use_residual:
-                store_nodes = store_nodes + all_updates[:, :store_nodes.size(1)]
-                warehouse_node = warehouse_node + all_updates[:, store_nodes.size(1):]
-            else:
-                store_nodes = all_updates[:, :store_nodes.size(1)]
-                warehouse_node = all_updates[:, store_nodes.size(1):]
+            store_nodes = store_nodes + all_updates[:, :store_nodes.size(1)]
+            warehouse_node = warehouse_node + all_updates[:, store_nodes.size(1):]
 
         # Final node embeddings to outputs
         all_nodes = torch.cat([store_nodes, warehouse_node], dim=1)
@@ -591,7 +524,7 @@ class GNN_MP_merged(MyNeuralNetwork):
         warehouse_intermediate_outputs = all_outputs[:, store_nodes.size(1):]
 
         # Calculate allocations
-        if self.__class__.__name__ == 'GNN_MP_transshipment_merged':
+        if self.__class__.__name__ == 'GNN_MP_transshipment':
             store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
         else:
             store_allocation = self.apply_proportional_allocation(
@@ -605,7 +538,7 @@ class GNN_MP_merged(MyNeuralNetwork):
             'warehouses': warehouse_allocation
         }
 
-class GNN_MP_merged_real(GNN_MP_merged):
+class GNN_MP_real(GNN_MP):
     def get_store_inventory_and_params(self, observation):
         return torch.cat([observation['store_inventories'][:, :, 0].unsqueeze(-1)] \
              + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs', 'holding_costs']] \
@@ -613,9 +546,6 @@ class GNN_MP_merged_real(GNN_MP_merged):
 
 
 class GNN_MP_transshipment(GNN_MP):
-    pass
-
-class GNN_MP_transshipment_merged(GNN_MP_merged):
     pass
 
 class GNN_MP_NN_Per_Layer(MyNeuralNetwork):
@@ -754,95 +684,6 @@ class GNN_MP_NN_Per_Layer_transshipment(GNN_MP_NN_Per_Layer):
 class GNN_MP_serial(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args, problem_params, device)
-
-    def print_tensors_to_log(self, tensor_dict, iteration=None):
-        import time
-        """Print first 3 samples of tensors to log file"""
-        with open('/user/ml4723/Prj/NIC/logs_NNoutputs.log', 'a') as f:
-            f.write('\n' + '='*50 + '\n')
-            if iteration is not None:
-                f.write(f'Forward pass iteration {iteration} at {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
-            else:
-                f.write(f'Forward pass at {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
-            f.write('='*50 + '\n')
-            for name, tensor in tensor_dict.items():
-                if tensor is not None:
-                    f.write(f'\n{name}:\n{tensor[:3]}\n')
-
-    def forward(self, observation):
-        store_inventories, warehouse_inventories, echelon_inventories = self.unpack_args(
-            observation, ['store_inventories', 'warehouse_inventories', 'echelon_inventories'])
-        echelon_1_inventory = echelon_inventories[:, 0:1, :]  # First echelon
-        echelon_2_inventory = echelon_inventories[:, 1:2, :]  # Second echelon
-        store_nodes = self.net['initial_store_embedding'](store_inventories)
-        warehouse_node = self.net['initial_warehouse_embedding'](warehouse_inventories)
-        echelon_1_node = self.net['initial_echelon_embedding_1'](echelon_1_inventory)
-        echelon_2_node = self.net['initial_echelon_embedding_2'](echelon_2_inventory)
-
-        for i in range(3):
-            # Apply node embedding before aggregation
-            all_nodes = torch.cat([store_nodes, warehouse_node, echelon_1_node, echelon_2_node], dim=1)
-            all_nodes_embedded = self.net['node_embedding'](all_nodes)
-            
-            store_nodes_embedded = all_nodes_embedded[:, :1]  # Just one store
-            warehouse_node_embedded = all_nodes_embedded[:, 1:2]
-            echelon_1_node_embedded = all_nodes_embedded[:, 2:3]
-            echelon_2_node_embedded = all_nodes_embedded[:, 3:4]
-
-            all_agg_inputs = torch.cat([
-                warehouse_node_embedded,  # For store
-                torch.cat([store_nodes_embedded, echelon_2_node_embedded], dim=1).mean(dim=1, keepdim=True),  # For warehouse
-                torch.cat([warehouse_node_embedded, echelon_1_node_embedded], dim=1).mean(dim=1, keepdim=True),  # For echelon 2
-                echelon_2_node_embedded  # For echelon 1
-            ], dim=1)
-            
-            # Apply aggregation embedding to all inputs at once
-            all_aggregations = self.net['aggregation_embedding'](all_agg_inputs)
-            
-            store_aggregation = all_aggregations[:, :1]
-            warehouse_aggregation = all_aggregations[:, 1:2]
-            echelon_2_aggregation = all_aggregations[:, 2:3]
-            echelon_1_aggregation = all_aggregations[:, 3:4]
-            
-            # Prepare all update inputs
-            all_update_inputs = torch.cat([
-                torch.cat([store_nodes, store_aggregation], dim=-1),
-                torch.cat([warehouse_node, warehouse_aggregation], dim=-1),
-                torch.cat([echelon_2_node, echelon_2_aggregation], dim=-1),
-                torch.cat([echelon_1_node, echelon_1_aggregation], dim=-1)
-            ], dim=1)
-            
-            # Update all nodes at once
-            all_updated = self.net['update_embedding'](all_update_inputs)
-            
-            # Split the results
-            store_nodes = all_updated[:, :1]
-            warehouse_node = all_updated[:, 1:2]
-            echelon_2_node = all_updated[:, 2:3]
-            echelon_1_node = all_updated[:, 3:4]
-
-        # Final node embeddings to outputs
-        store_intermediate_outputs = self.net['store'](store_nodes)
-        warehouse_intermediate_outputs = self.net['warehouse'](warehouse_node)
-        echelon_1_outputs = self.net['echelon_1'](echelon_1_node)
-        echelon_2_outputs = self.net['echelon_2'](echelon_2_node)
-
-        upper_bound = 5.0 * self.warehouse_upper_bound_mult * torch.ones(echelon_1_inventory.size(0), 1, device=self.device)
-        # Calculate allocations by multiplying outputs with previous location's inventory
-        echelon_1_allocation = echelon_1_outputs[:,:,0] * upper_bound
-        echelon_2_allocation = echelon_2_outputs[:,:,0] * echelon_1_inventory[:,:,0]  # First echelon inventory
-        warehouse_allocation = warehouse_intermediate_outputs[:,:,0] * echelon_2_inventory[:,:,0]  # Second echelon inventory
-        store_allocation = store_intermediate_outputs[:,:,0] * warehouse_inventories[:,:,0]
-
-        return {
-            'stores': store_allocation,
-            'warehouses': warehouse_allocation,
-            'echelons': torch.cat([echelon_1_allocation, echelon_2_allocation], dim=1)
-        }
-
-class GNN_MP_serial_merged(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
         self.use_residual = 'use_residual' in args and args['use_residual']
 
     def forward(self, observation):
@@ -854,15 +695,15 @@ class GNN_MP_serial_merged(MyNeuralNetwork):
         # Get inventory and state lengths
         store_inv_len = store_inventories.size(2)
         warehouse_inv_len = warehouse_inventories.size(2)
-        echelon_1_inv_len = echelon_1_inventory.size(2)
         echelon_2_inv_len = echelon_2_inventory.size(2)
+        echelon_1_inv_len = echelon_1_inventory.size(2)
 
         # Calculate padding dimensions
         max_inv_len = max(store_inv_len, warehouse_inv_len, echelon_1_inv_len, echelon_2_inv_len)
         store_states_len = store_inventories.size(2) - store_inv_len
         warehouse_states_len = warehouse_inventories.size(2) - warehouse_inv_len
-        echelon_1_states_len = echelon_1_inventory.size(2) - echelon_1_inv_len
         echelon_2_states_len = echelon_2_inventory.size(2) - echelon_2_inv_len
+        echelon_1_states_len = echelon_1_inventory.size(2) - echelon_1_inv_len
         max_states_len = max(store_states_len, warehouse_states_len, echelon_1_states_len, echelon_2_states_len)
 
         # Pad inventory and state features in a single operation
@@ -870,81 +711,70 @@ class GNN_MP_serial_merged(MyNeuralNetwork):
             inv = tensor[:,:,:inv_len]
             states = tensor[:,:,inv_len:]
             return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len), value=-1),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)), value=-1)
+                F.pad(inv, (0, max_inv_len - inv_len)),
+                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
             ], dim=2)
 
         # Apply padding to all features
         store_padded = pad_features(store_inventories, store_inv_len, max_inv_len, max_states_len)
         warehouse_padded = pad_features(warehouse_inventories, warehouse_inv_len, max_inv_len, max_states_len)
-        echelon_1_padded = pad_features(echelon_1_inventory, echelon_1_inv_len, max_inv_len, max_states_len)
         echelon_2_padded = pad_features(echelon_2_inventory, echelon_2_inv_len, max_inv_len, max_states_len)
+        echelon_1_padded = pad_features(echelon_1_inventory, echelon_1_inv_len, max_inv_len, max_states_len)
 
         # Concatenate all inputs and get initial embeddings at once (only one store)
-        all_inputs = torch.cat([store_padded[:,:1], warehouse_padded, echelon_1_padded, echelon_2_padded], dim=1)
+        all_inputs = torch.cat([store_padded[:,:1], warehouse_padded, echelon_2_padded, echelon_1_padded], dim=1)
         all_embeddings = self.net['initial_embedding'](all_inputs)
         
         # Split back into individual embeddings
         store_nodes = all_embeddings[:, :1]
         warehouse_node = all_embeddings[:, 1:2]
-        echelon_1_node = all_embeddings[:, 2:3]
-        echelon_2_node = all_embeddings[:, 3:4]
+        echelon_2_node = all_embeddings[:, 2:3]
+        echelon_1_node = all_embeddings[:, 3:4]
 
         for i in range(3):
             # Apply node embedding before aggregation
-            all_nodes = torch.cat([store_nodes, warehouse_node, echelon_1_node, echelon_2_node], dim=1)
+            all_nodes = torch.cat([store_nodes, warehouse_node, echelon_2_node, echelon_1_node], dim=1)
             all_nodes_embedded = self.net['node_embedding'](all_nodes)
             
             store_nodes_embedded = all_nodes_embedded[:, :1]  # Just one store
             warehouse_node_embedded = all_nodes_embedded[:, 1:2]
-            echelon_1_node_embedded = all_nodes_embedded[:, 2:3]
-            echelon_2_node_embedded = all_nodes_embedded[:, 3:4]
+            echelon_2_node_embedded = all_nodes_embedded[:, 2:3]
+            echelon_1_node_embedded = all_nodes_embedded[:, 3:4]
 
-            # Prepare all aggregation inputs
-            all_agg_inputs = torch.cat([
-                warehouse_node_embedded,  # For store
-                torch.cat([store_nodes_embedded, echelon_2_node_embedded], dim=1).mean(dim=1, keepdim=True),  # For warehouse
-                torch.cat([warehouse_node_embedded, echelon_1_node_embedded], dim=1).mean(dim=1, keepdim=True),  # For echelon 2
-                echelon_2_node_embedded  # For echelon 1
-            ], dim=1)
-            
-            # Apply aggregation embedding to all inputs at once
-            all_aggregations = self.net['aggregation_embedding'](all_agg_inputs)
-            
-            store_aggregation = all_aggregations[:, :1]
-            warehouse_aggregation = all_aggregations[:, 1:2]
-            echelon_2_aggregation = all_aggregations[:, 2:3]
-            echelon_1_aggregation = all_aggregations[:, 3:4]
-            
-            # Prepare all update inputs
+            store_supplier_aggregation = warehouse_node_embedded.expand(-1, store_nodes.size(1), -1)
+            store_recipient_aggregation = torch.zeros_like(store_nodes)
+                
+            warehouse_supplier_aggregation = echelon_2_node_embedded
+            warehouse_recipient_aggregation = store_nodes_embedded.mean(dim=1, keepdim=True)
+
+            echelon_2_supplier_aggregation = echelon_1_node_embedded
+            echelon_2_recipient_aggregation = warehouse_node_embedded
+
+            echelon_1_supplier_aggregation = torch.zeros_like(echelon_1_node)
+            echelon_1_recipient_aggregation = echelon_2_node_embedded
+
             all_update_inputs = torch.cat([
-                torch.cat([store_nodes, store_aggregation], dim=-1),
-                torch.cat([warehouse_node, warehouse_aggregation], dim=-1),
-                torch.cat([echelon_2_node, echelon_2_aggregation], dim=-1),
-                torch.cat([echelon_1_node, echelon_1_aggregation], dim=-1)
+                torch.cat([store_nodes, store_supplier_aggregation, store_recipient_aggregation], dim=-1),
+                torch.cat([warehouse_node, warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
+                torch.cat([echelon_2_node, echelon_2_supplier_aggregation, echelon_2_recipient_aggregation], dim=-1),
+                torch.cat([echelon_1_node, echelon_1_supplier_aggregation, echelon_1_recipient_aggregation], dim=-1)
             ], dim=1)
             
             # Update all nodes at once
             all_updated = self.net['update_embedding'](all_update_inputs)
             
             # Split the results
-            if self.use_residual:
-                store_nodes = store_nodes + all_updated[:, :1]
-                warehouse_node = warehouse_node + all_updated[:, 1:2]
-                echelon_2_node = echelon_2_node + all_updated[:, 2:3]
-                echelon_1_node = echelon_1_node + all_updated[:, 3:4]
-            else:
-                store_nodes = all_updated[:, :1]
-                warehouse_node = all_updated[:, 1:2]
-                echelon_2_node = all_updated[:, 2:3]
-                echelon_1_node = all_updated[:, 3:4]
+            store_nodes = store_nodes + all_updated[:, :1]
+            warehouse_node = warehouse_node + all_updated[:, 1:2]
+            echelon_2_node = echelon_2_node + all_updated[:, 2:3]
+            echelon_1_node = echelon_1_node + all_updated[:, 3:4]
 
         # Final node embeddings to outputs
-        all_outputs = self.net['output'](torch.cat([store_nodes, warehouse_node, echelon_1_node, echelon_2_node], dim=1))
+        all_outputs = self.net['output'](torch.cat([store_nodes, warehouse_node, echelon_2_node, echelon_1_node], dim=1))
         store_intermediate_outputs = all_outputs[:, :1]
         warehouse_intermediate_outputs = all_outputs[:, 1:2] 
-        echelon_1_outputs = all_outputs[:, 2:3]
-        echelon_2_outputs = all_outputs[:, 3:4]
+        echelon_2_outputs = all_outputs[:, 2:3]
+        echelon_1_outputs = all_outputs[:, 3:4]
 
         if self.warehouse_upper_bound_mult is not None:
             upper_bound = 5.0 * self.warehouse_upper_bound_mult * torch.ones(echelon_1_inventory.size(0), 1, device=self.device)
@@ -1972,15 +1802,12 @@ class NeuralNetworkCreator:
             'transformed_nv_noquantile_sep_stores': TransformedNV_NoQuantile_SeparateStores,
             'pretrained_store': Pretrained_Store,
             'GNN_MP': GNN_MP,
-            'GNN_MP_merged': GNN_MP_merged,
-            'GNN_MP_merged_real': GNN_MP_merged_real,
+            'GNN_MP_real': GNN_MP_real,
             'GNN_MP_NN_Per_Layer': GNN_MP_NN_Per_Layer,
             'GNN_MP_NN_Per_Layer_merged_residual': GNN_MP_NN_Per_Layer_merged_residual,
             'GNN_MP_transshipment': GNN_MP_transshipment,
-            'GNN_MP_transshipment_merged': GNN_MP_transshipment_merged,
             'GNN_MP_NN_Per_Layer_transshipment': GNN_MP_NN_Per_Layer_transshipment,
             'GNN_MP_serial': GNN_MP_serial,
-            'GNN_MP_serial_merged': GNN_MP_serial_merged,
             'GNN_MP_NN_Per_Layer_serial': GNN_MP_NN_Per_Layer_serial,
             'GNN_MP_NN_Per_Layer_serial_merged': GNN_MP_NN_Per_Layer_serial_merged
             }

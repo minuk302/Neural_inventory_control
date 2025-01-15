@@ -53,6 +53,7 @@ class RayResultsinterpreter:
                         'censor_demands_for_train_and_dev': 'censor_demands_for_train_and_dev',
                         'weibull_fixed_lambda': 'weibull_fixed_lambda',
                         'weibull_k': 'weibull_k',
+                        'kaplanmeier_n_fit': 'kaplanmeier_n_fit',
                     }
                     result = {}
                     for key, value in param_dict.items():
