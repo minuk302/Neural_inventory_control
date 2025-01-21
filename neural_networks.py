@@ -461,21 +461,13 @@ class GNN_MP(MyNeuralNetwork):
         nodes = self.net['initial_embedding'](states)
         for _ in range(n_MP):
             embedded_nodes = self.net['node_embedding'](nodes)
-
-            if 'echelon_inventories' in observation: # serial system
-                aggregations = []
-                for j in range(embedded_nodes.size(1)):
-                    if j == 0:  # First echelon
-                        supplier_agg = torch.zeros_like(embedded_nodes[:, :1])
-                        recipient_agg = embedded_nodes[:, 1:2]
-                    elif j == embedded_nodes.size(1) - 1: # last echelon
-                        supplier_agg = embedded_nodes[:, j-1:j]
-                        recipient_agg = torch.zeros_like(embedded_nodes[:, :1])
-                    else:  # Middle echelons
-                        supplier_agg = embedded_nodes[:, j-1:j]
-                        recipient_agg = embedded_nodes[:, j+1:j+2]
-                    aggregations.append(torch.cat([embedded_nodes[:, j:j+1], supplier_agg, recipient_agg], dim=-1))
-                update_input = torch.cat(aggregations, dim=1)
+            if 'echelon_inventories' in observation:
+                zero_node = torch.zeros_like(embedded_nodes[:, :1])
+                update_input = torch.cat([
+                    embedded_nodes,
+                    torch.cat([zero_node, embedded_nodes[:, :-1]], dim=1), 
+                    torch.cat([embedded_nodes[:, 1:], zero_node], dim=1)
+                ], dim=-1)
             else:
                 store_supplier_aggregation = embedded_nodes[:, :1].expand(-1, store_state.size(1), -1)
                 store_recipient_aggregation = torch.zeros_like(embedded_nodes[:, 1:])
@@ -492,41 +484,44 @@ class GNN_MP(MyNeuralNetwork):
             nodes = nodes + updates
 
             # if self.use_attention:
-            #     warehouse_expanded = warehouse_node_embedded.expand(-1, store_nodes.size(1), -1)
-            #     store_pairs = torch.stack([
-            #         torch.cat([store_nodes_embedded, warehouse_expanded], dim=-1),
-            #         torch.cat([store_nodes_embedded, store_nodes_embedded], dim=-1)
-            #     ], dim=2)
+            #     def construct_target_nodes_and_attention_input(self_nodes, supplier_nodes, recipient_nodes):
+            #         self_node_padded = F.pad(self_nodes, (0,2)).unsqueeze(2)
+            #         supplier_padded = F.pad(supplier_nodes, (0,2))
+            #         supplier_padded[:, :, :, -2] = 1
+            #         recipient_padded = F.pad(recipient_nodes, (0,2))
+            #         recipient_padded[:, :, :, -1] = 1
+            #         target_nodes = torch.cat([self_node_padded, supplier_padded, recipient_padded], dim=2)
                 
-            #     # Get attention coefficients (batch_size x n_stores x 2 x 1)
-            #     store_supplier_attn = self.net['attention_supplier'](store_pairs)
-            #     store_supplier_attn = F.softmax(store_supplier_attn, dim=2)
+            #         expanded_self_nodes = self_nodes.unsqueeze(2).expand(-1, -1, target_nodes.size(2), -1)
+            #         attention_input = torch.cat([expanded_self_nodes, target_nodes], dim=-1)
+            #         return target_nodes, attention_input
+
+            #     zero_node = torch.zeros_like(embedded_nodes[:, :1])
+            #     if 'echelon_inventories' in observation: # serial system
+            #         target_nodes, attention_input = construct_target_nodes_and_attention_input(
+            #             embedded_nodes,
+            #             torch.cat([zero_node, embedded_nodes[:, :-1]], dim=1).unsqueeze(2),
+            #             torch.cat([embedded_nodes[:, 1:], zero_node], dim=1).unsqueeze(2),
+            #         )
+            #     else:
+            #         warehouse_target_nodes, warehouse_attention_input = construct_target_nodes_and_attention_input(
+            #             embedded_nodes[:, :1],
+            #             zero_node.unsqueeze(1),
+            #             embedded_nodes[:, 1:].unsqueeze(1),
+            #         )
+
+            #         store_target_nodes, store_attention_input = construct_target_nodes_and_attention_input(
+            #             embedded_nodes[:, 1:],
+            #             embedded_nodes[:, :1].expand(-1, store_state.size(1), -1).unsqueeze(2),
+            #             zero_node.expand(-1, store_state.size(1), -1).unsqueeze(2),
+            #         )
+
+            #     attention_weights = self.net['attention'](attention_input)  # [samples, nodes, nodes, 1]
+            #     attention_weights = F.softmax(attention_weights, dim=2)  # Normalize over target nodes
                 
-            #     # First attention score is for warehouse connection, second for self-connection
-            #     warehouse_attn = store_supplier_attn[:,:,0]
-            #     store_self_attn = store_supplier_attn[:,:,1]
-                
-            #     # Compute final aggregation using warehouse attention
-            #     store_supplier_aggregation = warehouse_expanded * warehouse_attn + store_nodes_embedded * store_self_attn
-            #     store_recipient_aggregation = store_nodes_embedded
-                
-            #     # Warehouse node aggregation
-            #     warehouse_pairs = torch.cat([
-            #         torch.cat([warehouse_node_embedded.expand(-1, store_nodes.size(1), -1), store_nodes_embedded], dim=-1),
-            #         torch.cat([warehouse_node_embedded, warehouse_node_embedded], dim=-1)
-            #     ], dim=1)
-                
-            #     # Get attention coefficients (batch_size x 1 x 2 x 1) 
-            #     warehouse_recipient_attn = self.net['attention_recipient'](warehouse_pairs)
-            #     warehouse_recipient_attn = F.softmax(warehouse_recipient_attn, dim=1)
-                
-            #     # First attention score is for store connections, second for self-connection
-            #     store_attn = warehouse_recipient_attn[:,:self.n_stores]
-            #     warehouse_self_attn = warehouse_recipient_attn[:,self.n_stores:]
-                
-            #     # Compute final aggregation using store attention and self attention
-            #     warehouse_recipient_aggregation = torch.sum(store_nodes_embedded * store_attn + warehouse_node_embedded * warehouse_self_attn, dim=1, keepdim=True)
-            #     warehouse_supplier_aggregation = warehouse_node_embedded  # Just use own embedding
+            #     # Apply attention weights to aggregate nodes
+            #     update_input = torch.sum(attention_weights * target_nodes, dim=2)  # [samples, nodes, embedding]
+            #     nodes = self.net['update_embedding'](update_input)
             # elif self.use_pna:
             #     aggregators = [
             #         lambda x: x.mean(dim=1),
