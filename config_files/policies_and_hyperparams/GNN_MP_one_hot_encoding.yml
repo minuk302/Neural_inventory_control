@@ -14,42 +14,27 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP_NN_Per_Layer_merged_residual'
+  'name': 'GNN_MP'
   'inner_layer_activations': 
     'initial_embedding': 'elu'
-    'node_embedding_1': 'elu'
-    'node_embedding_2': 'elu'
-    'aggregation_embedding_1': 'elu'
-    'aggregation_embedding_2': 'elu'
-    'update_embedding_1': 'elu'
-    'update_embedding_2': 'elu'
+    'node_embedding': 'elu'
+    'update_embedding': 'elu'
     'output': 'elu'
   'output_layer_activation':
     'initial_embedding': 'elu'
-    'node_embedding_1': 'elu'
-    'node_embedding_2': 'elu'
-    'aggregation_embedding_1': 'elu'
-    'aggregation_embedding_2': 'elu'
-    'update_embedding_1': 'elu'
-    'update_embedding_2': 'elu'
+    'node_embedding': 'elu'
+    'update_embedding': 'elu'
     'output': 'softplus'
   'neurons_per_hidden_layer':
     'initial_embedding': [32, 32]
-    'node_embedding_1': [32, 32]
-    'node_embedding_2': [32, 32]
-    'aggregation_embedding_1': [32, 32]
-    'aggregation_embedding_2': [32, 32]
-    'update_embedding_1': [32, 32]
-    'update_embedding_2': [32, 32]
+    'node_embedding': [32, 32]
+    'update_embedding': [32, 32]
     'output': [32, 32]
   'output_sizes':
     'initial_embedding': 32
-    'node_embedding_1': 32
-    'node_embedding_2': 32
-    'aggregation_embedding_1': 32
-    'aggregation_embedding_2': 32
-    'update_embedding_1': 32
-    'update_embedding_2': 32
+    'node_embedding': 32
+    'update_embedding': 32
     'output': 1
   'initial_bias': null
+  'use_one_hot_encodding': True
   'include_primitive_features': False

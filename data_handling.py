@@ -239,7 +239,8 @@ class Scenario():
         self.warehouse_lead_times = self.generate_warehouse_data(warehouse_params, 'lead_time')
         self.warehouse_holding_costs = self.generate_warehouse_data(warehouse_params, 'holding_cost')
         self.lost_order_mask = self.generate_lost_order_mask(warehouse_params, self.demands, seeds['demand'])
-
+        
+        echelon_params = self.generate_ehcelon_params(echelon_params, seeds)
         self.initial_echelon_inventories = self.generate_initial_echelon_inventory(echelon_params)
         self.echelon_lead_times = self.generate_echelon_data(echelon_params, 'lead_time')
         self.echelon_holding_costs = self.generate_echelon_data(echelon_params, 'holding_cost')
@@ -262,6 +263,22 @@ class Scenario():
         # Creates a dictionary specifying which data has to be split by sample index and which by period (when dividing into train, dev, test sets)
         self.split_by = self.define_how_to_split_data()
 
+    def generate_ehcelon_params(self, echelon_params, seeds):
+        """
+        Generate echelon parameters
+        """
+        if echelon_params is None:
+            return echelon_params
+        if 'holding_cost_sample_range' in echelon_params and echelon_params['holding_cost_sample_range'] is not None:
+            if 'holding_cost' in seeds:
+                np.random.seed(seeds['holding_cost'])
+            echelon_params['holding_cost'] = np.random.uniform(*echelon_params['holding_cost_sample_range'], size=(self.problem_params['n_extra_echelons']))
+        if 'lead_time_sample_range' in echelon_params and echelon_params['lead_time_sample_range'] is not None:
+            if 'lead_time' in seeds:
+                np.random.seed(seeds['lead_time'])
+            echelon_params['lead_time'] = np.random.randint(*echelon_params['lead_time_sample_range'], size=(self.problem_params['n_extra_echelons']))
+        return echelon_params
+    
     def generate_lost_yield_mask(self, random_yield_params, demands, seed):
         """
         Generate lost yield mask based on lost_order_average_interval

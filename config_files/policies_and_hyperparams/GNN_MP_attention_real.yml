@@ -14,34 +14,34 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP_merged'
+  'name': 'GNN_MP_real'
   'inner_layer_activations': 
     'initial_embedding': 'elu'
     'node_embedding': 'elu'
-    'aggregation_embedding': 'elu'
     'update_embedding': 'elu'
-    'attention': 'leaky_relu'
+    'attention_supplier': 'leaky_relu'
+    'attention_recipient': 'leaky_relu'
     'output': 'elu'
   'output_layer_activation':
     'initial_embedding': 'elu'
     'node_embedding': 'elu'
-    'aggregation_embedding': 'elu'
     'update_embedding': 'elu'
-    'attention': null
+    'attention_supplier': null
+    'attention_recipient': null
     'output': 'softplus'
   'neurons_per_hidden_layer':
-    'initial_embedding': [32, 32]
-    'node_embedding': [32, 32]
-    'aggregation_embedding': [32, 32]
-    'update_embedding': [32, 32]
-    'attention': [32]
-    'output': [32, 32]
+    'initial_embedding': [64, 64]
+    'node_embedding': [64, 64]
+    'update_embedding': [64, 64]
+    'attention_supplier': [64]
+    'attention_recipient': [64]
+    'output': [64, 64]
   'output_sizes':
-    'initial_embedding': 32
-    'node_embedding': 32
-    'aggregation_embedding': 32
-    'update_embedding': 32
-    'attention': 1
+    'initial_embedding': 64
+    'node_embedding': 64
+    'update_embedding': 64
+    'attention_supplier': 1
+    'attention_recipient': 1
     'output': 1
   'initial_bias': null
   'use_attention': True

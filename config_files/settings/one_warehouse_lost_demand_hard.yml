@@ -54,6 +54,7 @@ observation_params:
     'lead_times': True 
     'mean': True 
     'std': True
+    'store_random_yield_mean': True
     'store_random_yield_std': True
   'demand': 
     'past_periods': 0 
@@ -103,7 +104,7 @@ store_params:
     'inventory_periods': 3
 
 warehouse_params: 
-  'holding_cost': 0.3
+  'holding_cost': 0.7
   'lead_time': 6     
 
 echelon_params: 

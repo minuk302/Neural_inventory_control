@@ -54,6 +54,7 @@ class RayResultsinterpreter:
                         'weibull_fixed_lambda': 'weibull_fixed_lambda',
                         'weibull_k': 'weibull_k',
                         'kaplanmeier_n_fit': 'kaplanmeier_n_fit',
+                        'train_n_samples': 'train_n_samples',
                     }
                     result = {}
                     for key, value in param_dict.items():
