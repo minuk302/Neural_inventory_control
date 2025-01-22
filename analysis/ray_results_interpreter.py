@@ -55,6 +55,7 @@ class RayResultsinterpreter:
                         'weibull_k': 'weibull_k',
                         'kaplanmeier_n_fit': 'kaplanmeier_n_fit',
                         'train_n_samples': 'train_n_samples',
+                        'omit_context_from_store_input': 'omit_context_from_store_input',
                     }
                     result = {}
                     for key, value in param_dict.items():

@@ -15,7 +15,7 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'include_context_for_warehouse_input',
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
-        'kaplanmeier_n_fit'
+        'kaplanmeier_n_fit', 'store', 'warehouse',
     }
 
     # Check that all keys in overriding_params are valid

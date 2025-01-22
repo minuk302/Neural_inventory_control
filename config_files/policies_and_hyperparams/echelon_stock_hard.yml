@@ -24,4 +24,4 @@ nn_params:
   'neurons_per_hidden_layer':
     'master': []
   'output_sizes':
-    'master': 16
+    'master': 8

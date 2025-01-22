@@ -11,17 +11,30 @@ trainer_params :
   'load_model_path': null
 
 optimizer_params: 
-  'learning_rate': 0.0003
+  'learning_rate': 0.001
 
 nn_params: 
-  'name': 'vanilla_one_warehouse'
+  'name': 'GNN_MP'
   'inner_layer_activations': 
-    'master': 'elu'
-  'output_layer_activation':  # We will apply (sigmoid x upper_bound) to warehouse intermediate outputs on forward method!
-    'master': null
+    'initial_embedding': 'elu'
+    'node_embedding': 'elu'
+    'update_embedding': 'elu'
+    'output': 'elu'
+  'output_layer_activation':
+    'initial_embedding': 'elu'
+    'node_embedding': 'elu'
+    'update_embedding': 'elu'
+    'output': 'softplus'
   'neurons_per_hidden_layer':
-    'master': [256, 256, 256]
+    'initial_embedding': [32, 32]
+    'node_embedding': [32, 32]
+    'update_embedding': [32, 32]
+    'output': [32, 32]
   'output_sizes':
-    'master': null # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
+    'initial_embedding': 32
+    'node_embedding': 32
+    'update_embedding': 32
+    'output': 1
   'initial_bias': null
-  'warehouse_upper_bound_mult': 4  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores
+  'include_primitive_features': False
+  'no_face_encoding': True

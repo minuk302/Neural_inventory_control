@@ -22,7 +22,7 @@ sample_data_params:
 problem_params : 
   'n_stores': 1
   'n_warehouses': 1
-  'n_extra_echelons': 8
+  'n_extra_echelons': 6
   'lost_demand': False
   'maximize_profit': False
   'report_test_loss': True

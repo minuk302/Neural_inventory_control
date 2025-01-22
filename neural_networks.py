@@ -399,7 +399,10 @@ class GNN_MP(MyNeuralNetwork):
                           + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
                           / torch.tensor(self.n_stores + 1, device=self.device)
         self.use_pna = 'use_pna' in args and args['use_pna']
-        self.use_one_hot_encodding = 'use_one_hot_encodding' in args and args['use_one_hot_encodding']
+        self.NN_per_layer = 'NN_per_layer' in args and args['NN_per_layer']
+        self.no_face_encoding = 'no_face_encoding' in args and args['no_face_encoding']
+        self.skip_connection = 'skip_connection' in args and args['skip_connection']
+        self.use_node_for_skip_connection = 'use_node_for_skip_connection' in args and args['use_node_for_skip_connection']
 
     def get_store_inventory_and_params(self, observation):
         params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
@@ -407,6 +410,12 @@ class GNN_MP(MyNeuralNetwork):
             params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
         store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
         return torch.cat([observation['store_inventories'], store_params], dim=2)
+
+    def get_network(self, layer_name, layer_idx):
+        if self.NN_per_layer:
+            return self.net[f'{layer_name}_{layer_idx+1}']
+        else:
+            return self.net[layer_name]
 
     def forward(self, observation):
         def pad_features(tensor, inv_len, max_inv_len, max_states_len):
@@ -420,15 +429,25 @@ class GNN_MP(MyNeuralNetwork):
         store_inv_len = observation['store_inventories'].size(2)
         warehouse_inv_len = observation['warehouse_inventories'].size(2)
         if 'echelon_inventories' in observation:
-            store_inventories, warehouse_inventories, echelon_inventories = self.unpack_args(
-            observation, ['store_inventories', 'warehouse_inventories', 'echelon_inventories'])
+            echelon_inventories = observation['echelon_inventories']
+            warehouse_inventories = observation['warehouse_inventories']
+            echelon_inv_len = echelon_inventories.size(2)
+
+            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['lead_times'].unsqueeze(2)], dim=-1)
+            warehouse_state = torch.cat([warehouse_inventories, observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
+            echelon_state = torch.cat([echelon_inventories, observation['echelon_holding_costs'].unsqueeze(2), observation['echelon_lead_times'].unsqueeze(2)], dim=-1)
+    
+            store_primitives_len = store_state.size(2) - store_inv_len
+            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
+            echelon_primitives_len = echelon_state.size(2) - echelon_inv_len
+            max_primitives_len = max(store_primitives_len, warehouse_primitives_len, echelon_primitives_len)
+
             n_echelons = echelon_inventories.size(1)
-            echelon_inv_len = echelon_inventories[:,0:1,:].size(2)
             max_inv_len = max(store_inv_len, warehouse_inv_len, echelon_inv_len)
 
-            store_padded = pad_features(store_inventories, store_inv_len, max_inv_len, 0)
-            warehouse_padded = pad_features(warehouse_inventories, warehouse_inv_len, max_inv_len, 0)
-            echelon_padded = pad_features(echelon_inventories, echelon_inv_len, max_inv_len, 0)
+            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
+            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
+            echelon_padded = pad_features(echelon_state, echelon_inv_len, max_inv_len, max_primitives_len)
 
             states = torch.cat([echelon_padded, warehouse_padded, store_padded], dim=1)
 
@@ -456,15 +475,17 @@ class GNN_MP(MyNeuralNetwork):
             face_encoding[:, 1:, 1] = 1 # stores, demand-facing
 
             n_MP = 2
-
-        states = torch.cat([states, face_encoding], dim=-1)
-        nodes = self.net['initial_embedding'](states)
-        for _ in range(n_MP):
-            embedded_nodes = self.net['node_embedding'](nodes)
+        
+        if not self.no_face_encoding:
+            states = torch.cat([states, face_encoding], dim=-1)
+        initial_nodes = self.net['initial_embedding'](states)
+        nodes = initial_nodes
+        for layer_idx in range(n_MP):
+            embedded_nodes = self.get_network('node_embedding', layer_idx)(nodes)
             if 'echelon_inventories' in observation:
                 zero_node = torch.zeros_like(embedded_nodes[:, :1])
                 update_input = torch.cat([
-                    embedded_nodes,
+                    nodes,
                     torch.cat([zero_node, embedded_nodes[:, :-1]], dim=1), 
                     torch.cat([embedded_nodes[:, 1:], zero_node], dim=1)
                 ], dim=-1)
@@ -473,14 +494,20 @@ class GNN_MP(MyNeuralNetwork):
                 store_recipient_aggregation = torch.zeros_like(embedded_nodes[:, 1:])
                 
                 warehouse_supplier_aggregation = torch.zeros_like(embedded_nodes[:, :1])
-                warehouse_recipient_aggregation = embedded_nodes[:, 1:].mean(dim=1, keepdim=True)
+                if self.use_attention:
+                    attention_input = torch.cat([embedded_nodes[:, :1].expand(-1, store_state.size(1), -1),embedded_nodes[:, 1:]], dim = -1)
+                    attention_weights = self.net['attention'](attention_input)
+                    attention_weights = F.softmax(attention_weights, dim=2)
+                    warehouse_recipient_aggregation = torch.sum(attention_weights * embedded_nodes[:, 1:], dim=1, keepdim=True)
+                else:
+                    warehouse_recipient_aggregation = embedded_nodes[:, 1:].mean(dim=1, keepdim=True)
                 update_input = torch.cat(
-                    [torch.cat([embedded_nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1),
-                    torch.cat([embedded_nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1)],
+                    [torch.cat([nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1),
+                    torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1)],
                     dim=1
                 )
 
-            updates = self.net['update_embedding'](update_input)
+            updates = self.get_network('update_embedding', layer_idx)(update_input)
             nodes = nodes + updates
 
             # if self.use_attention:
@@ -544,7 +571,13 @@ class GNN_MP(MyNeuralNetwork):
             #     warehouse_aggregation = scaled_stores.view(scaled_stores.size(0),1,-1)
             # else:
         # Final node embeddings to outputs
-        outputs = self.net['output'](nodes)
+        if self.skip_connection:
+            if self.use_node_for_skip_connection:
+                outputs = self.net['output'](torch.cat([initial_nodes, nodes], dim=-1))
+            else:
+                outputs = self.net['output'](torch.cat([states, nodes], dim=-1))
+        else:
+            outputs = self.net['output'](nodes)
         if 'echelon_inventories' in observation:
             def proportional_minimum(x, y):
                 return x * torch.minimum(y/(x + 1e-8), torch.ones_like(y))

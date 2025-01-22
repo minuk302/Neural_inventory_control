@@ -251,17 +251,20 @@ if "generic_architecture_hard" == testset_name:
         "stop_if_no_improve_for_epochs": tune.grid_search([1000]),
         "samples": tune.grid_search([1, 2, 3]),
     }
-
     if 'GNN_MP' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_no_face_encoding' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_attention' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.001, 0.0001, 0.00003]),
         }
-    if 'symmetry_aware' == hyperparams_name:
-        search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-            "apply_normalization": tune.grid_search([False]),
-        }
-
+    # also can try separated layers
+    # multi-head of attention
 if "generic_architecture_transshipment" == testset_name:
     config = "transshipment_backlogged"
     common_setups = {
@@ -297,8 +300,8 @@ if "generic_architecture_serial_hard" == testset_name:
         "config": tune.grid_search([config]),
         # "store_lead_time": tune.grid_search([1, 2, 3, 4]),
         # "store_underage_cost": tune.grid_search([4, 9, 19, 39]),
-        "store_lead_time": tune.grid_search([4]),
-        "store_underage_cost": tune.grid_search([9, 4, 19, 39]),
+        "store_lead_time": tune.grid_search([2]),
+        "store_underage_cost": tune.grid_search([9]),
         "train_n_samples": tune.grid_search([32768]),
         "train_batch_size": tune.grid_search([4096]),
         "dev_n_samples": tune.grid_search([32768]),
@@ -317,7 +320,27 @@ if "generic_architecture_serial_hard" == testset_name:
         }
     if 'GNN_MP' == hyperparams_name:
         search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.001, 0.0001, 0.00003]),
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_NN_per_layer' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_skip_connection' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_skip_connection_node' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_NN_per_layer_skip_connection' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_NN_per_layer_skip_connection_node' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
         }
     if 'echelon_stock_hard' == hyperparams_name:
         search_space = { **common_setups,
@@ -348,6 +371,14 @@ if "generic_architecture_serial" == testset_name:
     if 'vanilla_serial' == hyperparams_name:
         search_space = { **common_setups }
     if 'GNN_MP' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_NN_per_layer_skip_connection' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_NN_per_layer' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         }

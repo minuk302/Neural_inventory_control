@@ -22,6 +22,6 @@ nn_params:
   'neurons_per_hidden_layer':
     'master': [128, 128]
   'output_sizes':
-    'master': 10 # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
+    'master': 8 # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
   'initial_bias': null
   'warehouse_upper_bound_mult': 30  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores
