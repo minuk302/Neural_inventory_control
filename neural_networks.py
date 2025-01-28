@@ -400,7 +400,6 @@ class GNN_MP(MyNeuralNetwork):
                           / torch.tensor(self.n_stores + 1, device=self.device)
         self.use_pna = 'use_pna' in args and args['use_pna']
         self.NN_per_layer = 'NN_per_layer' in args and args['NN_per_layer']
-        self.no_face_encoding = 'no_face_encoding' in args and args['no_face_encoding']
         self.skip_connection = 'skip_connection' in args and args['skip_connection']
         self.use_node_for_skip_connection = 'use_node_for_skip_connection' in args and args['use_node_for_skip_connection']
 
@@ -476,8 +475,7 @@ class GNN_MP(MyNeuralNetwork):
 
             n_MP = 2
         
-        if not self.no_face_encoding:
-            states = torch.cat([states, face_encoding], dim=-1)
+        states = torch.cat([states, face_encoding], dim=-1)
         initial_nodes = self.net['initial_embedding'](states)
         nodes = initial_nodes
         for layer_idx in range(n_MP):
@@ -502,8 +500,8 @@ class GNN_MP(MyNeuralNetwork):
                 else:
                     warehouse_recipient_aggregation = embedded_nodes[:, 1:].mean(dim=1, keepdim=True)
                 update_input = torch.cat(
-                    [torch.cat([nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1),
-                    torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1)],
+                    [torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
+                     torch.cat([nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
                     dim=1
                 )
 
@@ -569,15 +567,35 @@ class GNN_MP(MyNeuralNetwork):
                 
             #     store_aggregation = scaled_warehouse.unsqueeze(1).expand(-1, store_nodes.size(1), -1, -1).view(scaled_warehouse.size(0),self.n_stores,-1)
             #     warehouse_aggregation = scaled_stores.view(scaled_stores.size(0),1,-1)
-            # else:
-        # Final node embeddings to outputs
+            # else:            # Log intermediate node states
+
+
+
+            # import json
+            # with open('/user/ml4723/Prj/NIC/NN_outputs.json', 'a') as f:
+            #     layer_outputs = {
+            #         'layer': layer_idx,
+            #         'embedded_nodes': embedded_nodes.detach().cpu().numpy().tolist(),
+            #         'updates': updates.detach().cpu().numpy().tolist(),
+            #         'nodes': nodes.detach().cpu().numpy().tolist()
+            #     }
+            #     if 'echelon_inventories' not in observation and self.use_attention:
+            #         layer_outputs['attention_weights'] = attention_weights.detach().cpu().numpy().tolist()
+            #     json.dump(layer_outputs, f)
+            #     f.write('\n')
         if self.skip_connection:
-            if self.use_node_for_skip_connection:
-                outputs = self.net['output'](torch.cat([initial_nodes, nodes], dim=-1))
-            else:
-                outputs = self.net['output'](torch.cat([states, nodes], dim=-1))
+            outputs = self.net['output'](torch.cat([states, nodes], dim=-1))
         else:
             outputs = self.net['output'](nodes)
+
+        # # Log final outputs
+        # with open('/user/ml4723/Prj/NIC/NN_outputs.json', 'a') as f:
+        #     final_outputs = {
+        #         'final_nodes': nodes.detach().cpu().numpy().tolist(),
+        #         'outputs': outputs.detach().cpu().numpy().tolist()
+        #     }
+        #     json.dump(final_outputs, f)
+        #     f.write('\n')
         if 'echelon_inventories' in observation:
             def proportional_minimum(x, y):
                 return x * torch.minimum(y/(x + 1e-8), torch.ones_like(y))
