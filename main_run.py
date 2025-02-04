@@ -44,11 +44,13 @@ class MainRun:
         self.setup_trainer_params()
 
     def override_configs(self):
-        path = os.path.join(self.recorder_config_path, 'params.json')
-        with open(path, 'r') as file:
+        # Use recorder_config_path directly as model path since it points to model_index.pt
+        model_path = self.recorder_config_path
+        # Get params.json from parent directory
+        params_path = os.path.join(os.path.dirname(self.recorder_config_path), 'params.json')
+        with open(params_path, 'r') as file:
             params = json.load(file)
             self.config_setting, self.config_hyperparams = research_utils.override_configs(params, self.config_setting, self.config_hyperparams)
-        model_path = os.path.join(self.recorder_config_path, 'model.pt')
         self.config_hyperparams['trainer_params']['load_model_path'] = model_path
         self.config_hyperparams['trainer_params']['load_previous_model'] = os.path.exists(model_path)
 

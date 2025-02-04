@@ -46,7 +46,6 @@ class RayResultsinterpreter:
                         'n_sub_sample_for_context': 'n_sub_sample_for_context',
                         'apply_normalization': 'apply_normalization',
                         'store_orders_for_warehouse': 'store_orders_for_warehouse',
-                        'warehouse_lost_order_average_interval': 'warehouse_lost_order_average_interval',
                         'include_context_for_warehouse_input': 'include_context_for_warehouse_input',
                         'censoring_threshold': 'censoring_threshold',
                         'store_lead_time': 'store_lead_time',

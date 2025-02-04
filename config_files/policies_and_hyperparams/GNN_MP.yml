@@ -9,6 +9,7 @@ trainer_params :
   'choose_best_model_on': 'dev_loss'  # For early stopping, choose according to best performance on this dataset
   'load_previous_model': False
   'load_model_path': null
+  'save_model_for_all_epochs': True
 
 optimizer_params: 
   'learning_rate': 0.001
@@ -35,5 +36,6 @@ nn_params:
     'node_embedding': 32
     'update_embedding': 32
     'output': 1
-  'initial_bias': null
+  'initial_bias':
+    'output': 5.0
   'include_primitive_features': False

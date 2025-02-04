@@ -133,7 +133,10 @@ def run(tuning_configs):
     model = neural_net_creator().create_neural_network(scenario, nn_params, device=device)
 
     loss_function = PolicyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_params['learning_rate'])
+    weight_decay = 0.0
+    if 'weight_decay' in optimizer_params:
+        weight_decay = optimizer_params['weight_decay']
+    optimizer = torch.optim.Adam(model.parameters(), lr=optimizer_params['learning_rate'], weight_decay=weight_decay)
 
     simulator = Simulator(recorder, device=device)
     trainer = Trainer(device=device)
@@ -189,19 +192,33 @@ if 'generic_architecture_real' == testset_name:
     config = "one_warehouse_lost_demand_real"
     common_setups = {
         "config": tune.grid_search([config]),
-        "stop_if_no_improve_for_epochs": tune.grid_search([2000]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+        "store_underage_cost": tune.grid_search([2, 5, 8, 11]),
         "samples": tune.grid_search([1, 2, 3]),
     }
+    if 'GNN_MP_real' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+        }
     if "symmetry_aware_real" == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
             "apply_normalization": tune.grid_search([False]),
             "store_orders_for_warehouse": tune.grid_search([True]),
         }
-    if 'GNN_MP_real' == hyperparams_name:
+    if "data_driven_net_real" == hyperparams_name:
         search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "master": tune.grid_search([512, 256, 128]),
+            "overriding_networks": ["master"],
         }
+    if 'transformed_nv_one_warehouse_real' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.1, 0.03, 0.01, 0.003, 0.001]),
+        }
+        save_path = 'ray_results/warehouse_real_fixed_stores/transformed_nv'
     if "just_in_time_real" == hyperparams_name:
         search_space = { **common_setups,
         }
@@ -280,23 +297,24 @@ if "generic_architecture_transshipment" == testset_name:
         "store_underage_cost": tune.grid_search([4, 9]),
         "stores_correlation": tune.grid_search([0.0, 0.5]),
         "samples": tune.grid_search([1, 2, 3]),
-        # "train_n_samples": tune.grid_search([32768]),
-        # "train_batch_size": tune.grid_search([4096]),
-        "train_n_samples": tune.grid_search([16]),
-        "train_batch_size": tune.grid_search([16]),
+        "train_n_samples": tune.grid_search([32768]),
+        "train_batch_size": tune.grid_search([1024]),
+        # "train_n_samples": tune.grid_search([16]),
+        # "train_batch_size": tune.grid_search([16]),
         "dev_n_samples": tune.grid_search([32768]),
         "test_n_samples": tune.grid_search([32768]),
         "dev_batch_size": tune.grid_search([32768]),
         "test_batch_size": tune.grid_search([32768]),
-        # "stop_if_no_improve_for_epochs": tune.grid_search([250]),
-        "stop_if_no_improve_for_epochs": tune.grid_search([1000]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
     }
-    if 'vanilla_transshipment' == hyperparams_name:  
-        search_space = {**common_setups}
     if 'GNN_MP_transshipment' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
         }
+    if 'vanilla_transshipment' == hyperparams_name:  
+        search_space = {**common_setups}
 
 if "generic_architecture_serial_hard" == testset_name:
     config = "serial_system_hard"
@@ -306,26 +324,70 @@ if "generic_architecture_serial_hard" == testset_name:
         # "store_underage_cost": tune.grid_search([4, 9, 19, 39]),
         "store_lead_time": tune.grid_search([2]),
         "store_underage_cost": tune.grid_search([9]),
+
+
         "train_n_samples": tune.grid_search([16]),
         "train_batch_size": tune.grid_search([16]),
         "dev_n_samples": tune.grid_search([16]),
         "dev_batch_size": tune.grid_search([16]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([1000]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8]),
         # "train_n_samples": tune.grid_search([32768]),
         # "train_batch_size": tune.grid_search([4096]),
         # "dev_n_samples": tune.grid_search([32768]),
         # "dev_batch_size": tune.grid_search([32768]),
+        # "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+        # "samples": tune.grid_search([1, 2, 3]),
+
+
         "test_n_samples": tune.grid_search([32768]),
         "test_batch_size": tune.grid_search([32768]),
-        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
         "early_stop_check_epochs": tune.grid_search([50]),
-        # "stop_if_no_improve_for_epochs": tune.grid_search([250]),
-        "stop_if_no_improve_for_epochs": tune.grid_search([1000]),
     }
     if 'GNN_MP' == hyperparams_name:
         search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.001, 0.0001]),
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+            "save_model_for_all_epochs": tune.grid_search([True]),
+        }
+    if 'GNN_MP_sigmoid' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_sigmoid_gradient_clipping' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+        }
+    if 'GNN_MP_large' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.001]),
+        }
+    if 'GNN_MP_orthogonal' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+            # "gradient_clipping_norm_value": tune.grid_search([1.0]),
+        }
+    if 'GNN_MP_noembedding' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_layer_normalization' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+        }
+    if 'GNN_MP_weight_decay' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+            "weight_decay": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
         }
     if 'vanilla_serial_hard' == hyperparams_name:
+        search_space = { **common_setups,
+            "master": tune.grid_search([128]),
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+            "overriding_networks": ["master"],
+            # "save_model_for_all_epochs": tune.grid_search([True]),
+        }
+    if 'vanilla_serial_hard_proportional' == hyperparams_name:
         search_space = { **common_setups,
             "master": tune.grid_search([128]),
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
@@ -333,7 +395,7 @@ if "generic_architecture_serial_hard" == testset_name:
         }
     if 'GNN_MP_NN_per_layer' == hyperparams_name:
         search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
+            "learning_rate": tune.grid_search([0.001, 0.0001]),
         }
     if 'GNN_MP_skip_connection' == hyperparams_name:
         search_space = { **common_setups,
@@ -352,32 +414,31 @@ if "generic_architecture_serial" == testset_name:
     config = "serial_system"
     common_setups = {
         "config": tune.grid_search([config]),
-        # "store_lead_time": tune.grid_search([1, 2, 3, 4]),
-        "store_lead_time": tune.grid_search([4]),
-        # "store_underage_cost": tune.grid_search([4, 9, 19, 39]),
+        "store_lead_time": tune.grid_search([1, 2, 3, 4]),
+        # "store_lead_time": tune.grid_search([4]),
         "store_underage_cost": tune.grid_search([4, 9, 19, 39]),
-        # "train_n_samples": tune.grid_search([32768]),
-        # "train_batch_size": tune.grid_search([8192]),
-        # "dev_n_samples": tune.grid_search([32768]),
-        # "dev_batch_size": tune.grid_search([32768]),
-        "train_n_samples": tune.grid_search([16]),
-        "train_batch_size": tune.grid_search([16]),
-        "dev_n_samples": tune.grid_search([16]),
-        "dev_batch_size": tune.grid_search([16]),
+        "train_n_samples": tune.grid_search([32768]),
+        "train_batch_size": tune.grid_search([1024]),
+        "dev_n_samples": tune.grid_search([32768]),
+        "dev_batch_size": tune.grid_search([32768]),
+        # "train_n_samples": tune.grid_search([16]),
+        # "train_batch_size": tune.grid_search([16]),
+        # "dev_n_samples": tune.grid_search([16]),
+        # "dev_batch_size": tune.grid_search([16]),
         "test_n_samples": tune.grid_search([32768]),
         "test_batch_size": tune.grid_search([32768]),
-        "samples": tune.grid_search([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-        "early_stop_check_epochs": tune.grid_search([50]),
-        # "stop_if_no_improve_for_epochs": tune.grid_search([250]),
-        "stop_if_no_improve_for_epochs": tune.grid_search([1000]),
+        "samples": tune.grid_search([1, 2, 3]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
     }
+    if 'GNN_MP' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+        }
     if 'vanilla_serial' == hyperparams_name:
         search_space = { **common_setups,
                         "learning_rate": tune.grid_search([0.01, 0.001]),
-        }
-    if 'GNN_MP' == hyperparams_name:
-        search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.001, 0.0001]),
         }
     if 'GNN_MP_skip_connection' == hyperparams_name:
         search_space = { **common_setups,
@@ -653,14 +714,6 @@ else:
             "samples": tune.grid_search([1, 2, 3, 4, 5]),
         }
         save_path = 'ray_results/warehouse_real_fixed_stores/GNN_omit_context_from_store_sgebd'
-    elif 'transformed_nv_one_warehouse_real_fixed_stores' == hyperparams_name:
-        search_space = {
-            "learning_rate": tune.grid_search([0.1, 0.03, 0.01, 0.003, 0.001]),
-            "warehouse_holding_cost": tune.grid_search([0.6]),
-            "store_underage_cost": tune.grid_search([2, 5, 8, 11]),
-            "samples": tune.grid_search([1, 2, 3, 4, 5]),
-        }
-        save_path = 'ray_results/warehouse_real_fixed_stores/transformed_nv'
 
 
 

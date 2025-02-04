@@ -29,8 +29,8 @@ problem_params :
 
 params_by_dataset : 
   'train': 
-    'n_samples': 32768 
-    'batch_size': 8192 
+    'n_samples': 16 # 32768 
+    'batch_size': 16 # 8192 
     'periods': 50 
     'ignore_periods': 30 
   'dev': 

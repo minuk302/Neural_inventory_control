@@ -20,7 +20,7 @@ nn_params:
   'output_layer_activation':
     'master': 'softplus'
   'neurons_per_hidden_layer': 
-    'master': [128, 128]
+    'master': [128, 128, 128]
   'initial_bias':
     'master': 1.0
   'output_sizes':

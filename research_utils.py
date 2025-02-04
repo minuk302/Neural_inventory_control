@@ -11,11 +11,10 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'train_batch_size', 'dev_batch_size', 'test_batch_size', 'learning_rate', 'warehouse_holding_cost',
         'warehouse_lead_time', 'stores_correlation', 'n_sub_sample_for_context',
         'apply_normalization', 'store_orders_for_warehouse', 
-        'warehouse_lost_order_average_interval', 'store_yield',
         'include_context_for_warehouse_input',
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
-        'kaplanmeier_n_fit', 'store', 'warehouse',
+        'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs"
     }
 
     # Check that all keys in overriding_params are valid
@@ -27,6 +26,15 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         config_hyperparams['trainer_params']['do_dev_every_n_epochs'] = overriding_params['early_stop_check_epochs']
         config_hyperparams['trainer_params']['print_results_every_n_epochs'] = overriding_params['early_stop_check_epochs']
         config_hyperparams['trainer_params']['epochs_between_save'] = overriding_params['early_stop_check_epochs']
+    
+    if 'weight_decay' in overriding_params:
+        config_hyperparams['optimizer_params']['weight_decay'] = overriding_params['weight_decay']
+
+    if 'gradient_clipping_norm_value' in overriding_params:
+        config_hyperparams['nn_params']['gradient_clipping_norm_value'] = overriding_params['gradient_clipping_norm_value']
+
+    if 'save_model_for_all_epochs' in overriding_params:
+        config_hyperparams['trainer_params']['save_model_for_all_epochs'] = overriding_params['save_model_for_all_epochs']
 
     if 'weibull_fixed_lambda' in overriding_params:
         config_setting['problem_params']['weibull_fixed_lambda'] = overriding_params['weibull_fixed_lambda']
@@ -93,12 +101,6 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         if overriding_params['store_orders_for_warehouse']:
             config_hyperparams['nn_params']['output_sizes']['store'] = 2
             del config_hyperparams['nn_params']['output_sizes']['warehouse']
-
-    if 'warehouse_lost_order_average_interval' in overriding_params:
-        config_setting['warehouse_params']['lost_order_average_interval'] = overriding_params['warehouse_lost_order_average_interval']
-
-    if 'store_yield' in overriding_params:
-        config_setting['warehouse_params']['lost_order_average_interval'] = overriding_params['warehouse_lost_order_average_interval']
 
     if 'include_context_for_warehouse_input' in overriding_params:
         config_hyperparams['nn_params']['include_context_for_warehouse_input'] = overriding_params['include_context_for_warehouse_input']

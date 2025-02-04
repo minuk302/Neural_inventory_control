@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP_real'
+  'name': 'GNN_MP_sigmoid'
   'inner_layer_activations': 
     'initial_embedding': 'elu'
     'node_embedding': 'elu'
@@ -24,17 +24,17 @@ nn_params:
     'initial_embedding': 'elu'
     'node_embedding': 'elu'
     'update_embedding': 'elu'
-    'output': 'softplus'
+    'output': null
   'neurons_per_hidden_layer':
-    'initial_embedding': [64, 64]
-    'node_embedding': [64, 64]
-    'update_embedding': [64, 64]
-    'output': [64, 64]
+    'initial_embedding': [32, 32]
+    'node_embedding': [32, 32]
+    'update_embedding': [32, 32]
+    'output': [32, 32]
   'output_sizes':
-    'initial_embedding': 64
-    'node_embedding': 64
-    'update_embedding': 64
+    'initial_embedding': 32
+    'node_embedding': 32
+    'update_embedding': 32
     'output': 1
-  'initial_bias': 
-    'output': 1.0
+  'initial_bias': null
   'include_primitive_features': False
+  'warehouse_upper_bound_mult': 30  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores

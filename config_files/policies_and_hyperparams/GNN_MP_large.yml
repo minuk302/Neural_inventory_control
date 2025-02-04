@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP_real'
+  'name': 'GNN_MP'
   'inner_layer_activations': 
     'initial_embedding': 'elu'
     'node_embedding': 'elu'
@@ -35,6 +35,5 @@ nn_params:
     'node_embedding': 64
     'update_embedding': 64
     'output': 1
-  'initial_bias': 
-    'output': 1.0
+  'initial_bias': null
   'include_primitive_features': False

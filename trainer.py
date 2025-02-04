@@ -10,9 +10,6 @@ class Trainer():
 
     def __init__(self,  device='cpu'):
         
-        self.all_train_losses = []
-        self.all_dev_losses = []
-        self.all_test_losses = [] 
         self.device = device
         self.time_stamp = self.get_time_stamp()
         self.best_performance_data = {'train_loss': np.inf, 'dev_loss': np.inf, 'last_epoch_saved': -1000, 'model_params_to_save': None}
@@ -23,10 +20,6 @@ class Trainer():
         """
         Reset the losses
         """
-
-        self.all_train_losses = []
-        self.all_dev_losses = []
-        self.all_test_losses = []
 
     def train(self, epochs, loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, trainer_params, store_params):
         """
@@ -92,8 +85,6 @@ class Trainer():
                 ignore_periods=params_by_dataset['train']['ignore_periods']
                 )
             
-            self.all_train_losses.append(average_train_loss_to_report)
-
             if epoch % trainer_params['do_dev_every_n_epochs'] == 0:
                 average_dev_loss, average_dev_loss_to_report = self.do_one_epoch(
                     optimizer, 
@@ -107,12 +98,11 @@ class Trainer():
                     train=False, 
                     ignore_periods=params_by_dataset['dev']['ignore_periods']
                     )
-                
-                self.all_dev_losses.append(average_dev_loss_to_report)
 
                 # Check if the current model is the best model so far, and save the model parameters if so.
                 # Save the model if specified in the trainer_params
-                self.update_best_params_and_save(epoch, average_train_loss_to_report, average_dev_loss_to_report, trainer_params, model, optimizer)
+                if_save_model_for_all_epochs = "save_model_for_all_epochs" in trainer_params and trainer_params['save_model_for_all_epochs']
+                self.update_best_params_and_save(epoch, average_train_loss_to_report, average_dev_loss_to_report, trainer_params, model, optimizer, if_save_model_for_all_epochs)
                 
                 if self.update_best_train_or_dev_loss(average_train_loss_to_report, average_dev_loss_to_report, trainer_params):
                     n_passed_epochs_without_improvement = 0
@@ -138,7 +128,6 @@ class Trainer():
                     train.report(report_dict)
             else:
                 average_dev_loss, average_dev_loss_to_report = 0, 0
-                self.all_dev_losses.append(self.all_dev_losses[-1])
 
             # Print epoch number and average per-period loss every 10 epochs
             if epoch % trainer_params['print_results_every_n_epochs'] == 0:
@@ -218,6 +207,8 @@ class Trainer():
                 # Backward pass (to calculate gradient) and take gradient step
                 if train and model.trainable:
                     mean_loss.backward()
+                    if model.gradient_clipping_norm_value is not None:
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), model.gradient_clipping_norm_value)
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
             
@@ -266,22 +257,22 @@ class Trainer():
         # Return reward
         return batch_reward, reward_to_report
 
-    def save_model(self, epoch, model, optimizer, trainer_params):
+    def save_model(self, epoch, model, optimizer, trainer_params, if_save_model_for_all_epochs=False):
 
         path = self.create_many_folders_if_not_exist_and_return_path(base_dir=trainer_params['base_dir'], 
                                                                      intermediate_folder_strings=trainer_params['save_model_folders']
                                                                      )
+        file_name = f"{trainer_params['save_model_filename']}"
+        if if_save_model_for_all_epochs:
+            file_name += f"_{epoch}"
         torch.save({
                     'epoch': epoch,
                     'model_state_dict': self.best_performance_data['model_params_to_save'],
                     'optimizer_state_dict': optimizer.state_dict(),
                     'best_train_loss': self.best_performance_data['train_loss'],
                     'best_dev_loss': self.best_performance_data['dev_loss'],
-                    'all_train_losses': self.all_train_losses,
-                    'all_dev_losses': self.all_dev_losses,
-                    'all_test_losses': self.all_test_losses,
                     }, 
-                    f"{path}/{trainer_params['save_model_filename']}.pt"
+                    f"{path}/{file_name}.pt"
                     )
     
     def create_folder_if_not_exists(self, folder):
@@ -303,7 +294,7 @@ class Trainer():
             self.create_folder_if_not_exists(path)
         return path
     
-    def update_best_params_and_save(self, epoch, train_loss, dev_loss, trainer_params, model, optimizer):
+    def update_best_params_and_save(self, epoch, train_loss, dev_loss, trainer_params, model, optimizer, if_save_model_for_all_epochs = False):
         """
         Update best model parameters if it achieves best performance so far, and save the model
         """
@@ -328,7 +319,9 @@ class Trainer():
             if self.best_performance_data['last_epoch_saved'] + trainer_params['epochs_between_save'] <= epoch and self.best_performance_data['update']:
                 self.best_performance_data['last_epoch_saved'] = epoch
                 self.best_performance_data['update'] = False
-                self.save_model(epoch, model, optimizer, trainer_params)
+                self.save_model(epoch, model, optimizer, trainer_params, if_save_model_for_all_epochs)
+            elif if_save_model_for_all_epochs:
+                self.save_model(epoch, model, optimizer, trainer_params, if_save_model_for_all_epochs)
         return is_updated
     
     def update_best_train_or_dev_loss(self, train_loss, dev_loss, trainer_params):
@@ -349,8 +342,6 @@ class Trainer():
         Plot train and test losses for each epoch
         """
 
-        plt.plot(self.all_train_losses, label='Train loss')
-        plt.plot(self.all_dev_losses, label='Dev loss')
         plt.legend()
 
         if ymin is not None and ymax is not None:
@@ -374,9 +365,6 @@ class Trainer():
         checkpoint = torch.load(model_path)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.all_train_losses = checkpoint['all_train_losses']
-        self.all_dev_losses = checkpoint['all_dev_losses']
-        self.all_test_losses = checkpoint['all_test_losses']
         return model, optimizer
     
     def get_time_stamp(self):
