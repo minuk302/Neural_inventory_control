@@ -984,6 +984,7 @@ class SymmetryAware(MyNeuralNetwork):
         self.apply_normalization = 'apply_normalization' in args and args['apply_normalization']
         self.store_orders_for_warehouse = 'store_orders_for_warehouse' in args and args['store_orders_for_warehouse']
         self.n_sub_sample_for_context = args['n_sub_sample_for_context'] if 'n_sub_sample_for_context' in args else 0
+        self.omit_context_from_store_input = 'omit_context_from_store_input' in args and args['omit_context_from_store_input']
 
     def get_store_inventory_and_context_params(self, observation):
         return observation['store_inventories']
@@ -1043,7 +1044,11 @@ class SymmetryAware(MyNeuralNetwork):
         store_inventory_and_params = self.get_store_inventory_and_params(observation)
         if 'context' in self.net:
             context = self.get_context(observation, store_inventory_and_params)
-        stores_input = store_inventory_and_params
+        
+        if self.omit_context_from_store_input:
+            stores_input = store_inventory_and_params
+        else:
+            stores_input = torch.cat([store_inventory_and_params, context.unsqueeze(1).expand(-1, store_inventory_and_params.size(1), -1)], dim=-1)
         
         store_net_results = self.net['store'](stores_input)
         store_intermediate_outputs = store_net_results[:, :, 0]
@@ -1223,75 +1228,6 @@ class SymmetryGNN(SymmetryAware):
 
         input_tensor = self.flatten_then_concatenate_tensors([aggregated_store_embeddings, observation['warehouse_inventories']])
         return self.net['context'](input_tensor)
-
-class GNN_Separation(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.n_stores = problem_params['n_stores']
-        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
-                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
-                          / torch.tensor(self.n_stores + 1, device=self.device)
-        self.use_pna = 'use_pna' in args and args['use_pna']
-
-    def get_store_inventory_and_context_params(self, observation):
-        return observation['store_inventories']
-
-    def get_store_inventory_and_params(self, observation):
-        store_params = torch.stack([observation[k] for k in ['mean', 'std', 'underage_costs', 'lead_times']], dim=2)
-        return torch.concat([observation['store_inventories'], store_params], dim=2)
-
-    def forward(self, observation):
-        store_inventory_and_params = self.get_store_inventory_and_params(observation)
-        store_embeddings_store = store_inventory_and_params
-        store_embeddings_warehouse = store_inventory_and_params
-
-        store_embeddings_store = self.net['store_embedding_store'](store_embeddings_store)
-        store_embeddings_warehouse = self.net['store_embedding_warehouse'](store_embeddings_warehouse)
-
-        if self.use_pna:
-            aggregators = [
-                lambda x: x.mean(dim=1),
-                lambda x: x.min(dim=1)[0],
-                lambda x: x.max(dim=1)[0],
-                lambda x: x.std(dim=1)
-            ]
-            aggregated_store_embeddings_store = torch.stack([agg(store_embeddings_store) for agg in aggregators], dim=1)
-            aggregated_store_embeddings_warehouse = torch.stack([agg(store_embeddings_warehouse) for agg in aggregators], dim=1)
-            scalers = [
-                lambda x: x,  # identity
-                lambda x: x * (torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)) / self.pna_delta),  # amplification
-                lambda x: x * (self.pna_delta / torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)))  # attenuation
-            ]
-            
-            scaled_store_embeddings_store = torch.cat([scale(aggregated_store_embeddings_store) for scale in scalers], dim=1)
-            scaled_store_embeddings_warehouse = torch.cat([scale(aggregated_store_embeddings_warehouse) for scale in scalers], dim=1)
-            store_aggregation_store = scaled_store_embeddings_store.view(scaled_store_embeddings_store.size(0), 1, -1)
-            store_aggregation_warehouse = scaled_store_embeddings_warehouse.view(scaled_store_embeddings_warehouse.size(0), 1, -1)
-        else:
-            store_aggregation_store = torch.mean(store_embeddings_store, dim=1, keepdim=True)
-            store_aggregation_warehouse = torch.mean(store_embeddings_warehouse, dim=1, keepdim=True)
-
-        input_tensor_store = self.flatten_then_concatenate_tensors([store_aggregation_store, observation['warehouse_inventories']])
-        input_tensor_warehouse = self.flatten_then_concatenate_tensors([store_aggregation_warehouse, observation['warehouse_inventories']])
-        context_store = self.net['context_store'](input_tensor_store)
-        context_warehouse = self.net['context_warehouse'](input_tensor_warehouse)
-
-        warehouses_and_context = self.concatenate_signal_to_object_state_tensor(observation['warehouse_inventories'], context_warehouse)
-        warehouse_intermediate_outputs = self.net['warehouse'](warehouses_and_context)[:, :, 0]
-        stores_and_context = self.concatenate_signal_to_object_state_tensor(self.get_store_inventory_and_params(observation), context_store)
-        store_intermediate_outputs = self.net['store'](stores_and_context)[:, :, 0]
-
-        store_allocation = self.apply_proportional_allocation(
-            store_intermediate_outputs, 
-            observation['warehouse_inventories']
-            )
-        warehouse_allocation = warehouse_intermediate_outputs
-        if self.use_warehouse_upper_bound:
-            warehouse_allocation = warehouse_intermediate_outputs * self.warehouse_upper_bound.unsqueeze(1)
-        return {
-            'stores': store_allocation, 
-            'warehouses': warehouse_allocation
-            }
 
 class SymmetryAwareTransshipment(SymmetryAware):
     pass
@@ -1800,7 +1736,6 @@ class NeuralNetworkCreator:
             'symmetry_aware_transshipment': SymmetryAwareTransshipment,
             'SymmetryGNN': SymmetryGNN,
             'weekly_forecast_NN': WeeklyForecastNN,
-            'GNN_Separation': GNN_Separation,
             'transformed_nv_noquantile': TransformedNV_NoQuantile,
             'transformed_nv_calculated_quantile': TransformedNV_CalculatedQuantile,
             'transformed_nv_noquantile_sep_stores': TransformedNV_NoQuantile_SeparateStores,

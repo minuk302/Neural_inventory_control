@@ -11,7 +11,7 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'train_batch_size', 'dev_batch_size', 'test_batch_size', 'learning_rate', 'warehouse_holding_cost',
         'warehouse_lead_time', 'stores_correlation', 'n_sub_sample_for_context',
         'apply_normalization', 'store_orders_for_warehouse', 
-        'include_context_for_warehouse_input',
+        'include_context_for_warehouse_input', 'omit_context_from_store_input',
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
         'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs"
@@ -29,6 +29,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     
     if 'weight_decay' in overriding_params:
         config_hyperparams['optimizer_params']['weight_decay'] = overriding_params['weight_decay']
+
+    if 'omit_context_from_store_input' in overriding_params:
+        config_hyperparams['nn_params']['omit_context_from_store_input'] = overriding_params['omit_context_from_store_input']
 
     if 'gradient_clipping_norm_value' in overriding_params:
         config_hyperparams['nn_params']['gradient_clipping_norm_value'] = overriding_params['gradient_clipping_norm_value']
