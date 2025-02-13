@@ -14,26 +14,26 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'SymmetryGNN'
+  'name': 'GNN_MP_bottleneck_loss_stop_gradient'
   'inner_layer_activations': 
-    'context': 'elu'
-    'store_embedding': 'elu'
-    'store': 'elu'
-    'warehouse': 'elu'
+    'initial_embedding': 'elu'
+    'node_embedding': 'elu'
+    'update_embedding': 'elu'
+    'output': 'elu'
   'output_layer_activation':
-    'context': 'sigmoid'
-    'store_embedding': 'sigmoid'
-    'store': 'softplus'
-    'warehouse': 'sigmoid'
+    'initial_embedding': 'elu'
+    'node_embedding': 'elu'
+    'update_embedding': 'elu'
+    'output': 'softplus'
   'neurons_per_hidden_layer':
-    'context': [16]
-    'store_embedding': [256]
-    'store': [32, 32]
-    'warehouse': [16, 16]
+    'initial_embedding': [32, 32]
+    'node_embedding': [32, 32]
+    'update_embedding': [32, 32]
+    'output': [32, 32]
   'output_sizes':
-    'context': 16
-    'store_embedding': 256
-    'store': 1
-    'warehouse': 1
+    'initial_embedding': 32
+    'node_embedding': 32
+    'update_embedding': 32
+    'output': 1
   'initial_bias': null
-  'warehouse_upper_bound_mult': 4
+  'include_primitive_features': False

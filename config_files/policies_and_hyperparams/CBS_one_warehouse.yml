@@ -11,30 +11,16 @@ trainer_params :
   'load_model_path': null
 
 optimizer_params: 
-  'learning_rate': 0.001
+  'learning_rate': 0.0003
 
 nn_params: 
-  'name': 'SymmetryGNN'
+  'name': 'CBS_One_Warehouse'
   'inner_layer_activations': 
-    'context': 'elu'
-    'store': 'elu'
-    'warehouse': 'elu'
-    'store_embedding': 'elu'
-  'output_layer_activation':
-    'context': 'sigmoid'
-    'store': 'softplus'
-    'warehouse': 'sigmoid'
-    'store_embedding': 'sigmoid'
+    'master_cbs': null
+  'output_layer_activation':  # We will apply (sigmoid x upper_bound) to warehouse intermediate outputs on forward method!
+    'master_cbs': null
   'neurons_per_hidden_layer':
-    'context': [16]
-    'store': [32, 32]
-    'warehouse': [16, 16]
-    'store_embedding': [32, 32]
+    'master_cbs': []
   'output_sizes':
-    'context': 16
-    'store': 1
-    'warehouse': 1
-    'store_embedding': 32 # keep pna outout_size equal to store_embedding.
-  'use_pna': True
+    'master_cbs': null # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
   'initial_bias': null
-  'warehouse_upper_bound_mult': 4

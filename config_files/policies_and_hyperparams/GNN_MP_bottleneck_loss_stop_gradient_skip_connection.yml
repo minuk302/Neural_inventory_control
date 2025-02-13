@@ -12,10 +12,9 @@ trainer_params :
 
 optimizer_params: 
   'learning_rate': 0.001
-  'weight_decay': 0.1
 
 nn_params: 
-  'name': 'GNN_MP'
+  'name': 'GNN_MP_bottleneck_loss_stop_gradient'
   'inner_layer_activations': 
     'initial_embedding': 'elu'
     'node_embedding': 'elu'
@@ -37,4 +36,5 @@ nn_params:
     'update_embedding': 32
     'output': 1
   'initial_bias': null
+  'skip_connection': True
   'include_primitive_features': False

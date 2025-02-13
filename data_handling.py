@@ -235,13 +235,13 @@ class Scenario():
         self.means, self.stds, self.store_random_yield_mean, self.store_random_yield_std = self.generate_means_and_stds(observation_params, store_params)
         self.initial_inventories = self.generate_initial_inventories(problem_params, store_params, self.demands, self.lead_times, seeds['initial_inventory'])
         
-        self.initial_warehouse_inventories = self.generate_initial_warehouse_inventory(warehouse_params)
+        self.initial_warehouse_inventories = self.generate_initial_warehouse_inventory(warehouse_params, self.demands, seeds['initial_inventory'])
         self.warehouse_lead_times = self.generate_warehouse_data(warehouse_params, 'lead_time')
         self.warehouse_holding_costs = self.generate_warehouse_data(warehouse_params, 'holding_cost')
         self.lost_order_mask = self.generate_lost_order_mask(warehouse_params, self.demands, seeds['demand'])
         
         echelon_params = self.generate_ehcelon_params(echelon_params, seeds)
-        self.initial_echelon_inventories = self.generate_initial_echelon_inventory(echelon_params)
+        self.initial_echelon_inventories = self.generate_initial_echelon_inventory(echelon_params, self.demands, seeds['initial_inventory'])
         self.echelon_lead_times = self.generate_echelon_data(echelon_params, 'lead_time')
         self.echelon_holding_costs = self.generate_echelon_data(echelon_params, 'holding_cost')
 
@@ -342,6 +342,11 @@ class Scenario():
         split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories', 'initial_warehouse_inventories'\
                                     , 'warehouse_lead_times', 'warehouse_holding_costs'], 
                     'period': []}
+
+        if self.echelon_params is not None:
+            split_by['sample_index'].append('initial_echelon_inventories')
+            split_by['sample_index'].append('echelon_lead_times')
+            split_by['sample_index'].append('echelon_holding_costs')
 
         if self.store_random_yields is not None:
             split_by['sample_index'].append('store_random_yields')
@@ -591,29 +596,51 @@ class Scenario():
                                problem_params['n_stores'], 
                                store_params['initial_inventory']['inventory_periods'])
     
-    def generate_initial_warehouse_inventory(self, warehouse_params):
+    def generate_initial_warehouse_inventory(self, warehouse_params, demands, seed):
         """
         Generate initial warehouse inventory data
         """
         if warehouse_params is None:
             return None
-        
-        return torch.zeros(self.num_samples, 
-                           1, 
-                           warehouse_params['lead_time']
-                           )
+
+        if 'initial_inventory' in warehouse_params:
+            np.random.seed(seed)
+            demand_mean = demands.float().mean(dim=2).mean(dim=0)
+            demand_mults = np.random.uniform(*warehouse_params['initial_inventory']['range_mult'], 
+                                             size=(self.num_samples, 
+                                                   1, 
+                                                   max(warehouse_params['initial_inventory']['inventory_periods'], warehouse_params['lead_time']) 
+                                                   )
+                                            )
+            return demand_mean[None, :, None] * demand_mults
+        else:
+            return torch.zeros(self.num_samples, 
+                            1, 
+                            warehouse_params['lead_time']
+                            )
     
-    def generate_initial_echelon_inventory(self, echelon_params):
+    def generate_initial_echelon_inventory(self, echelon_params, demands, seed):
         """
         Generate initial echelon inventory data
         """
         if echelon_params is None:
             return None
         
-        return torch.zeros(self.num_samples, 
-                           len(echelon_params['lead_time']), 
-                           max(echelon_params['lead_time'])
-                           )
+        if 'initial_inventory' in echelon_params:
+            np.random.seed(seed)
+            demand_mean = demands.float().mean(dim=2).mean(dim=0)
+            demand_mults = np.random.uniform(*echelon_params['initial_inventory']['range_mult'], 
+                                             size=(self.num_samples, 
+                                                   len(echelon_params['lead_time']), 
+                                                   max(echelon_params['initial_inventory']['inventory_periods'], max(echelon_params['lead_time']))
+                                                   )
+                                            )
+            return demand_mean[None, :, None] * demand_mults
+        else:
+            return torch.zeros(self.num_samples, 
+                            len(echelon_params['lead_time']), 
+                            max(echelon_params['lead_time'])
+                            )
     
     def generate_warehouse_data(self, warehouse_params, key):
         """

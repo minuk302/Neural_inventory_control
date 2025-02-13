@@ -1,0 +1,278 @@
+trainer_params : 
+  'epochs': 20000
+  'stop_if_no_improve_for_epochs': 500
+  'do_dev_every_n_epochs': 50
+  'ray_report_loss': True
+  'print_results_every_n_epochs': 50
+  'save_model': True  # Path to save is defined in main script
+  'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
+  'choose_best_model_on': 'dev_loss'  # For early stopping, choose according to best performance on this dataset
+  'load_previous_model': False
+  'load_model_path': null
+
+optimizer_params: 
+  'learning_rate': 0.001
+
+nn_params: 
+  'name': 'GNN_MP_individual_weights'
+  'inner_layer_activations': 
+    'output_0': 'elu'
+    'output_1': 'elu'
+    'output_2': 'elu'
+    'output_3': 'elu'
+    'output_4': 'elu'
+    'output_5': 'elu'
+    'output_6': 'elu'
+    'output_7': 'elu'
+    'output_8': 'elu'
+    'output_9': 'elu'
+    'output_10': 'elu'
+    'output_11': 'elu'
+    'output_12': 'elu'
+    'output_13': 'elu'
+    'output_14': 'elu'
+    'output_15': 'elu'
+    'output_16': 'elu'
+    'output_17': 'elu'
+    'output_18': 'elu'
+    'output_19': 'elu'
+    'output_20': 'elu'
+    'output_21': 'elu'
+    'output_22': 'elu'
+    'output_23': 'elu'
+    'output_24': 'elu'
+    'output_25': 'elu'
+    'output_26': 'elu'
+    'output_27': 'elu'
+    'output_28': 'elu'
+    'output_29': 'elu'
+    'output_30': 'elu'
+    'output_31': 'elu'
+    'output_32': 'elu'
+    'output_33': 'elu'
+    'output_34': 'elu'
+    'output_35': 'elu'
+    'output_36': 'elu'
+    'output_37': 'elu'
+    'output_38': 'elu'
+    'output_39': 'elu'
+    'output_40': 'elu'
+    'output_41': 'elu'
+    'output_42': 'elu'
+    'output_43': 'elu'
+    'output_44': 'elu'
+    'output_45': 'elu'
+    'output_46': 'elu'
+    'output_47': 'elu'
+    'output_48': 'elu'
+    'output_49': 'elu'
+    'output_50': 'elu'
+  'output_layer_activation':
+    'output_0': 'softplus'
+    'output_1': 'softplus'
+    'output_2': 'softplus'
+    'output_3': 'softplus'
+    'output_4': 'softplus'
+    'output_5': 'softplus'
+    'output_6': 'softplus'
+    'output_7': 'softplus'
+    'output_8': 'softplus'
+    'output_9': 'softplus'
+    'output_10': 'softplus'
+    'output_11': 'softplus'
+    'output_12': 'softplus'
+    'output_13': 'softplus'
+    'output_14': 'softplus'
+    'output_15': 'softplus'
+    'output_16': 'softplus'
+    'output_17': 'softplus'
+    'output_18': 'softplus'
+    'output_19': 'softplus'
+    'output_20': 'softplus'
+    'output_21': 'softplus'
+    'output_22': 'softplus'
+    'output_23': 'softplus'
+    'output_24': 'softplus'
+    'output_25': 'softplus'
+    'output_26': 'softplus'
+    'output_27': 'softplus'
+    'output_28': 'softplus'
+    'output_29': 'softplus'
+    'output_30': 'softplus'
+    'output_31': 'softplus'
+    'output_32': 'softplus'
+    'output_33': 'softplus'
+    'output_34': 'softplus'
+    'output_35': 'softplus'
+    'output_36': 'softplus'
+    'output_37': 'softplus'
+    'output_38': 'softplus'
+    'output_39': 'softplus'
+    'output_40': 'softplus'
+    'output_41': 'softplus'
+    'output_42': 'softplus'
+    'output_43': 'softplus'
+    'output_44': 'softplus'
+    'output_45': 'softplus'
+    'output_46': 'softplus'
+    'output_47': 'softplus'
+    'output_48': 'softplus'
+    'output_49': 'softplus'
+    'output_50': 'softplus'
+  'neurons_per_hidden_layer':
+    'output_0': [32, 32]
+    'output_1': [32, 32]
+    'output_2': [32, 32]
+    'output_3': [32, 32]
+    'output_4': [32, 32]
+    'output_5': [32, 32]
+    'output_6': [32, 32]
+    'output_7': [32, 32]
+    'output_8': [32, 32]
+    'output_9': [32, 32]
+    'output_10': [32, 32]
+    'output_11': [32, 32]
+    'output_12': [32, 32]
+    'output_13': [32, 32]
+    'output_14': [32, 32]
+    'output_15': [32, 32]
+    'output_16': [32, 32]
+    'output_17': [32, 32]
+    'output_18': [32, 32]
+    'output_19': [32, 32]
+    'output_20': [32, 32]
+    'output_21': [32, 32]
+    'output_22': [32, 32]
+    'output_23': [32, 32]
+    'output_24': [32, 32]
+    'output_25': [32, 32]
+    'output_26': [32, 32]
+    'output_27': [32, 32]
+    'output_28': [32, 32]
+    'output_29': [32, 32]
+    'output_30': [32, 32]
+    'output_31': [32, 32]
+    'output_32': [32, 32]
+    'output_33': [32, 32]
+    'output_34': [32, 32]
+    'output_35': [32, 32]
+    'output_36': [32, 32]
+    'output_37': [32, 32]
+    'output_38': [32, 32]
+    'output_39': [32, 32]
+    'output_40': [32, 32]
+    'output_41': [32, 32]
+    'output_42': [32, 32]
+    'output_43': [32, 32]
+    'output_44': [32, 32]
+    'output_45': [32, 32]
+    'output_46': [32, 32]
+    'output_47': [32, 32]
+    'output_48': [32, 32]
+    'output_49': [32, 32]
+    'output_50': [32, 32]
+  'output_sizes':
+    'output_0': 1
+    'output_1': 1
+    'output_2': 1
+    'output_3': 1
+    'output_4': 1
+    'output_5': 1
+    'output_6': 1
+    'output_7': 1
+    'output_8': 1
+    'output_9': 1
+    'output_10': 1
+    'output_11': 1
+    'output_12': 1
+    'output_13': 1
+    'output_14': 1
+    'output_15': 1
+    'output_16': 1
+    'output_17': 1
+    'output_18': 1
+    'output_19': 1
+    'output_20': 1
+    'output_21': 1
+    'output_22': 1
+    'output_23': 1
+    'output_24': 1
+    'output_25': 1
+    'output_26': 1
+    'output_27': 1
+    'output_28': 1
+    'output_29': 1
+    'output_30': 1
+    'output_31': 1
+    'output_32': 1
+    'output_33': 1
+    'output_34': 1
+    'output_35': 1
+    'output_36': 1
+    'output_37': 1
+    'output_38': 1
+    'output_39': 1
+    'output_40': 1
+    'output_41': 1
+    'output_42': 1
+    'output_43': 1
+    'output_44': 1
+    'output_45': 1
+    'output_46': 1
+    'output_47': 1
+    'output_48': 1
+    'output_49': 1
+    'output_50': 1
+  'initial_bias':
+    'output_0': 5.0
+    'output_1': 5.0
+    'output_2': 5.0
+    'output_3': 5.0
+    'output_4': 5.0
+    'output_5': 5.0
+    'output_6': 5.0
+    'output_7': 5.0
+    'output_8': 5.0
+    'output_9': 5.0
+    'output_10': 5.0
+    'output_11': 5.0
+    'output_12': 5.0
+    'output_13': 5.0
+    'output_14': 5.0
+    'output_15': 5.0
+    'output_16': 5.0
+    'output_17': 5.0
+    'output_18': 5.0
+    'output_19': 5.0
+    'output_20': 5.0
+    'output_21': 5.0
+    'output_22': 5.0
+    'output_23': 5.0
+    'output_24': 5.0
+    'output_25': 5.0
+    'output_26': 5.0
+    'output_27': 5.0
+    'output_28': 5.0
+    'output_29': 5.0
+    'output_30': 5.0
+    'output_31': 5.0
+    'output_32': 5.0
+    'output_33': 5.0
+    'output_34': 5.0
+    'output_35': 5.0
+    'output_36': 5.0
+    'output_37': 5.0
+    'output_38': 5.0
+    'output_39': 5.0
+    'output_40': 5.0
+    'output_41': 5.0
+    'output_42': 5.0
+    'output_43': 5.0
+    'output_44': 5.0
+    'output_45': 5.0
+    'output_46': 5.0
+    'output_47': 5.0
+    'output_48': 5.0
+    'output_49': 5.0
+    'output_50': 5.0
+  'include_primitive_features': False

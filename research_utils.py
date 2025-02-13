@@ -14,13 +14,20 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'include_context_for_warehouse_input', 'omit_context_from_store_input',
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
-        'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs"
+        'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs",
+        "initial_bias_output",
+        'n_cpus_per_instance', 'base_dir_for_ray'
     }
 
     # Check that all keys in overriding_params are valid
     for key in overriding_params:
         if key not in valid_override_keys:
             raise ValueError(f"Invalid override key: {key}. Valid keys are: {valid_override_keys}")
+
+    if 'initial_bias_output' in overriding_params:
+        if 'initial_bias' not in config_hyperparams['nn_params']:
+            config_hyperparams['nn_params']['initial_bias'] = {}
+        config_hyperparams['nn_params']['initial_bias']['output'] = overriding_params['initial_bias_output']
 
     if 'early_stop_check_epochs' in overriding_params:
         config_hyperparams['trainer_params']['do_dev_every_n_epochs'] = overriding_params['early_stop_check_epochs']

@@ -7,20 +7,15 @@ import research_utils
 import json
 
 class MainRun:
-    def __init__(self, train_or_test, setting_name, hyperparams_name, recorder_config_path=None, recorder_identifier=None):
+    def __init__(self, train_or_test, config_setting, config_hyperparams, tuning_configs = None, recorder_config_path=None, recorder_identifier=None):
         self.train_or_test = train_or_test
-        self.setting_name = setting_name
-        self.hyperparams_name = hyperparams_name
+        self.config_setting = config_setting
+        self.config_hyperparams = config_hyperparams
+        self.tuning_configs = tuning_configs
         self.recorder_config_path = recorder_config_path
 
-        self.config_setting_file = f'config_files/settings/{setting_name}.yml'
-        self.config_hyperparams_file = f'config_files/policies_and_hyperparams/{hyperparams_name}.yml'
-
-        def load_yaml(file_path):
-            with open(file_path, 'r') as file:
-                return yaml.safe_load(file)
-        self.config_setting = load_yaml(self.config_setting_file)
-        self.config_hyperparams = load_yaml(self.config_hyperparams_file)
+        if self.tuning_configs is not None:
+            self.config_setting, self.config_hyperparams = research_utils.override_configs(self.tuning_configs, self.config_setting, self.config_hyperparams)
 
         if recorder_config_path is not None:
             self.override_configs()
@@ -54,10 +49,28 @@ class MainRun:
         self.config_hyperparams['trainer_params']['load_model_path'] = model_path
         self.config_hyperparams['trainer_params']['load_previous_model'] = os.path.exists(model_path)
 
+        self.config_hyperparams['nn_params']['is_debugging'] = True
+        
+        # Extract relevant parts from model path to construct debug identifier
+        path_parts = model_path.split('/')
+        # Find ray_results index and take parts after it
+        ray_results_idx = path_parts.index('ray_results')
+        relevant_parts = path_parts[ray_results_idx+1:ray_results_idx+3] # Get architecture and model folders
+        # Get date from run folder
+        run_date = path_parts[ray_results_idx+3].split('_')[1:3] # Get date parts
+        run_date = '_'.join(run_date) # Join with /
+        # Get run number from next folder
+        run_num = path_parts[ray_results_idx+4].split('_')[2] # Get run number
+        # Get model name
+        model_name = path_parts[-1]
+        # Construct debug identifier path
+        debug_path = f"/{'/'.join(relevant_parts)}/{run_date}/run_{run_num}/{model_name}"
+        self.config_hyperparams['nn_params']['debug_identifier'] = debug_path
+
     def extract_configs(self):
-        setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params'
-        self.seeds, self.test_seeds, self.problem_params, self.params_by_dataset, self.observation_params, self.store_params, self.warehouse_params, self.echelon_params, self.sample_data_params = [
-            self.config_setting[key] for key in setting_keys
+        setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params', 'store_test_params', 'warehouse_test_params', 'echelon_test_params'
+        self.seeds, self.test_seeds, self.problem_params, self.params_by_dataset, self.observation_params, self.store_params, self.warehouse_params, self.echelon_params, self.sample_data_params, self.store_test_params, self.warehouse_test_params, self.echelon_test_params = [
+            self.config_setting[key] if key in self.config_setting else None for key in setting_keys
         ]
 
         hyperparams_keys = 'trainer_params', 'optimizer_params', 'nn_params'
@@ -111,9 +124,9 @@ class MainRun:
             self.scenario = Scenario(
                 self.params_by_dataset['test']['periods'],
                 self.problem_params,
-                self.store_params,
-                self.warehouse_params,
-                self.echelon_params,
+                self.store_test_params if not self.store_test_params else self.store_params, 
+                self.warehouse_test_params if not self.warehouse_test_params else self.warehouse_params, 
+                self.echelon_test_params if not self.echelon_test_params else self.echelon_params, 
                 self.params_by_dataset['test']['n_samples'],
                 self.observation_params,
                 self.test_seeds,
@@ -123,27 +136,37 @@ class MainRun:
             self.test_dataset = self.dataset_creator.create_datasets(self.scenario, split=False)
 
     def create_data_loaders(self):
-        train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True)
-        dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False)
-        test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False)
-        # train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
-        # dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
-        # test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
+        if self.tuning_configs is None:
+            train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True)
+            dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False)
+            test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False)
+        else:
+            train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=self.tuning_configs['n_cpus_per_instance'], pin_memory=True, persistent_workers=True, prefetch_factor=8)
+            dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
+            test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
         self.data_loaders = {'train': train_loader, 'dev': dev_loader, 'test': test_loader}
 
     def create_model_and_optimizer(self):
         neural_net_creator = NeuralNetworkCreator
         self.model = neural_net_creator().create_neural_network(self.scenario, self.nn_params, device=self.device)
         self.loss_function = PolicyLoss()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.optimizer_params['learning_rate'])
+
+        weight_decay = 0.0
+        if 'weight_decay' in self.optimizer_params:
+            weight_decay = self.optimizer_params['weight_decay']
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.optimizer_params['learning_rate'], weight_decay=weight_decay)
 
     def setup_trainer_params(self):
-        self.trainer_params['base_dir'] = 'saved_models'
-        self.trainer_params['save_model_folders'] = [self.trainer.get_year_month_day(), self.nn_params['name']]
-        self.trainer_params['save_model_filename'] = self.trainer.get_time_stamp()
-
-        if self.trainer_params['load_previous_model']:
-            self.model, self.optimizer = self.trainer.load_model(self.model, self.optimizer, self.trainer_params['load_model_path'])
+        if self.tuning_configs is not None:
+            self.trainer_params['base_dir'] = self.tuning_configs['base_dir_for_ray']
+            self.trainer_params['save_model_folders'] = []
+            self.trainer_params['save_model_filename'] = "model"
+        else:
+            self.trainer_params['base_dir'] = 'saved_models'
+            self.trainer_params['save_model_folders'] = [self.trainer.get_year_month_day(), self.nn_params['name']]
+            self.trainer_params['save_model_filename'] = self.trainer.get_time_stamp()
+            if self.trainer_params['load_previous_model']:
+                self.model, self.optimizer = self.trainer.load_model(self.model, self.optimizer, self.trainer_params['load_model_path'])
 
     def run(self):
         if self.train_or_test == 'train':
@@ -199,7 +222,13 @@ if __name__ == "__main__":
     recorder_config_path = sys.argv[4] if len(sys.argv) > 4 else None
     recorder_identifier = sys.argv[5] if recorder_config_path is not None and len(sys.argv) > 5 else None
 
-    main_run = MainRun(train_or_test, setting_name, hyperparams_name, recorder_config_path, recorder_identifier)
+    def load_yaml(file_path):
+        with open(file_path, 'r') as file:
+            return yaml.safe_load(file)
+    config_setting = load_yaml(f'config_files/settings/{setting_name}.yml')
+    config_hyperparams = load_yaml(f'config_files/policies_and_hyperparams/{hyperparams_name}.yml')
+    
+    main_run = MainRun(train_or_test, config_setting, config_hyperparams, None, recorder_config_path, recorder_identifier)
     import time
 
     start_time = time.time()

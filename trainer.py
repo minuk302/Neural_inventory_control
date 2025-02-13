@@ -205,6 +205,9 @@ class Trainer():
                 mean_loss = total_reward/(len(data_batch['demands'])*periods*problem_params['n_stores'])
                 
                 # Backward pass (to calculate gradient) and take gradient step
+                if model.is_debugging:
+                    pass
+                    # exit()
                 if train and model.trainable:
                     mean_loss.backward()
                     if model.gradient_clipping_norm_value is not None:
@@ -246,6 +249,8 @@ class Trainer():
             observation, reward, terminated, _, _  = simulator.step(action)
 
             total_reward = loss_function(None, action, reward)
+            if 'bottleneck_loss' in action:
+                total_reward += action['bottleneck_loss'].sum()
 
             batch_reward += total_reward
             if t >= ignore_periods:
