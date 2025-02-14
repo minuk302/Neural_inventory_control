@@ -64,7 +64,7 @@ observation_params:
 
 store_params: 
   'demand': 
-    'sample_across_stores': True
+    'sample_across_instances': True
     'vary_across_samples': True
     'mean_range': [2.5, 7.5]
     'coef_of_var_range': [0.25, 0.50]
@@ -72,7 +72,7 @@ store_params:
     'clip': True
     'decimals': 3 
   'random_yield':
-    'sample_across_stores': True
+    'sample_across_instances': True
     'vary_across_samples': True
     'mean_range': [1.0, 1.0]
     'coef_of_std_range': [0.25, 0.50]
@@ -81,17 +81,17 @@ store_params:
     'clip': True
     'clip_max': 1
   'lead_time': 
-    'sample_across_stores': True
+    'sample_across_instances': True
     'vary_across_samples': True
     'expand': False
     'range': [1, 3]
   'holding_cost': 
-    'sample_across_stores': True
+    'sample_across_instances': True
     'vary_across_samples': True
     'expand': False
     'range': [0.7, 1.3]
   'underage_cost': 
-    'sample_across_stores': True
+    'sample_across_instances': True
     'vary_across_samples': True 
     'expand': False
     'range': [6.3, 11.7]

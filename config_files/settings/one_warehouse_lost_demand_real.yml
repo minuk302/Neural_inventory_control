@@ -63,22 +63,22 @@ store_params:
   'demand': 
     'distribution': 'real'
     'file_location': '/user/ml4723/Prj/NIC/data_files/favorita_one_warehouse/weekly_sales.pt'
-    'sample_across_stores': False
+    'sample_across_instances': False
     'expand': False
     'clip': False
     'decimals': 3
   'lead_time': 
-    'sample_across_stores': True
+    'sample_across_instances': True
     'vary_across_samples': True
     'expand': False
     'range': [2, 4] # Recall that upper range is excluded from the possible values
   'holding_cost': 
-    'sample_across_stores': True 
+    'sample_across_instances': True 
     'vary_across_samples': True
     'expand': False
     'range': [0.7, 1.3]
   'underage_cost': 
-    'sample_across_stores': True
+    'sample_across_instances': True
     'vary_across_samples': True 
     'expand': False
     'range': [6.3, 11.7]

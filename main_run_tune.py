@@ -412,7 +412,7 @@ if "generic_architecture_serial" == testset_name:
         # "store_lead_time": tune.grid_search([1, 2, 3, 4]),
         # "store_underage_cost": tune.grid_search([4, 9, 19, 39]),
         "store_lead_time": tune.grid_search([4]),
-        "store_underage_cost": tune.grid_search([4, 19, 39]),
+        "store_underage_cost": tune.grid_search([4, 19, 39, 9]),
         # "train_n_samples": tune.grid_search([32768]),
         # "train_batch_size": tune.grid_search([1024]),
         # "dev_n_samples": tune.grid_search([32768]),
@@ -432,6 +432,12 @@ if "generic_architecture_serial" == testset_name:
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
             "gradient_clipping_norm_value": tune.grid_search([1.0]),
         }
+    if 'GNN_MP_varying_training_primitives' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+        }
+        search_space['config'] = tune.grid_search(["serial_system_varying_training_primitives"])
     if 'vanilla_serial' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),

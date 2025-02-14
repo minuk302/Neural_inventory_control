@@ -215,101 +215,50 @@ class Scenario():
 
         augment_multiplier = store_params['data_augment_multiplier_with_fixed_demands'] if 'data_augment_multiplier_with_fixed_demands' in store_params else 1
         self.demands = self.demands.repeat(augment_multiplier, 1, 1)
+        self.num_samples = self.demands.size(0)
+
+        self.store_random_yields = None
+        if 'random_yield' in store_params:    
+            self.store_random_yields = self.generate_demand_samples(problem_params, store_params, store_params['random_yield'], seeds)
         
-        store_random_yields_list = []
-        underage_costs_list = []
-        holding_costs_list = []
-        lead_times_list = []
-        means_list = []
-        stds_list = []
-        store_random_yield_means_list = []
-        store_random_yield_stds_list = []
-        initial_inventories_list = []
-        initial_warehouse_inventories_list = []
-        warehouse_lead_times_list = []
-        warehouse_holding_costs_list = []
-        lost_order_masks_list = []
-        initial_echelon_inventories_list = []
-        echelon_lead_times_list = []
-        echelon_holding_costs_list = []
+        if problem_params.get('exp_underage_cost', False):
+            store_params['underage_cost']['range'][0] = max(np.log10(warehouse_params['holding_cost']), store_params['underage_cost']['range'][0])
+            self.underage_costs = self.generate_data_for_samples(store_params['underage_cost'], problem_params['n_stores'], seeds['underage_cost'], discrete=False)
+            self.underage_costs = 10**self.underage_costs
+        else:
+            self.underage_costs = self.generate_data_for_samples(store_params['underage_cost'], problem_params['n_stores'], seeds['underage_cost'], discrete=False)
 
-        for i in range(augment_multiplier):
-            if 'random_yield' in store_params:    
-                if 'lost_order_average_interval' in store_params['random_yield']:
-                    store_random_yields_list.append(self.generate_lost_yield_mask(store_params['random_yield'], self.demands, seeds['demand']))
-                else:
-                    store_random_yields_list.append(store_random_yields = self.generate_demand_samples(problem_params, store_params, store_params['random_yield'], seeds))
-            
-            if problem_params.get('exp_underage_cost', False):
-                store_params['underage_cost']['range'][0] = max(np.log10(warehouse_params['holding_cost']), store_params['underage_cost']['range'][0])
-                underage_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['underage_cost'], seeds['underage_cost'], discrete=False)
-                underage_costs = 10**underage_costs
-            else:
-                underage_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['underage_cost'], seeds['underage_cost'], discrete=False)
-            underage_costs_list.append(underage_costs)
+        if problem_params.get('holding_cost_is_ratio_of_underage_cost', False):
+            self.holding_costs = self.underage_costs * 0.1
+        else:
+            self.holding_costs = self.generate_data_for_samples(store_params['holding_cost'], problem_params['n_stores'], seeds['holding_cost'], discrete=False)
+        
+        self.lead_times = self.generate_data_for_samples(store_params['lead_time'], problem_params['n_stores'], seeds['lead_time'], discrete=True).to(torch.int64)
+
+        self.means = None
+        if 'mean' in observation_params['include_static_features'] and observation_params['include_static_features']['mean']:
+            self.means = torch.tensor(store_params['demand']['mean'])
+        self.stds = None
+        if 'std' in observation_params['include_static_features'] and observation_params['include_static_features']['std']:
+            self.stds = torch.tensor(store_params['demand']['std'])
+        self.store_random_yield_mean = None
+        if 'store_random_yield_mean' in observation_params['include_static_features'] and observation_params['include_static_features']['store_random_yield_mean']:
+            self.store_random_yield_mean = torch.tensor(store_params['random_yield']['mean'])
+        self.store_random_yield_std = None
+        if 'store_random_yield_std' in observation_params['include_static_features'] and observation_params['include_static_features']['store_random_yield_std']:
+            self.store_random_yield_std = torch.tensor(store_params['random_yield']['std'])
+
+        self.initial_inventories = self.generate_initial_inventories(store_params, self.demands, self.lead_times, problem_params['n_stores'], seeds['initial_inventory'])
                 
-            if problem_params.get('holding_cost_is_ratio_of_underage_cost', False):
-                holding_costs = underage_costs * 0.1
-            else:
-                holding_costs = self.generate_data_for_samples_and_stores(problem_params, store_params['holding_cost'], seeds['holding_cost'], discrete=False)
-            holding_costs_list.append(holding_costs)
-            
-            lead_times = self.generate_data_for_samples_and_stores(problem_params, store_params['lead_time'], seeds['lead_time'], discrete=True).to(torch.int64)
-            lead_times_list.append(lead_times)
-
-            if 'mean' in observation_params['include_static_features'] and observation_params['include_static_features']['mean']:
-                means_list.append(torch.tensor(store_params['demand']['mean']))
-            if 'std' in observation_params['include_static_features'] and observation_params['include_static_features']['std']:
-                stds_list.append(torch.tensor(store_params['demand']['std']))
-            if 'store_random_yield_mean' in observation_params['include_static_features'] and observation_params['include_static_features']['store_random_yield_mean']:
-                store_random_yield_means_list.append(torch.tensor(store_params['random_yield']['mean']))
-            if 'store_random_yield_std' in observation_params['include_static_features'] and observation_params['include_static_features']['store_random_yield_std']:
-                store_random_yield_stds_list.append(torch.tensor(store_params['random_yield']['std']))
-
-            initial_inventories = self.generate_initial_inventories(problem_params, store_params, self.demands, lead_times, seeds['initial_inventory'])
-            initial_inventories_list.append(initial_inventories)
-            
-            initial_warehouse_inventories = self.generate_initial_warehouse_inventory(warehouse_params, self.demands, seeds['initial_inventory'])
-            initial_warehouse_inventories_list.append(initial_warehouse_inventories)
-
-            warehouse_lead_times = self.generate_warehouse_data(warehouse_params, 'lead_time')
-            warehouse_lead_times_list.append(warehouse_lead_times)
-
-            warehouse_holding_costs = self.generate_warehouse_data(warehouse_params, 'holding_cost')
-            warehouse_holding_costs_list.append(warehouse_holding_costs)
-
-            lost_order_masks = self.generate_lost_order_mask(warehouse_params, self.demands, seeds['demand'])
-            if lost_order_masks is not None:
-                lost_order_masks_list.append(lost_order_masks)
-            
-            modified_echelon_params = self.generate_ehcelon_params(echelon_params, seeds)
-            if modified_echelon_params is not None:
-                initial_echelon_inventories = self.generate_initial_echelon_inventory(modified_echelon_params, self.demands, seeds['initial_inventory'])
-                initial_echelon_inventories_list.append(initial_echelon_inventories)
-
-                echelon_lead_times = self.generate_echelon_data(modified_echelon_params, 'lead_time')
-                echelon_lead_times_list.append(echelon_lead_times)
-
-                echelon_holding_costs = self.generate_echelon_data(modified_echelon_params, 'holding_cost')
-                echelon_holding_costs_list.append(echelon_holding_costs)
-
-        # Stack all the generated data
-        self.store_random_yields = torch.cat(store_random_yields_list, dim=0) if len(store_random_yields_list) > 0 else None
-        self.underage_costs = torch.cat(underage_costs_list, dim=0)
-        self.holding_costs = torch.cat(holding_costs_list, dim=0)
-        self.lead_times = torch.cat(lead_times_list, dim=0)
-        self.means = torch.cat(means_list, dim=0) if len(means_list) > 0 else None
-        self.stds = torch.cat(stds_list, dim=0) if len(stds_list) > 0 else None
-        self.store_random_yield_mean = torch.cat(store_random_yield_means_list, dim=0) if len(store_random_yield_means_list) > 0 else None
-        self.store_random_yield_std = torch.cat(store_random_yield_stds_list, dim=0) if len(store_random_yield_stds_list) > 0 else None
-        self.initial_inventories = torch.cat(initial_inventories_list, dim=0)
-        self.initial_warehouse_inventories = torch.cat(initial_warehouse_inventories_list, dim=0) if len(initial_warehouse_inventories_list) > 0 else None
-        self.warehouse_lead_times = torch.cat(warehouse_lead_times_list, dim=0) if len(warehouse_lead_times_list) > 0 else None
-        self.warehouse_holding_costs = torch.cat(warehouse_holding_costs_list, dim=0) if len(warehouse_holding_costs_list) > 0 else None
-        self.lost_order_mask = torch.cat(lost_order_masks_list, dim=0) if len(lost_order_masks_list) > 0 else None
-        self.initial_echelon_inventories = torch.cat(initial_echelon_inventories_list, dim=0) if len(initial_echelon_inventories_list) > 0 else None
-        self.echelon_lead_times = torch.cat(echelon_lead_times_list, dim=0) if len(echelon_lead_times_list) > 0 else None
-        self.echelon_holding_costs = torch.cat(echelon_holding_costs_list, dim=0) if len(echelon_holding_costs_list) > 0 else None
+        self.warehouse_lead_times = self.generate_data_for_samples(warehouse_params['lead_time'], problem_params['n_warehouses'], seeds['lead_time'], discrete=True)
+        self.initial_warehouse_inventories = self.generate_initial_inventories(warehouse_params, self.demands, self.warehouse_lead_times, 1, seeds['initial_inventory'])
+        self.warehouse_holding_costs = self.generate_data_for_samples(warehouse_params['holding_cost'], problem_params['n_warehouses'], seeds['holding_cost'])
+        
+        modified_echelon_params = self.generate_ehcelon_params(echelon_params, seeds)
+        if modified_echelon_params is not None:
+            self.echelon_lead_times = self.generate_data_for_samples(modified_echelon_params['lead_time'], self.problem_params['n_extra_echelons'], seeds['lead_time'], discrete=True)
+            self.initial_echelon_inventories = self.generate_initial_inventories(modified_echelon_params, self.demands, self.echelon_lead_times, self.echelon_lead_times.size(1), seeds['initial_inventory'])
+            self.echelon_holding_costs = self.generate_data_for_samples(modified_echelon_params['holding_cost'], self.problem_params['n_extra_echelons'], seeds['holding_cost'])
 
         time_and_sample_features = {'time_features': {}, 'sample_features': {}}
         for feature_type, feature_file in zip(['time_features', 'sample_features'], ['time_features_file', 'sample_features_file']):
@@ -340,23 +289,6 @@ class Scenario():
                 np.random.seed(seeds['lead_time'])
             echelon_params['lead_time'] = np.random.randint(*echelon_params['lead_time_sample_range'], size=(self.problem_params['n_extra_echelons']))
         return echelon_params
-    
-    def generate_lost_yield_mask(self, random_yield_params, demands, seed):
-        """
-        Generate lost yield mask based on lost_order_average_interval
-        Returns a tensor of 1s and 0s where 0s appear on average every lost_order_average_interval periods
-        """
-        # Set seed for reproducibility
-        torch.manual_seed(seed)
-        
-        interval = random_yield_params['lost_order_average_interval']
-        mask = torch.ones(self.num_samples, self.problem_params['n_stores'], demands.size(2))
-        
-        # For each period, set 0 with probability 1/interval
-        random_values = torch.rand(self.num_samples, self.problem_params['n_stores'], demands.size(2))
-        mask[random_values < (1.0/interval)] = 0
-        
-        return mask
 
     def get_data(self):
         """
@@ -383,9 +315,6 @@ class Scenario():
         if self.store_random_yields is not None:
             data['store_random_yields'] = self.store_random_yields
 
-        if self.lost_order_mask is not None:
-            data['lost_order_mask'] = self.lost_order_mask
-        
         for k, v in self.time_features.items():
             data[k] = v
         
@@ -415,12 +344,8 @@ class Scenario():
 
         if self.store_params['demand']['distribution'] == 'real':
             split_by['period'].append('demands')
-            if self.lost_order_mask is not None:
-                split_by['period'].append('lost_order_mask')
         else:
             split_by['sample_index'].append('demands')
-            if self.lost_order_mask is not None:
-                split_by['sample_index'].append('lost_order_mask')
         
         for k in self.time_features.keys():
             split_by['period'].append(k)
@@ -458,9 +383,9 @@ class Scenario():
     def generate_costs_for_exponential_underage_costs(self, problem_params, store_params, seed):
         np.random.seed(seed)
 
-        if store_params['underage_cost']['sample_across_stores'] and store_params['underage_cost']['vary_across_samples']:
+        if store_params['underage_cost']['sample_across_instances'] and store_params['underage_cost']['vary_across_samples']:
             store_exponents = np.random.uniform(*store_params['underage_cost']['range'], size=(self.num_samples * problem_params['n_stores'])).reshape(self.num_samples, problem_params['n_stores'])
-        elif store_params['underage_cost']['sample_across_stores']:
+        elif store_params['underage_cost']['sample_across_instances']:
             store_exponents = np.random.uniform(*store_params['underage_cost']['range'], size=problem_params['n_stores']).reshape(1, -1).repeat(self.num_samples, axis=0)
         elif store_params['underage_cost']['vary_across_samples']:
             store_exponents = np.random.uniform(*store_params['underage_cost']['range'], size=self.num_samples).reshape(-1, 1).repeat(problem_params['n_stores'], axis=1)
@@ -502,7 +427,7 @@ class Scenario():
         Sample parameters of demand distribution, if necessary
         """
         
-        if demand_params['sample_across_stores']:  # only supported for normal demand
+        if demand_params['sample_across_instances']:  # only supported for normal demand
             demand_params.update(self.sample_normal_mean_and_std(problem_params, demand_params, seeds))
     
     def generate_normal_demand(self, problem_params, demand_params, seed, is_test=False):
@@ -515,7 +440,7 @@ class Scenario():
             np.random.seed(seed)
         
         if problem_params['n_stores'] == 1:
-            if demand_params['sample_across_stores']:
+            if demand_params['sample_across_instances']:
                 mean = demand_params['mean'][:, 0].reshape(-1, 1, 1)
                 std = demand_params['std'][:, 0].reshape(-1, 1, 1)
                 demand = np.random.normal(mean, std, size=(self.num_samples, 1, self.periods))
@@ -608,7 +533,7 @@ class Scenario():
                 stds = np.tile(stds, (self.num_samples, 1))
         return {'mean': means, 'std': stds}
     
-    def generate_data_for_samples_and_stores(self, problem_params, cost_params, seed, discrete=False):
+    def generate_data_for_samples(self, cost_params, n_instances, seed, discrete=False):
         """
         Generate cost or lead time data, for each sample and store
         """
@@ -625,18 +550,18 @@ class Scenario():
 
         if params_copy['file_location']:
             params_copy['value'] = torch.load(params_copy['file_location'])[: self.num_samples]
-        if params_copy['sample_across_stores'] and params_copy['vary_across_samples']:
-            return torch.tensor(this_sample_function(*params_copy['range'], self.num_samples * problem_params['n_stores'])).reshape(self.num_samples, problem_params['n_stores'])
-        elif params_copy['sample_across_stores']:
-            return torch.tensor(this_sample_function(*params_copy['range'], problem_params['n_stores'])).expand(self.num_samples, -1)
+        if params_copy['sample_across_instances'] and params_copy['vary_across_samples']:
+            return torch.tensor(this_sample_function(*params_copy['range'], self.num_samples * n_instances)).reshape(self.num_samples, n_instances)
+        elif params_copy['sample_across_instances']:
+            return torch.tensor(this_sample_function(*params_copy['range'], n_instances)).expand(self.num_samples, -1)
         elif params_copy['vary_across_samples']:
-            return torch.tensor(this_sample_function(*params_copy['range'], self.num_samples)).unsqueeze(1).expand(-1, problem_params['n_stores'])
+            return torch.tensor(this_sample_function(*params_copy['range'], self.num_samples)).unsqueeze(1).expand(-1, n_instances)
         elif params_copy['expand']:
-            return torch.tensor(params_copy['value']).expand(self.num_samples, problem_params['n_stores'])
+            return torch.tensor([params_copy['value']]).expand(self.num_samples, n_instances)
         else:
             return torch.tensor(params_copy['value'])
     
-    def generate_initial_inventories(self, problem_params, store_params, demands, lead_times, seed):
+    def generate_initial_inventories(self, store_params, demands, lead_times, n_instances, seed):
         """
         Generate initial inventory data
         """
@@ -647,7 +572,7 @@ class Scenario():
             demand_mean = demands.float().mean(dim=2).mean(dim=0)
             demand_mults = np.random.uniform(*store_params['initial_inventory']['range_mult'], 
                                              size=(self.num_samples, 
-                                                   problem_params['n_stores'], 
+                                                   n_instances, 
                                                    max(store_params['initial_inventory']['inventory_periods'], lead_times.max()) 
                                                    )
                                             )
@@ -655,54 +580,9 @@ class Scenario():
 
         else:
             return torch.zeros(self.num_samples, 
-                               problem_params['n_stores'], 
-                               store_params['initial_inventory']['inventory_periods'])
+                               n_instances, 
+                               max(store_params['initial_inventory']['inventory_periods'], lead_times.max()))
     
-    def generate_initial_warehouse_inventory(self, warehouse_params, demands, seed):
-        """
-        Generate initial warehouse inventory data
-        """
-        if warehouse_params is None:
-            return None
-
-        if 'initial_inventory' in warehouse_params:
-            np.random.seed(seed)
-            demand_mean = demands.float().mean(dim=2).mean(dim=0)
-            demand_mults = np.random.uniform(*warehouse_params['initial_inventory']['range_mult'], 
-                                             size=(self.num_samples, 
-                                                   1, 
-                                                   max(warehouse_params['initial_inventory']['inventory_periods'], warehouse_params['lead_time']) 
-                                                   )
-                                            )
-            return demand_mean[None, :, None] * demand_mults
-        else:
-            return torch.zeros(self.num_samples, 
-                            1, 
-                            warehouse_params['lead_time']
-                            )
-    
-    def generate_initial_echelon_inventory(self, echelon_params, demands, seed):
-        """
-        Generate initial echelon inventory data
-        """
-        if echelon_params is None:
-            return None
-        
-        if 'initial_inventory' in echelon_params:
-            np.random.seed(seed)
-            demand_mean = demands.float().mean(dim=2).mean(dim=0)
-            demand_mults = np.random.uniform(*echelon_params['initial_inventory']['range_mult'], 
-                                             size=(self.num_samples, 
-                                                   len(echelon_params['lead_time']), 
-                                                   max(echelon_params['initial_inventory']['inventory_periods'], max(echelon_params['lead_time']))
-                                                   )
-                                            )
-            return demand_mean[None, :, None] * demand_mults
-        else:
-            return torch.zeros(self.num_samples, 
-                            len(echelon_params['lead_time']), 
-                            max(echelon_params['lead_time'])
-                            )
     
     def generate_warehouse_data(self, warehouse_params, key):
         """
@@ -713,25 +593,6 @@ class Scenario():
             return None
         
         return torch.tensor([warehouse_params[key]]).expand(self.num_samples, self.problem_params['n_warehouses'])
-    
-    def generate_lost_order_mask(self, warehouse_params, demands, seed):
-        """
-        Generate lost order mask based on lost_order_average_interval
-        """
-        if warehouse_params is None or 'lost_order_average_interval' not in warehouse_params or warehouse_params['lost_order_average_interval'] is None:
-            return None
-        
-        # Set seed for reproducibility
-        torch.manual_seed(seed)
-        
-        interval = warehouse_params['lost_order_average_interval']
-        mask = torch.zeros(self.num_samples, self.problem_params['n_warehouses'], demands.size(2), dtype=torch.bool)
-        
-        # For each period, set True with probability 1/interval
-        random_values = torch.rand(self.num_samples, self.problem_params['n_warehouses'], demands.size(2))
-        mask[random_values < (1.0/interval)] = True
-        
-        return mask
 
     def generate_echelon_data(self, echelon_params, key):
         """

@@ -70,7 +70,7 @@ store_params:
   'demand': 
     'distribution': 'real'
     'file_location': 'data_files/favorita/weekly_sales.pt'
-    'sample_across_stores': False
+    'sample_across_instances': False
     'expand': False
     'clip': False
     'decimals': 3

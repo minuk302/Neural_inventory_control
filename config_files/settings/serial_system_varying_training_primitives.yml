@@ -69,7 +69,7 @@ observation_params:
 
 store_params: 
   'demand': 
-    'sample_across_stores': False
+    'sample_across_instances': False
     'expand': True
     'mean': 5.0
     'std': 2.0
@@ -77,36 +77,58 @@ store_params:
     'clip': True
     'decimals': 3
   'lead_time': 
-    'sample_across_stores': False
+    'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
     'value': 4  # Values tested: 1, 2, 3, 4
   'holding_cost': 
-    'sample_across_stores': False 
+    'sample_across_instances': False 
     'vary_across_samples': False
     'expand': True
     'value': 1
   'underage_cost': 
-    'sample_across_stores': False
+    'sample_across_instances': False
     'vary_across_samples': False 
     'expand': True
     'value': 9.0  # Values tested: 4, 9, 19, 39
   'initial_inventory': 
     'sample': True
     'range_mult': [0, 1]
-    'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)
+    'inventory_periods': 6  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 warehouse_params: 
-  'holding_cost': 0.5
-  'lead_time': 3     
+  'lead_time': 
+    'sample_across_instances': False
+    'vary_across_samples': False
+    'expand': True
+    'value': 3
+  'holding_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': 0.5
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 5  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 echelon_params: 
-  'holding_cost': [0.1, 0.2]
-  'lead_time': [2, 4]
+  'lead_time': 
+    'sample_across_instances': False
+    'vary_across_samples': False
+    'expand': True
+    'value': [2, 4]
+  'holding_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.1, 0.2]
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 5  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 store_training_params: 
   'demand': 
-    'sample_across_stores': False
+    'sample_across_instances': False
     'expand': True
     'mean': 5.0
     'std': 2.0
@@ -114,30 +136,45 @@ store_training_params:
     'clip': True
     'decimals': 3
   'lead_time': 
-    'sample_across_stores': False
-    'vary_across_samples': False
-    'expand': True
-    'value': 4  # Values tested: 1, 2, 3, 4
+    'sample_across_instances': False
+    'vary_across_samples': True
+    'range': [2, 7]
   'holding_cost': 
-    'sample_across_stores': False 
-    'vary_across_samples': False
-    'expand': True
-    'value': 1
+    'sample_across_instances': False 
+    'vary_across_samples': True
+    'range': [0.8, 1.2]
   'underage_cost': 
-    'sample_across_stores': False
-    'vary_across_samples': False 
-    'expand': True
-    'value': 9.0  # Values tested: 4, 9, 19, 39
+    'sample_across_instances': False
+    'vary_across_samples': True 
+    'range': [4, 39]
   'initial_inventory': 
     'sample': True
     'range_mult': [0, 1]
-    'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)
+    'inventory_periods': 6  # Initial inventory will be of size max(inventory_periods, lead_time)
   'data_augment_multiplier_with_fixed_demands': 512
 
 warehouse_training_params: 
-  'holding_cost': 0.5
-  'lead_time': 3     
+  'lead_time': 
+    'sample_across_instances': False
+    'vary_across_samples': True
+    'range': [1, 6]
+  'holding_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': True
+    'range': [0.3, 0.7]
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 5  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 echelon_training_params: 
-  'holding_cost': [0.1, 0.2]
-  'lead_time': [2, 4]
+  'lead_time': 
+    'sample_across_instances': True
+    'vary_across_samples': True
+    'range': [1, 6]
+  'holding_cost': 
+    'sample_across_instances': True 
+    'vary_across_samples': True
+    'range': [0.1, 0.4]
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 5  # Initial inventory will be of size max(inventory_periods, lead_time)
