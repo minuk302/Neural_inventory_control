@@ -2658,18 +2658,18 @@ class NeuralNetworkCreator:
             }
         return architectures[name]
     
-    def create_neural_network(self, scenario, nn_params, device='cpu'):
+    def create_neural_network(self, problem_params, nn_params, device='cpu'):
 
         nn_params_copy = copy.deepcopy(nn_params)
 
         # If not specified in config file, set output size to default value
         for key, val in nn_params_copy['output_sizes'].items():
             if val is None:
-                nn_params_copy['output_sizes'][key] = self.set_default_output_size(key, scenario.problem_params)
+                nn_params_copy['output_sizes'][key] = self.set_default_output_size(key, problem_params)
 
         model = self.get_architecture(nn_params_copy['name'])(
             nn_params_copy, 
-            scenario.problem_params,
+            problem_params,
             device=device
             )
         

@@ -68,8 +68,8 @@ class MainRun:
         self.config_hyperparams['nn_params']['debug_identifier'] = debug_path
 
     def extract_configs(self):
-        setting_keys = 'seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params', 'store_test_params', 'warehouse_test_params', 'echelon_test_params'
-        self.seeds, self.test_seeds, self.problem_params, self.params_by_dataset, self.observation_params, self.store_params, self.warehouse_params, self.echelon_params, self.sample_data_params, self.store_test_params, self.warehouse_test_params, self.echelon_test_params = [
+        setting_keys = 'seeds', 'dev_seeds', 'test_seeds', 'problem_params', 'params_by_dataset', 'observation_params', 'store_params', 'warehouse_params', 'echelon_params', 'sample_data_params', 'store_training_params', 'warehouse_training_params', 'echelon_training_params'
+        self.seeds, self.dev_seeds, self.test_seeds, self.problem_params, self.params_by_dataset, self.observation_params, self.store_params, self.warehouse_params, self.echelon_params, self.sample_data_params, self.store_training_params, self.warehouse_training_params, self.echelon_training_params = [
             self.config_setting[key] if key in self.config_setting else None for key in setting_keys
         ]
 
@@ -99,41 +99,45 @@ class MainRun:
             self.train_dataset, self.dev_dataset, self.test_dataset = self.dataset_creator.create_datasets(
                 self.scenario,
                 split=True,
-                by_period=True,
                 periods_for_split=[self.sample_data_params[k] for k in ['train_periods', 'dev_periods', 'test_periods']]
             )
         else:
-            self.scenario = Scenario(
+            self.training_scenario = Scenario(
                 periods=self.params_by_dataset['train']['periods'],
                 problem_params=self.problem_params,
-                store_params=self.store_params,
-                warehouse_params=self.warehouse_params,
-                echelon_params=self.echelon_params,
-                num_samples=self.params_by_dataset['train']['n_samples'] + self.params_by_dataset['dev']['n_samples'],
+                store_params=self.store_training_params if self.store_training_params else self.store_params,
+                warehouse_params=self.warehouse_training_params if self.warehouse_training_params else self.warehouse_params,
+                echelon_params=self.echelon_training_params if self.echelon_training_params else self.echelon_params,
+                num_samples=self.params_by_dataset['train']['n_samples'],
                 observation_params=self.observation_params,
                 seeds=self.seeds
             )
+            self.train_dataset = self.dataset_creator.create_datasets(self.training_scenario, split=False)
 
-            self.train_dataset, self.dev_dataset = self.dataset_creator.create_datasets(
-                self.scenario,
-                split=True,
-                by_sample_indexes=True,
-                sample_index_for_split=self.params_by_dataset['dev']['n_samples']
+            self.dev_scenario = Scenario(
+                periods=self.params_by_dataset['dev']['periods'],
+                problem_params=self.problem_params,
+                store_params=self.store_training_params if self.store_training_params else self.store_params,
+                warehouse_params=self.warehouse_training_params if self.warehouse_training_params else self.warehouse_params,
+                echelon_params=self.echelon_training_params if self.echelon_training_params else self.echelon_params,
+                num_samples=self.params_by_dataset['dev']['n_samples'],
+                observation_params=self.observation_params,
+                seeds=self.dev_seeds
             )
+            self.dev_dataset = self.dataset_creator.create_datasets(self.dev_scenario, split=False)
 
-            self.scenario = Scenario(
+            self.test_scenario = Scenario(
                 self.params_by_dataset['test']['periods'],
                 self.problem_params,
-                self.store_test_params if self.store_test_params else self.store_params, 
-                self.warehouse_test_params if self.warehouse_test_params else self.warehouse_params, 
-                self.echelon_test_params if self.echelon_test_params else self.echelon_params, 
+                self.store_params,
+                self.warehouse_params, 
+                self.echelon_params, 
                 self.params_by_dataset['test']['n_samples'],
                 self.observation_params,
                 self.test_seeds,
                 True
             )
-
-            self.test_dataset = self.dataset_creator.create_datasets(self.scenario, split=False)
+            self.test_dataset = self.dataset_creator.create_datasets(self.test_scenario, split=False)
 
     def create_data_loaders(self):
         if self.tuning_configs is None:
@@ -148,7 +152,7 @@ class MainRun:
 
     def create_model_and_optimizer(self):
         neural_net_creator = NeuralNetworkCreator
-        self.model = neural_net_creator().create_neural_network(self.scenario, self.nn_params, device=self.device)
+        self.model = neural_net_creator().create_neural_network(self.problem_params, self.nn_params, device=self.device)
         self.loss_function = PolicyLoss()
 
         weight_decay = 0.0
@@ -181,7 +185,7 @@ class MainRun:
                 self.observation_params,
                 self.params_by_dataset,
                 self.trainer_params,
-                self.store_params
+                self.store_training_params if self.store_training_params else self.store_params
             )
         elif self.train_or_test == 'test':
             with torch.no_grad():

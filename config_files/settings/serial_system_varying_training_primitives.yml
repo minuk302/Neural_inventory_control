@@ -7,6 +7,15 @@ seeds :
   'demand': 57 
   'initial_inventory': 4839
 
+dev_seeds : 
+  'underage_cost': 28
+  'holding_cost': 73
+  'mean': 33
+  'coef_of_var': 92
+  'lead_time': 41
+  'demand': 58
+  'initial_inventory': 4839
+
 test_seeds :  # Seeds for test set
   'underage_cost': 28 
   'holding_cost': 73 
@@ -29,13 +38,13 @@ problem_params :
 
 params_by_dataset : 
   'train': 
-    'n_samples': 32768 
-    'batch_size': 8192 
+    'n_samples': 16 
+    'batch_size': 16 
     'periods': 50 
     'ignore_periods': 30 
   'dev': 
-    'n_samples': 32768 
-    'batch_size': 8192 
+    'n_samples': 16 
+    'batch_size': 16 
     'periods': 50 
     'ignore_periods': 30 
   'test': 
@@ -95,8 +104,7 @@ echelon_params:
   'holding_cost': [0.1, 0.2]
   'lead_time': [2, 4]
 
-
-store_test_params: 
+store_training_params: 
   'demand': 
     'sample_across_stores': False
     'expand': True
@@ -124,11 +132,12 @@ store_test_params:
     'sample': True
     'range_mult': [0, 1]
     'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)
+  'data_augment_multiplier_with_fixed_demands': 512
 
-warehouse_test_params: 
+warehouse_training_params: 
   'holding_cost': 0.5
   'lead_time': 3     
 
-echelon_test_params: 
+echelon_training_params: 
   'holding_cost': [0.1, 0.2]
   'lead_time': [2, 4]
