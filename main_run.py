@@ -124,9 +124,9 @@ class MainRun:
             self.scenario = Scenario(
                 self.params_by_dataset['test']['periods'],
                 self.problem_params,
-                self.store_test_params if not self.store_test_params else self.store_params, 
-                self.warehouse_test_params if not self.warehouse_test_params else self.warehouse_params, 
-                self.echelon_test_params if not self.echelon_test_params else self.echelon_params, 
+                self.store_test_params if self.store_test_params else self.store_params, 
+                self.warehouse_test_params if self.warehouse_test_params else self.warehouse_params, 
+                self.echelon_test_params if self.echelon_test_params else self.echelon_params, 
                 self.params_by_dataset['test']['n_samples'],
                 self.observation_params,
                 self.test_seeds,

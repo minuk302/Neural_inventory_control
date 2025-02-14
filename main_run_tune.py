@@ -36,7 +36,6 @@ load_model = False
 print(f'Hyperparams file name: {hyperparams_name}\n')
 print(f'Using GPUs: {gpus_to_use}')
 print(f'Using CPUs per instance: {n_cpus_per_instance}')
-config_hyperparams_file = f'config_files/policies_and_hyperparams/{hyperparams_name}.yml'
 
 # Load all settings from config files
 config_settings_dir = 'config_files/settings'
@@ -47,6 +46,7 @@ for filename in os.listdir(config_settings_dir):
         with open(os.path.join(config_settings_dir, filename), 'r') as file:
             config_settings[setting_name] = yaml.safe_load(file)
 
+config_hyperparams_file = f'config_files/policies_and_hyperparams/{hyperparams_name}.yml'
 with open(config_hyperparams_file, 'r') as file:
     config_hyperparams = yaml.safe_load(file)
 
