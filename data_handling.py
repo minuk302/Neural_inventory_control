@@ -238,9 +238,11 @@ class Scenario():
         self.means = None
         if 'mean' in observation_params['include_static_features'] and observation_params['include_static_features']['mean']:
             self.means = torch.tensor(store_params['demand']['mean'])
+            self.means = self.means.repeat(augment_multiplier, 1)
         self.stds = None
         if 'std' in observation_params['include_static_features'] and observation_params['include_static_features']['std']:
             self.stds = torch.tensor(store_params['demand']['std'])
+            self.stds = self.stds.repeat(augment_multiplier, 1)
         self.store_random_yield_mean = None
         if 'store_random_yield_mean' in observation_params['include_static_features'] and observation_params['include_static_features']['store_random_yield_mean']:
             self.store_random_yield_mean = torch.tensor(store_params['random_yield']['mean'])
@@ -255,6 +257,9 @@ class Scenario():
         self.warehouse_holding_costs = self.generate_data_for_samples(warehouse_params['holding_cost'], problem_params['n_warehouses'], seeds['holding_cost'])
         
         modified_echelon_params = self.generate_ehcelon_params(echelon_params, seeds)
+        self.echelon_lead_times = None
+        self.initial_echelon_inventories = None
+        self.echelon_holding_costs = None
         if modified_echelon_params is not None:
             self.echelon_lead_times = self.generate_data_for_samples(modified_echelon_params['lead_time'], self.problem_params['n_extra_echelons'], seeds['lead_time'], discrete=True)
             self.initial_echelon_inventories = self.generate_initial_inventories(modified_echelon_params, self.demands, self.echelon_lead_times, self.echelon_lead_times.size(1), seeds['initial_inventory'])

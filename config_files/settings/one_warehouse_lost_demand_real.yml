@@ -6,9 +6,9 @@ seeds :
   'initial_inventory': 4839
 
 test_seeds :  # Seeds for test set
-  'underage_cost': 29 
-  'holding_cost': 74
-  'lead_time': 42
+  'underage_cost': 28
+  'holding_cost': 73
+  'lead_time': 41
   'demand': 65
   'initial_inventory': 4839
 

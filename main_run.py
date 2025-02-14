@@ -117,9 +117,9 @@ class MainRun:
             self.dev_scenario = Scenario(
                 periods=self.params_by_dataset['dev']['periods'],
                 problem_params=self.problem_params,
-                store_params=self.store_training_params if self.store_training_params else self.store_params,
-                warehouse_params=self.warehouse_training_params if self.warehouse_training_params else self.warehouse_params,
-                echelon_params=self.echelon_training_params if self.echelon_training_params else self.echelon_params,
+                store_params=self.store_params,
+                warehouse_params=self.warehouse_params,
+                echelon_params=self.echelon_params,
                 num_samples=self.params_by_dataset['dev']['n_samples'],
                 observation_params=self.observation_params,
                 seeds=self.dev_seeds
