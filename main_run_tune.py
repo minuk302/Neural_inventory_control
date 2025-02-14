@@ -444,12 +444,6 @@ if "generic_architecture_serial" == testset_name:
             "gradient_clipping_norm_value": tune.grid_search([1.0]),
         }
         search_space['config'] = tune.grid_search(["serial_system_varying_training_primitives"])
-    if 'GNN_MP_varying_training_primitives_2048' == hyperparams_name:
-        search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-            "gradient_clipping_norm_value": tune.grid_search([1.0]),
-        }
-        search_space['config'] = tune.grid_search(["serial_system_varying_training_primitives_2048"])
     if 'vanilla_serial' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),

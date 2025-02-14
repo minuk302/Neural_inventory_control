@@ -511,7 +511,7 @@ class GNN_MP(MyNeuralNetwork):
         self.use_node_for_skip_connection = 'use_node_for_skip_connection' in args and args['use_node_for_skip_connection']
 
     def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
+        params_to_stack = ['mean', 'std', 'holding_costs', 'lead_times', 'underage_costs']
         if 'store_random_yield_mean' in observation:
             params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
         store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
@@ -539,7 +539,7 @@ class GNN_MP(MyNeuralNetwork):
             warehouse_inventories = observation['warehouse_inventories']
             echelon_inv_len = echelon_inventories.size(2)
 
-            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['lead_times'].unsqueeze(2)], dim=-1)
+            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['lead_times'].unsqueeze(2), observation['underage_costs'].unsqueeze(2)], dim=-1)
             warehouse_state = torch.cat([warehouse_inventories, observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
             echelon_state = torch.cat([echelon_inventories, observation['echelon_holding_costs'].unsqueeze(2), observation['echelon_lead_times'].unsqueeze(2)], dim=-1)
     
@@ -564,7 +564,7 @@ class GNN_MP(MyNeuralNetwork):
             n_MP = 1 + n_echelons
         else:
             store_state = self.get_store_inventory_and_params(observation)
-            warehouse_state = observation['warehouse_inventories']
+            warehouse_state = torch.cat([observation['warehouse_inventories'], observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
             max_inv_len = max(store_inv_len, warehouse_inv_len)
 
             store_primitives_len = store_state.size(2) - store_inv_len
