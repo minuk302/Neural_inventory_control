@@ -134,13 +134,15 @@ class Simulator(gym.Env):
             current_period=self.observation['current_period'].item() + 1
             )
 
-        # Calculate reward and update store inventories
-        reward, s_underage_costs, s_holding_costs = self.calculate_store_reward_and_update_store_inventories(
-            current_demands,
-            action,
-            self.observation,
-            self.maximize_profit
-            )
+        if 'warehouse_store_edges' in self.observation:
+            pass
+        else:
+            reward, s_underage_costs, s_holding_costs = self.calculate_store_reward_and_update_store_inventories(
+                current_demands,
+                action,
+                self.observation,
+                self.maximize_profit
+                )
 
         # Calculate reward and update warehouse inventories
         if self.problem_params['n_warehouses'] > 0:

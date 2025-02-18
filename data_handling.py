@@ -293,7 +293,7 @@ class Scenario():
         # First create tensor of sampled lead times for all possible edges
         sampled_lead_times = torch.zeros((self.num_samples, len(edge_lead_times_params['range']), warehouse_store_edges.size(-1)))
         for warehouse_idx, lead_time_range in enumerate(edge_lead_times_params['range']):
-            if edge_lead_times_params['sample_across_instances']:
+            if edge_lead_times_params['vary_across_samples']:
                 # Sample different values for each sample and store
                 sampled_lead_times[:, warehouse_idx] = torch.tensor(
                     np.random.randint(lead_time_range[0], lead_time_range[1], size=(self.num_samples, warehouse_store_edges.size(-1)))

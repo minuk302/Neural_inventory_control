@@ -775,6 +775,118 @@ class GNN_MP(MyNeuralNetwork):
                 'warehouses': warehouse_allocation
             }
 
+
+class GNN_MP_n_warehouse(MyNeuralNetwork):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+        self.use_attention = 'use_attention' in args and args['use_attention']
+        self.n_stores = problem_params['n_stores']
+        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
+                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
+                          / torch.tensor(self.n_stores + 1, device=self.device)
+        self.use_pna = 'use_pna' in args and args['use_pna']
+        self.NN_per_layer = 'NN_per_layer' in args and args['NN_per_layer']
+        self.skip_connection = 'skip_connection' in args and args['skip_connection']
+        self.use_node_for_skip_connection = 'use_node_for_skip_connection' in args and args['use_node_for_skip_connection']
+
+    def get_store_inventory_and_params(self, observation):
+        params_to_stack = ['mean', 'std', 'holding_costs', 'underage_costs']
+        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
+        # Transpose warehouse_store_edge_lead_times from (n_samples, n_warehouse, n_stores) to (n_samples, n_stores, n_warehouse)
+        edge_lead_times = observation['warehouse_store_edge_lead_times'].transpose(1, 2)
+        return torch.cat([observation['store_inventories'], store_params, edge_lead_times], dim=2)
+
+    def get_network(self, layer_name, layer_idx):
+        if self.NN_per_layer:
+            return self.net[f'{layer_name}_{layer_idx+1}']
+        else:
+            return self.net[layer_name]
+
+    def forward(self, observation):
+        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
+            inv = tensor[:,:,:inv_len]
+            states = tensor[:,:,inv_len:]
+            return torch.cat([
+                F.pad(inv, (0, max_inv_len - inv_len)),
+                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
+            ], dim=2)
+
+        store_inv_len = observation['store_inventories'].size(2)
+        warehouse_inv_len = observation['warehouse_inventories'].size(2)
+        store_state = self.get_store_inventory_and_params(observation)
+        warehouse_state = torch.cat([observation['warehouse_inventories'], observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
+        max_inv_len = max(store_inv_len, warehouse_inv_len)
+
+        store_primitives_len = store_state.size(2) - store_inv_len
+        warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
+        max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
+
+        store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
+        warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
+
+        states = torch.cat([warehouse_padded, store_padded], dim=1)
+
+        n_warehouse = warehouse_state.size(1)
+        face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
+        face_encoding[:, :n_warehouse, 0] = 1 # warehouse, supply-facing
+        face_encoding[:, n_warehouse:, 1] = 1 # stores, demand-facing
+
+        n_MP = 2
+        
+        states = torch.cat([states, face_encoding], dim=-1)
+        initial_nodes = self.net['initial_embedding'](states)
+        nodes = initial_nodes
+        for layer_idx in range(n_MP):
+            embedded_nodes = self.get_network('node_embedding', layer_idx)(nodes)
+
+            warehouses_expanded = embedded_nodes[:, :n_warehouse].unsqueeze(1).repeat(1, self.n_stores, 1, 1)
+            store_edges_mask = observation['warehouse_store_edges'].transpose(1,2).unsqueeze(-1)
+            store_supplier_aggregation = torch.sum(warehouses_expanded * store_edges_mask, dim=2)
+            store_recipient_aggregation = torch.zeros_like(embedded_nodes[:, n_warehouse:])
+            
+            warehouse_supplier_aggregation = torch.zeros_like(embedded_nodes[:, :n_warehouse])
+            stores_expanded = embedded_nodes[:, n_warehouse:].unsqueeze(1).repeat(1, n_warehouse, 1, 1)
+            warehouse_edges_mask = observation['warehouse_store_edges'].unsqueeze(-1)
+            warehouse_recipient_aggregation  = torch.sum(stores_expanded * warehouse_edges_mask, dim=2)
+            update_input = torch.cat(
+                [torch.cat([nodes[:, :n_warehouse], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
+                    torch.cat([nodes[:, n_warehouse:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
+                dim=1
+            )
+
+            updates = self.get_network('update_embedding', layer_idx)(update_input)
+            nodes = nodes + updates
+
+        if self.skip_connection:
+            output_net_inputs = torch.cat([states, nodes], dim=-1)
+        else:
+            output_net_inputs = nodes
+
+        # warehouse orders
+        warehouse_edges = torch.cat([output_net_inputs[:, :n_warehouse], torch.zeros_like(output_net_inputs[:, :n_warehouse])], dim=-1)
+        warehouse_allocations = self.net['output'](warehouse_edges)
+
+        # store orders
+        warehouses_expanded = output_net_inputs[:, :n_warehouse].unsqueeze(1).repeat(1, self.n_stores, 1, 1)
+        warehouse_allocation = warehouse_allocations[:, :, 0]
+
+        stores_expanded = output_net_inputs[:, n_warehouse:].unsqueeze(2).repeat(1,1,n_warehouse,1)
+        store_edges = torch.cat([stores_expanded, warehouses_expanded], dim=-1)
+        store_intermediate_outputs_for_all = self.net['output'](store_edges)
+        store_edges_mask = observation['warehouse_store_edges'].transpose(1,2).unsqueeze(-1)
+        store_intermediate_outputs = (store_intermediate_outputs_for_all * store_edges_mask)[:,:,:,0]
+
+        store_allocation = torch.zeros_like(store_intermediate_outputs)
+        for w in range(n_warehouse):
+            store_allocation[:, :, w] += self.apply_proportional_allocation(
+                store_intermediate_outputs[:, :, w], 
+                observation['warehouse_inventories'][:,w:w+1]
+                )
+        return {
+            'stores': store_allocation,
+            'warehouses': warehouse_allocation
+        }
+
 class GNN_MP_shared_weights(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args, problem_params, device)
@@ -2655,6 +2767,7 @@ class NeuralNetworkCreator:
             'GNN_MP_bottleneck_loss_L1': GNN_MP_bottleneck_loss_L1,
             'GNN_MP_bottleneck_loss_stop_gradient_L1': GNN_MP_bottleneck_loss_stop_gradient_L1,
             'CBS_One_Warehouse': CBS_One_Warehouse,
+            'GNN_MP_n_warehouse': GNN_MP_n_warehouse,
             }
         return architectures[name]
     
