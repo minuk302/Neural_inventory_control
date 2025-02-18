@@ -253,9 +253,13 @@ class Scenario():
         self.initial_inventories = self.generate_initial_inventories(store_params, self.demands, self.lead_times, problem_params['n_stores'], seeds['initial_inventory'])
                 
         self.warehouse_lead_times = self.generate_data_for_samples(warehouse_params['lead_time'], problem_params['n_warehouses'], seeds['lead_time'], discrete=True)
-        self.initial_warehouse_inventories = self.generate_initial_inventories(warehouse_params, self.demands, self.warehouse_lead_times, 1, seeds['initial_inventory'])
+        self.initial_warehouse_inventories = self.generate_initial_inventories(warehouse_params, self.demands, self.warehouse_lead_times, problem_params['n_warehouses'], seeds['initial_inventory'])
         self.warehouse_holding_costs = self.generate_data_for_samples(warehouse_params['holding_cost'], problem_params['n_warehouses'], seeds['holding_cost'])
-        
+        if 'edges' in warehouse_params:
+            self.warehouse_store_edges = self.generate_warehouse_store_edges(warehouse_params['edges'], problem_params['n_warehouses'], problem_params['n_stores'], seeds['warehouse'])
+        if 'edge_lead_times' in warehouse_params:
+            self.warehouse_store_edge_lead_times = self.generate_warehouse_store_edge_lead_times(warehouse_params['edge_lead_times'], self.warehouse_store_edges, seeds['warehouse'])
+
         modified_echelon_params = self.generate_ehcelon_params(echelon_params, seeds)
         self.echelon_lead_times = None
         self.initial_echelon_inventories = None
@@ -278,6 +282,41 @@ class Scenario():
         self.time_features = time_and_sample_features['time_features']
         self.sample_features = time_and_sample_features['sample_features']
         self.split_by = self.define_how_to_split_data()
+
+    def generate_warehouse_store_edge_lead_times(self, edge_lead_times_params, warehouse_store_edges, seed):
+        np.random.seed(seed)
+        if len(edge_lead_times_params['range']) != warehouse_store_edges.size(1):
+            raise ValueError(f"Edge lead times range size {len(edge_lead_times_params['range'])} does not match warehouse store edges size {warehouse_store_edges.size(0)}")
+        
+        # First create tensor of sampled lead times for all possible edges
+        sampled_lead_times = torch.zeros((self.num_samples, len(edge_lead_times_params['range']), warehouse_store_edges.size(-1)))
+        for warehouse_idx, lead_time_range in enumerate(edge_lead_times_params['range']):
+            if edge_lead_times_params['sample_across_instances']:
+                # Sample different values for each sample and store
+                sampled_lead_times[:, warehouse_idx] = torch.tensor(
+                    np.random.randint(lead_time_range[0], lead_time_range[1], size=(self.num_samples, warehouse_store_edges.size(-1)))
+                )
+            else:
+                # Sample once and repeat for all samples
+                lead_times = torch.tensor(
+                    np.random.randint(lead_time_range[0], lead_time_range[1], size=warehouse_store_edges.size(-1))
+                )
+                sampled_lead_times[:, warehouse_idx] = lead_times
+
+        # Apply the edge mask to get final lead times
+        edge_lead_times = sampled_lead_times * warehouse_store_edges
+        return edge_lead_times
+
+    def generate_warehouse_store_edges(self, edges_params, n_warehouses, n_stores, seed):
+        np.random.seed(seed)
+        params_copy = DefaultDict(lambda: False, copy.deepcopy(edges_params))
+
+        edges = torch.tensor(params_copy['value'])
+        if edges.size(0) != n_warehouses or edges.size(1) != n_stores:
+            raise ValueError(f'Edges size {edges.size()} does not match n_warehouses {n_warehouses} and n_stores {n_stores}')
+        if not torch.all((edges == 0) | (edges == 1)):
+            raise ValueError('Edges must contain only 0 or 1 values')
+        return edges.expand(self.num_samples, -1, -1)
 
     def generate_ehcelon_params(self, echelon_params, seeds):
         """
@@ -562,7 +601,11 @@ class Scenario():
         elif params_copy['vary_across_samples']:
             return torch.tensor(this_sample_function(*params_copy['range'], self.num_samples)).unsqueeze(1).expand(-1, n_instances)
         elif params_copy['expand']:
-            return torch.tensor([params_copy['value']]).expand(self.num_samples, n_instances)
+            is_list = isinstance(params_copy['value'], list) and isinstance(params_copy['value'][0], list)
+            if is_list:
+                return torch.tensor([params_copy['value']]).expand(self.num_samples, n_instances, -1)
+            else:
+                return torch.tensor([params_copy['value']]).expand(self.num_samples, n_instances)
         else:
             return torch.tensor(params_copy['value'])
     
