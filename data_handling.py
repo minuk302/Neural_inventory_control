@@ -255,8 +255,10 @@ class Scenario():
         self.warehouse_lead_times = self.generate_data_for_samples(warehouse_params['lead_time'], problem_params['n_warehouses'], seeds['lead_time'], discrete=True)
         self.initial_warehouse_inventories = self.generate_initial_inventories(warehouse_params, self.demands, self.warehouse_lead_times, problem_params['n_warehouses'], seeds['initial_inventory'])
         self.warehouse_holding_costs = self.generate_data_for_samples(warehouse_params['holding_cost'], problem_params['n_warehouses'], seeds['holding_cost'])
+        self.warehouse_store_edges = None
         if 'edges' in warehouse_params:
             self.warehouse_store_edges = self.generate_warehouse_store_edges(warehouse_params['edges'], problem_params['n_warehouses'], problem_params['n_stores'], seeds['warehouse'])
+        self.warehouse_store_edge_lead_times = None
         if 'edge_lead_times' in warehouse_params:
             self.warehouse_store_edge_lead_times = self.generate_warehouse_store_edge_lead_times(warehouse_params['edge_lead_times'], self.warehouse_store_edges, seeds['warehouse'])
 
@@ -354,6 +356,8 @@ class Scenario():
                 'echelon_lead_times': self.echelon_lead_times,
                 'store_random_yield_mean': self.store_random_yield_mean,
                 'store_random_yield_std': self.store_random_yield_std,
+                'warehouse_store_edges': self.warehouse_store_edges,
+                'warehouse_store_edge_lead_times': self.warehouse_store_edge_lead_times,
                 }
 
         if self.store_random_yields is not None:
@@ -375,7 +379,7 @@ class Scenario():
         """
 
         split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories', 'initial_warehouse_inventories'\
-                                    , 'warehouse_lead_times', 'warehouse_holding_costs'], 
+                                    , 'warehouse_lead_times', 'warehouse_holding_costs', 'warehouse_store_edges', 'warehouse_store_edge_lead_times'], 
                     'period': []}
 
         if self.echelon_params is not None:

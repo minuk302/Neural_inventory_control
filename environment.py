@@ -299,6 +299,10 @@ class Simulator(gym.Env):
             observation['warehouse_lead_times'] = data['warehouse_lead_times']
             observation['warehouse_holding_costs'] = data['warehouse_holding_costs']
             observation['warehouse_inventories'] = data['initial_warehouse_inventories']
+            if 'warehouse_store_edges' in data:
+                observation['warehouse_store_edges'] = data['warehouse_store_edges']
+            if 'warehouse_store_edge_lead_times' in data:
+                observation['warehouse_store_edge_lead_times'] = data['warehouse_store_edge_lead_times']
         
         if self.problem_params['n_extra_echelons'] > 0:
             observation['echelon_lead_times'] = data['echelon_lead_times']
