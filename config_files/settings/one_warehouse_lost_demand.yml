@@ -100,8 +100,19 @@ store_params:
     'inventory_periods': 3
 
 warehouse_params: 
-  'holding_cost': 0.3
-  'lead_time': 6     
+  'holding_cost':
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': 0.3
+  'lead_time':
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': 6
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 6
 
 echelon_params: 
   null

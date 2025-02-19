@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP'
+  'name': 'GNN_MP_n_warehouse'
   'inner_layer_activations': 
     'initial_embedding': 'elu'
     'node_embedding': 'elu'

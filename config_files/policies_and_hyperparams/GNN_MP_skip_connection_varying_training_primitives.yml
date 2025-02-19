@@ -26,16 +26,16 @@ nn_params:
     'update_embedding': 'elu'
     'output': 'softplus'
   'neurons_per_hidden_layer':
-    'initial_embedding': [32, 32]
-    'node_embedding': [32, 32]
-    'update_embedding': [32, 32]
-    'output': [32, 32]
+    'initial_embedding': [64, 64]
+    'node_embedding': [64, 64]
+    'update_embedding': [64, 64]
+    'output': [64, 64]
   'output_sizes':
-    'initial_embedding': 32
-    'node_embedding': 32
-    'update_embedding': 32
+    'initial_embedding': 64
+    'node_embedding': 64
+    'update_embedding': 64
     'output': 1
   'initial_bias':
-    'output': 1.0
-  'orthogonal_initialization': True
+    'output': 5.0
   'include_primitive_features': False
+  'skip_connection': True

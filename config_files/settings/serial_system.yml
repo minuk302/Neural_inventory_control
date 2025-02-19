@@ -7,6 +7,15 @@ seeds :
   'demand': 57 
   'initial_inventory': 4839
 
+dev_seeds : 
+  'underage_cost': 28
+  'holding_cost': 73
+  'mean': 33
+  'coef_of_var': 92
+  'lead_time': 41
+  'demand': 58
+  'initial_inventory': 4839
+
 test_seeds :  # Seeds for test set
   'underage_cost': 28 
   'holding_cost': 73 
@@ -88,9 +97,31 @@ store_params:
     'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 warehouse_params: 
-  'holding_cost': 0.5
-  'lead_time': 3     
+  'lead_time': 
+    'sample_across_instances': False
+    'vary_across_samples': False
+    'expand': True
+    'value': 3
+  'holding_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': 0.5
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 3  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 echelon_params: 
-  'holding_cost': [0.1, 0.2]
-  'lead_time': [2, 4]  
+  'lead_time': 
+    'sample_across_instances': False
+    'vary_across_samples': False
+    'expand': True
+    'value': [2, 4]
+  'holding_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.1, 0.2]
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)
