@@ -111,6 +111,16 @@ if 'generic_architecture_real' == testset_name:
         "store_underage_cost": tune.grid_search([2, 5, 8, 11]),
         "samples": tune.grid_search([1, 2, 3]),
     }
+    if 'GNN_real' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+        }
+    if 'GNN_skip_connection_real' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+        }
     if 'GNN_MP_real' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -149,14 +159,14 @@ if "generic_architecture" == testset_name:
     config = "one_warehouse_lost_demand"
     common_setups = {
         "config": tune.grid_search([config]),
-        "train_n_samples": tune.grid_search([16]),
-        "train_batch_size": tune.grid_search([16]),
-        "dev_n_samples": tune.grid_search([16]),
-        "dev_batch_size": tune.grid_search([16]),
-        # "train_n_samples": tune.grid_search([32768]),
-        # "train_batch_size": tune.grid_search([1024]),
-        # "dev_n_samples": tune.grid_search([32768]),
-        # "dev_batch_size": tune.grid_search([32768]),
+        # "train_n_samples": tune.grid_search([16]),
+        # "train_batch_size": tune.grid_search([16]),
+        # "dev_n_samples": tune.grid_search([16]),
+        # "dev_batch_size": tune.grid_search([16]),
+        "train_n_samples": tune.grid_search([32768]),
+        "train_batch_size": tune.grid_search([1024]),
+        "dev_n_samples": tune.grid_search([32768]),
+        "dev_batch_size": tune.grid_search([32768]),
         "test_n_samples": tune.grid_search([32768]),
         "test_batch_size": tune.grid_search([32768]),
         "early_stop_check_epochs": tune.grid_search([10]),
@@ -341,15 +351,6 @@ if "generic_architecture_serial_hard" == testset_name:
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
             "gradient_clipping_norm_value": tune.grid_search([1.0]),
             "save_model_for_all_epochs": tune.grid_search([True]),
-        }
-    if 'GNN_MP_sigmoid' == hyperparams_name:
-        search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
-        }
-    if 'GNN_MP_sigmoid_gradient_clipping' == hyperparams_name:
-        search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
-            "gradient_clipping_norm_value": tune.grid_search([1.0]),
         }
     if 'GNN_MP_layer_normalization' == hyperparams_name:
         search_space = { **common_setups,

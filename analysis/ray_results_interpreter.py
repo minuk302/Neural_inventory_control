@@ -24,7 +24,7 @@ class RayResultsinterpreter:
                     # if data['dev_loss'].isna().any() or ('test_loss' in data and data['test_loss'].isna().any()) or data['train_loss'].isna().any():
                     #     print(f"Error, NaN values found in loss columns {subfolder_path}: ")
                     #     continue
-                    data.fillna(99999, inplace=True)
+                    # data.fillna(99999, inplace=True)
                     with open(params_file, 'r') as file:
                         params = json.load(file)
                     param_dict = {
@@ -66,11 +66,20 @@ class RayResultsinterpreter:
                             elif key == 'stores_correlation':
                                 result[key] = 0.5
 
+                    # Filter out rows with NaN values in any loss column
+                    loss_columns = ['dev_loss', 'train_loss']
+                    if 'test_loss' in data:
+                        loss_columns.append('test_loss')
+                    data = data.dropna(subset=loss_columns)
+                    
+                    if len(data) == 0:
+                        raise Exception("All rows contained NaN values in loss columns")
+                        
                     if 'test_loss' in data:
                         result['best_test_loss'] = data['test_loss'].min()
-                    result['best_dev_loss'] = data['dev_loss'].min()
+                    result['best_dev_loss'] = data['dev_loss'].min() 
                     result['best_train_loss'] = data['train_loss'].min()
-                    loss_columns = ['dev_loss', 'test_loss', 'train_loss']
+                    
                     for loss_column in loss_columns:
                         if loss_column in data:
                             result[f'{loss_column}(at best_{sort_by})'] = data[data[sort_by] == result[f'best_{sort_by}']][loss_column].iloc[0]

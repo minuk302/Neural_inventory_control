@@ -379,13 +379,17 @@ class Scenario():
         """
 
         split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories', 'initial_warehouse_inventories'\
-                                    , 'warehouse_lead_times', 'warehouse_holding_costs', 'warehouse_store_edges', 'warehouse_store_edge_lead_times'], 
+                                    , 'warehouse_lead_times', 'warehouse_holding_costs'], 
                     'period': []}
 
         if self.echelon_params is not None:
             split_by['sample_index'].append('initial_echelon_inventories')
             split_by['sample_index'].append('echelon_lead_times')
             split_by['sample_index'].append('echelon_holding_costs')
+
+        if self.warehouse_store_edges is not None:
+            split_by['sample_index'].append('warehouse_store_edges')
+            split_by['sample_index'].append('warehouse_store_edge_lead_times')
 
         if self.store_random_yields is not None:
             split_by['sample_index'].append('store_random_yields')

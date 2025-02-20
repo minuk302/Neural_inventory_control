@@ -60,6 +60,8 @@ class Simulator(gym.Env):
         # We create "shift" tensors to calculate in which position of the long vector of the entire batch we have to add the corresponding allocation
         # This is necessary whenever the lead time is different for each sample or/and store
         self._internal_data['allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_inventories'].shape).long()
+        if 'warehouse_store_edge_lead_times' in data:
+            self._internal_data['allocation_shift'] = self._internal_data['allocation_shift'].unsqueeze(-1).repeat(1, 1, data['warehouse_store_edge_lead_times'].shape[1])
 
         if self.problem_params['n_warehouses'] > 0:
             self._internal_data['warehouse_allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_warehouse_inventories'].shape).long()
@@ -134,15 +136,12 @@ class Simulator(gym.Env):
             current_period=self.observation['current_period'].item() + 1
             )
 
-        if 'warehouse_store_edges' in self.observation:
-            pass
-        else:
-            reward, s_underage_costs, s_holding_costs = self.calculate_store_reward_and_update_store_inventories(
-                current_demands,
-                action,
-                self.observation,
-                self.maximize_profit
-                )
+        reward, s_underage_costs, s_holding_costs = self.calculate_store_reward_and_update_store_inventories(
+            current_demands,
+            action,
+            self.observation,
+            self.maximize_profit
+            )
 
         # Calculate reward and update warehouse inventories
         if self.problem_params['n_warehouses'] > 0:
@@ -221,11 +220,14 @@ class Simulator(gym.Env):
         # If all lead times are the same, we can simplify this step by just adding the allocation to the last
         # column of the inventory tensor and moving all columns "to the left".
         # We leave this method as it is more general!
+        lead_times = observation['lead_times']
+        if 'warehouse_store_edge_lead_times' in self.observation:
+            lead_times = self.observation['warehouse_store_edge_lead_times'].transpose(1, 2)
         observation['store_inventories'] = self.update_inventory_for_lead_times(
             store_inventory, 
             post_inventory_on_hand, 
             action['stores'], 
-            observation['lead_times'], 
+            lead_times, 
             self._internal_data['allocation_shift'],
             self._internal_data['store_random_yields']
             )
@@ -249,7 +251,10 @@ class Simulator(gym.Env):
 
         warehouse_inventory = self.observation['warehouse_inventories']
         warehouse_inventory_on_hand = warehouse_inventory[:, :, 0]
-        post_warehouse_inventory_on_hand = warehouse_inventory_on_hand - action['stores'].sum(dim=1).unsqueeze(1)
+        if 'warehouse_store_edge_lead_times' in self.observation:
+            post_warehouse_inventory_on_hand = warehouse_inventory_on_hand - action['stores'].sum(dim=1)
+        else:
+            post_warehouse_inventory_on_hand = warehouse_inventory_on_hand - action['stores'].sum(dim=1).unsqueeze(1)
 
         holding_costs = observation['warehouse_holding_costs'] * torch.clip(post_warehouse_inventory_on_hand, min=0)
         reward = holding_costs.sum(dim=1)
@@ -260,7 +265,6 @@ class Simulator(gym.Env):
             observation['warehouse_lead_times'], 
             self._internal_data['warehouse_allocation_shift'],
             None,
-            False
             )
 
         return reward, holding_costs
@@ -385,7 +389,7 @@ class Simulator(gym.Env):
                 for k, v in initial_observation.items()
                 })
     
-    def update_inventory_for_lead_times(self, inventory, inventory_on_hand, allocation, lead_times, allocation_shifter, store_random_yields = None, is_heterogeneous = True):
+    def update_inventory_for_lead_times(self, inventory, inventory_on_hand, allocation, lead_times, allocation_shifter, store_random_yields = None):
         """
         Update the inventory for heterogeneous lead times (something simpler can be done for homogeneous lead times).
         We add the inventory into corresponding position by flatenning out the state vector of the
@@ -398,14 +402,11 @@ class Simulator(gym.Env):
         else:
             random_yields = torch.ones_like(inventory_on_hand)
 
-        if is_heterogeneous == False: # for performance
-            return torch.cat([(inventory_on_hand + inventory[:, :, 1] * random_yields).unsqueeze(-1), inventory[:, :, 2:], allocation.unsqueeze(-1)], dim=2)
-
         return torch.cat(
             [
                 (inventory_on_hand + inventory[:, :, 1] * random_yields).unsqueeze(-1), 
                 inventory[:, :, 2:],
-                torch.zeros_like(allocation).unsqueeze(-1)
+                torch.zeros_like(inventory[:, :, 1]).unsqueeze(-1)
             ], 
                 dim=2
                 ).put(

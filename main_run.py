@@ -49,7 +49,7 @@ class MainRun:
         self.config_hyperparams['trainer_params']['load_model_path'] = model_path
         self.config_hyperparams['trainer_params']['load_previous_model'] = os.path.exists(model_path)
 
-        self.config_hyperparams['nn_params']['is_debugging'] = True
+        # self.config_hyperparams['nn_params']['is_debugging'] = True
         
         # Extract relevant parts from model path to construct debug identifier
         path_parts = model_path.split('/')

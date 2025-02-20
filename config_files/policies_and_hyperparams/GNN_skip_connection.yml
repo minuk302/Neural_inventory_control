@@ -14,27 +14,32 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP_sigmoid'
+  'name': 'GNN'
   'inner_layer_activations': 
-    'initial_embedding': 'elu'
-    'node_embedding': 'elu'
-    'update_embedding': 'elu'
+    'initial_node': 'elu'
+    'initial_edge': 'elu'
+    'node_update': 'elu'
+    'edge_update': 'elu'
     'output': 'elu'
   'output_layer_activation':
-    'initial_embedding': 'elu'
-    'node_embedding': 'elu'
-    'update_embedding': 'elu'
-    'output': null
+    'initial_node': 'elu'
+    'initial_edge': 'elu'
+    'node_update': 'elu'
+    'edge_update': 'elu'
+    'output': 'softplus'
   'neurons_per_hidden_layer':
-    'initial_embedding': [32, 32]
-    'node_embedding': [32, 32]
-    'update_embedding': [32, 32]
+    'initial_node': [32, 32]
+    'initial_edge': [32, 32]
+    'node_update': [32, 32]
+    'edge_update': [32, 32]
     'output': [32, 32]
   'output_sizes':
-    'initial_embedding': 32
-    'node_embedding': 32
-    'update_embedding': 32
+    'initial_node': 32
+    'initial_edge': 32
+    'node_update': 32
+    'edge_update': 32
     'output': 1
-  'initial_bias': null
+  'initial_bias':
+    'output': 5.0
   'include_primitive_features': False
-  'warehouse_upper_bound_mult': 30  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores
+  'skip_connection': True
