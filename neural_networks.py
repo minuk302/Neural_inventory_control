@@ -856,6 +856,16 @@ class GNN(MyNeuralNetwork):
                 torch.cat([nodes, zero_node], dim=1),
                 torch.cat([observation['echelon_lead_times'], observation['warehouse_lead_times'], observation['lead_times'], torch.zeros_like(observation['lead_times'])], dim=1).unsqueeze(-1)
             ], dim=-1)
+        elif 'warehouse_store_edge_lead_times' in observation:
+            n_warehouses = observation['warehouse_inventories'].size(1)
+            supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :n_warehouses]), nodes[:, :n_warehouses], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
+            warehouses_expanded = nodes[:, :n_warehouses].unsqueeze(1).repeat(1, self.n_stores, 1, 1)
+            stores_expanded = nodes[:, n_warehouses:].unsqueeze(2).repeat(1, 1, n_warehouses, 1)
+            warehouse_store_edges_input = torch.cat([warehouses_expanded, stores_expanded, observation['warehouse_store_edge_lead_times'].transpose(1,2).unsqueeze(-1)], dim=-1)
+            warehouse_store_edges_input_flattened = warehouse_store_edges_input.reshape(warehouse_store_edges_input.size(0), -1, warehouse_store_edges_input.size(-1))
+            store_clients_edges_input = torch.cat([nodes[:, n_warehouses:], torch.zeros_like(nodes[:, n_warehouses:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1))], dim=-1)
+
+            edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input_flattened, store_clients_edges_input], dim=1)
         else:
             supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :1]), nodes[:, :1], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
             warehouse_store_edges_input = torch.cat([nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:], observation['lead_times'].unsqueeze(-1)], dim=-1)
@@ -871,6 +881,20 @@ class GNN(MyNeuralNetwork):
                     edges[:, :-1], 
                     edges[:, 1:]
                 ], dim=-1)
+            elif 'warehouse_store_edge_lead_times' in observation:
+                warehouse_supplier_aggregation = edges[:, :n_warehouses]
+                warehouse_store_edges_reshaped = edges[:, n_warehouses:-self.n_stores].reshape(edges.size(0), n_warehouses, self.n_stores, -1)
+                warehouse_store_edges_mask = observation['warehouse_store_edges'].unsqueeze(-1)
+                warehouse_store_edges = warehouse_store_edges_reshaped * warehouse_store_edges_mask
+                warehouse_recipient_aggregation = warehouse_store_edges.mean(dim=2)
+
+                store_supplier_aggregation = warehouse_store_edges.transpose(1,2).mean(dim=2)
+                store_recipient_aggregation = edges[:, -self.n_stores:]
+                node_update_input = torch.cat(
+                    [torch.cat([nodes[:, :n_warehouses], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
+                        torch.cat([nodes[:, n_warehouses:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
+                    dim=1
+                )
             else: 
                 warehouse_supplier_aggregation = torch.mean(edges[:, :1, :], dim=1, keepdim=True)
                 warehouse_recipient_aggregation = torch.mean(edges[:, 1:1 + self.n_stores, :], dim=1, keepdim=True)
@@ -893,6 +917,13 @@ class GNN(MyNeuralNetwork):
                     torch.cat([zero_node, nodes], dim=1), 
                     torch.cat([nodes, zero_node], dim=1),
                 ], dim=-1)
+            elif 'warehouse_store_edge_lead_times' in observation:
+                supplier_warehouse_edges_update_input = torch.cat([edges[:, :n_warehouses], torch.zeros_like(nodes[:, :n_warehouses]), nodes[:, :n_warehouses]], dim=-1)
+                warehouses_expanded_flattened = nodes[:, :n_warehouses].unsqueeze(1).repeat(1, self.n_stores, 1, 1).reshape(nodes.size(0), -1, nodes.size(2))
+                stores_expanded_flattened = nodes[:, n_warehouses:].unsqueeze(2).repeat(1, 1, n_warehouses, 1).reshape(nodes.size(0), -1, nodes.size(2))
+                warehouse_store_edges_update_input = torch.cat([edges[:, n_warehouses:-self.n_stores], warehouses_expanded_flattened, stores_expanded_flattened], dim=-1)
+                store_clients_edges_update_input = torch.cat([edges[:, -self.n_stores:], nodes[:, n_warehouses:], torch.zeros_like(nodes[:, n_warehouses:])], dim=-1)
+                edges_update_input = torch.cat([supplier_warehouse_edges_update_input, warehouse_store_edges_update_input, store_clients_edges_update_input], dim=1)
             else:
                 supplier_warehouse_edges_update_input = torch.cat([edges[:, :1], torch.zeros_like(nodes[:, :1]), nodes[:, :1]], dim=-1)
                 warehouse_store_edges_update_input = torch.cat([edges[:, 1:1 + self.n_stores], nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:]], dim=-1)
@@ -912,6 +943,8 @@ class GNN(MyNeuralNetwork):
         else:
             if 'echelon_inventories' in observation:
                 outputs = self.net['output'](edges[:, :-1])
+            elif 'warehouse_store_edge_lead_times' in observation:
+                outputs = self.net['output'](edges[:, :-self.n_stores])
             else:
                 outputs = self.net['output'](edges[:, :1 + self.n_stores, :])
 
@@ -930,6 +963,23 @@ class GNN(MyNeuralNetwork):
                 'stores': store_allocation,
                 'warehouses': warehouse_allocation,
                 'echelons': torch.cat(echelon_allocations, dim=1)
+            }
+        elif 'warehouse_store_edge_lead_times' in observation:
+            warehouse_allocation = outputs[:, :n_warehouses, 0]
+
+            store_intermediate_outputs_for_all = outputs[:, n_warehouses:, 0].reshape(outputs.size(0), self.n_stores, -1)
+            store_edges_mask = observation['warehouse_store_edges'].transpose(1,2)
+            store_intermediate_outputs = (store_intermediate_outputs_for_all * store_edges_mask)
+
+            store_allocation = torch.zeros_like(store_intermediate_outputs)
+            for w in range(n_warehouses):
+                store_allocation[:, :, w] += self.apply_proportional_allocation(
+                    store_intermediate_outputs[:, :, w], 
+                    observation['warehouse_inventories'][:,w:w+1]
+                    )
+            return {
+                'stores': store_allocation,
+                'warehouses': warehouse_allocation
             }
         else:
             store_intermediate_outputs = outputs[:, 1:]
