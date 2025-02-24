@@ -2,6 +2,7 @@ from shared_imports import *
 from environment import *
 from loss_functions import *
 from ray import train
+import time
 
 class Trainer():
     """
@@ -70,8 +71,8 @@ class Trainer():
                 break
             
             n_passed_epochs_without_improvement += 1
-            
             # Do one epoch of training, including updating the model parameters
+            start_time = time.time()
             average_train_loss, average_train_loss_to_report = self.do_one_epoch(
                 optimizer, 
                 data_loaders['train'], 
@@ -84,8 +85,12 @@ class Trainer():
                 train=True, 
                 ignore_periods=params_by_dataset['train']['ignore_periods']
                 )
+            train_time = time.time() - start_time
+            if model.is_debugging:
+                print(f"Training time: {train_time:.2f} seconds")
             
             if epoch % trainer_params['do_dev_every_n_epochs'] == 0:
+                start_time = time.time()
                 average_dev_loss, average_dev_loss_to_report = self.do_one_epoch(
                     optimizer, 
                     data_loaders['dev'], 
@@ -98,6 +103,9 @@ class Trainer():
                     train=False, 
                     ignore_periods=params_by_dataset['dev']['ignore_periods']
                     )
+                dev_time = time.time() - start_time
+                if model.is_debugging:
+                    print(f"Dev time: {dev_time:.2f} seconds")
 
                 # Check if the current model is the best model so far, and save the model parameters if so.
                 # Save the model if specified in the trainer_params
@@ -111,6 +119,7 @@ class Trainer():
                     report_dict = {'dev_loss': average_dev_loss_to_report, 'train_loss': average_train_loss_to_report}
                     if 'report_test_loss' in problem_params and problem_params['report_test_loss'] == True:
                         with torch.no_grad():
+                            start_time = time.time()
                             average_test_loss, average_test_loss_to_report = self.do_one_epoch(
                                 optimizer, 
                                 data_loaders['test'], 
@@ -124,6 +133,9 @@ class Trainer():
                                 ignore_periods=params_by_dataset['test']['ignore_periods'],
                                 discrete_allocation=store_params['demand']['distribution'] == 'poisson'
                                 )
+                            test_time = time.time() - start_time
+                            if model.is_debugging:
+                                print(f"Test time: {test_time:.2f} seconds")
                             report_dict['test_loss'] = average_test_loss_to_report
                     train.report(report_dict)
             else:

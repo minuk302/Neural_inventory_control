@@ -32,8 +32,8 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 6  # tested values: 3, 5, 10, 20, 30, 50
-  'n_warehouses': 3
+  'n_stores': 10  # tested values: 3, 5, 10, 20, 30, 50
+  'n_warehouses': 4
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': False
@@ -41,18 +41,18 @@ problem_params :
 
 params_by_dataset : 
   'train': 
-    'n_samples': 8192  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
+    'n_samples': 32768  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
     'batch_size': 1024 
     'periods': 50 
     'ignore_periods': 30 
   'dev': 
-    'n_samples': 4096 
-    'batch_size': 1024 
+    'n_samples': 32768 
+    'batch_size': 32768 
     'periods': 50 
     'ignore_periods': 30 
   'test': 
-    'n_samples': 4096 
-    'batch_size': 1024 
+    'n_samples': 32768 
+    'batch_size': 32768 
     'periods': 500 
     'ignore_periods': 300
 
@@ -107,23 +107,24 @@ warehouse_params:
     'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
-    'value': [6, 4, 2]
+    'value': [6, 4, 4, 2]
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False
     'expand': True
-    'value': [0.2, 0.4, 0.6]
+    'value': [0.2, 0.4, 0.6, 0.6]
   'initial_inventory': 
     'sample': False
     'inventory_periods': 5  # Initial inventory will be of size max(inventory_periods, lead_time)
   'edge_lead_times':
     'vary_across_samples': False
-    'range': [[5, 7], [3, 5], [1, 3]]
+    'range': [[5, 7], [3, 5], [1, 3], [1, 3]]
   'edges':
     'value': [
-      [1, 1, 0, 1, 1, 1],
-      [1, 0, 1, 0, 0, 0],
-      [1, 0, 0, 0, 1, 0]
+      [1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 0, 0, 0, 0, 0, 1, 0],
+      [0, 0, 0, 1, 1, 0, 0, 0, 0, 1],
+      [0, 0, 0, 0, 0, 0, 0, 0, 1, 1]
     ]
 
 echelon_params: 

@@ -7,7 +7,7 @@ import research_utils
 import json
 
 class MainRun:
-    def __init__(self, train_or_test, config_setting, config_hyperparams, tuning_configs = None, recorder_config_path=None, recorder_identifier=None):
+    def __init__(self, train_or_test, config_setting, config_hyperparams, tuning_configs = None, recorder_config_path=None, recorder_identifier=None, is_debugging=False):
         self.train_or_test = train_or_test
         self.config_setting = config_setting
         self.config_hyperparams = config_hyperparams
@@ -25,6 +25,7 @@ class MainRun:
             self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams, start_record, recorder_identifier)
         else:
             self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams)
+        self.set_debugging(is_debugging)
 
         self.extract_configs()
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -38,6 +39,9 @@ class MainRun:
 
         self.setup_trainer_params()
 
+    def set_debugging(self, is_debugging):
+        self.config_hyperparams['nn_params']['is_debugging'] = is_debugging
+
     def override_configs(self):
         # Use recorder_config_path directly as model path since it points to model_index.pt
         model_path = self.recorder_config_path
@@ -48,8 +52,6 @@ class MainRun:
             self.config_setting, self.config_hyperparams = research_utils.override_configs(params, self.config_setting, self.config_hyperparams)
         self.config_hyperparams['trainer_params']['load_model_path'] = model_path
         self.config_hyperparams['trainer_params']['load_previous_model'] = os.path.exists(model_path)
-
-        # self.config_hyperparams['nn_params']['is_debugging'] = True
         
         # Extract relevant parts from model path to construct debug identifier
         path_parts = model_path.split('/')
@@ -220,6 +222,7 @@ class MainRun:
             assert False
 
 if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     train_or_test = sys.argv[1]
     setting_name = sys.argv[2]
     hyperparams_name = sys.argv[3]
@@ -232,7 +235,7 @@ if __name__ == "__main__":
     config_setting = load_yaml(f'config_files/settings/{setting_name}.yml')
     config_hyperparams = load_yaml(f'config_files/policies_and_hyperparams/{hyperparams_name}.yml')
     
-    main_run = MainRun(train_or_test, config_setting, config_hyperparams, None, recorder_config_path, recorder_identifier)
+    main_run = MainRun(train_or_test, config_setting, config_hyperparams, None, recorder_config_path, recorder_identifier, True)
     import time
 
     start_time = time.time()
