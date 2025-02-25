@@ -914,12 +914,12 @@ class GNN(MyNeuralNetwork):
                 ], dim=-1)
             elif 'warehouse_store_edge_lead_times' in observation:
                 warehouse_supplier_aggregation = edges[:, :n_warehouses]
-                warehouse_store_edges_reshaped = edges[:, n_warehouses:-self.n_stores].reshape(edges.size(0), n_warehouses, self.n_stores, -1)
-                warehouse_store_edges_mask = observation['warehouse_store_edges'].unsqueeze(-1)
+                warehouse_store_edges_reshaped = edges[:, n_warehouses:-self.n_stores].reshape(edges.size(0), self.n_stores, n_warehouses, -1)
+                warehouse_store_edges_mask = observation['warehouse_store_edges'].transpose(1,2).unsqueeze(-1)
                 warehouse_store_edges = warehouse_store_edges_reshaped * warehouse_store_edges_mask
-                warehouse_recipient_aggregation = warehouse_store_edges.mean(dim=2)
+                warehouse_recipient_aggregation = warehouse_store_edges.mean(dim=1)
 
-                store_supplier_aggregation = warehouse_store_edges.transpose(1,2).mean(dim=2)
+                store_supplier_aggregation = warehouse_store_edges.mean(dim=2)
                 store_recipient_aggregation = edges[:, -self.n_stores:]
                 node_update_input = torch.cat(
                     [torch.cat([nodes[:, :n_warehouses], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
