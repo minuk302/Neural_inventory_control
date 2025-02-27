@@ -61,15 +61,13 @@ class Simulator(gym.Env):
         # This is necessary whenever the lead time is different for each sample or/and store
         self._internal_data['allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_inventories'].shape).long()
         if 'warehouse_store_edge_lead_times' in data:
-            self._internal_data['allocation_shift'] = self._internal_data['allocation_shift'].unsqueeze(-1).repeat(1, 1, data['warehouse_store_edge_lead_times'].shape[1])
+            self._internal_data['allocation_shift'] = self._internal_data['allocation_shift'].unsqueeze(-1).expand(-1, -1, data['warehouse_store_edge_lead_times'].shape[1])
 
         if self.problem_params['n_warehouses'] > 0:
             self._internal_data['warehouse_allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_warehouse_inventories'].shape).long()
         
         if self.problem_params['n_extra_echelons'] > 0:
             self._internal_data['echelon_allocation_shift'] = self.initialize_shifts_for_allocation_put(data['initial_echelon_inventories'].shape).long()
-
-        self._internal_data['zero_allocation_tensor'] = self.initialize_zero_allocation_tensor(data['initial_inventories'].shape[: -1])
 
         self.observation = self.initialize_observation(data, observation_params)
         # self.action_space = self.initialize_action_space(self.batch_size, problem_params, observation_params)
@@ -103,13 +101,6 @@ class Simulator(gym.Env):
         # in the long vector of the entire batch.
         # We then add the corresponding lead time to obtain the actual position in which to insert the action
         return n_instance_store_shift[:, None] + store_n_shift
-
-    def initialize_zero_allocation_tensor(self, shape):
-        """
-        Initialize a tensor of zeros with the same shape as the allocation tensor
-        """
-
-        return torch.zeros(shape, device=self.device)
     
     def step(self, action):
         """

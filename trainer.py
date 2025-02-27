@@ -60,13 +60,20 @@ class Trainer():
         # with profile(
         # activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA],
         # on_trace_ready = trace_handler,
-        # profile_memory = True,
-        # record_shapes = True,
         # with_stack = True
         # ) as prof:
         n_passed_epochs_without_improvement = 0
+        # torch.cuda.memory._record_memory_history(max_entries=1000000)
         for epoch in range(epochs): # Make multiple passes through the dataset
             # prof.step()
+            # if model.is_debugging and epoch == 2:
+            #     try:
+            #         torch.cuda.memory._dump_snapshot(f"/user/ml4723/Prj/NIC/tensorboard_traces/memory_snapshot.pickle")
+            #     except Exception as e:
+            #         print(f"Failed to capture memory snapshot {e}")
+            #     exit()
+
+
             if 'stop_if_no_improve_for_epochs' in trainer_params and n_passed_epochs_without_improvement >= trainer_params['stop_if_no_improve_for_epochs']:
                 break
             
@@ -91,6 +98,7 @@ class Trainer():
             
             if epoch % trainer_params['do_dev_every_n_epochs'] == 0:
                 start_time = time.time()
+                torch.cuda.empty_cache()
                 average_dev_loss, average_dev_loss_to_report = self.do_one_epoch(
                     optimizer, 
                     data_loaders['dev'], 
@@ -103,6 +111,7 @@ class Trainer():
                     train=False, 
                     ignore_periods=params_by_dataset['dev']['ignore_periods']
                     )
+                torch.cuda.empty_cache()
                 dev_time = time.time() - start_time
                 if model.is_debugging:
                     print(f"Dev time: {dev_time:.2f} seconds")
@@ -118,6 +127,7 @@ class Trainer():
                 if 'ray_report_loss' in trainer_params:
                     report_dict = {'dev_loss': average_dev_loss_to_report, 'train_loss': average_train_loss_to_report}
                     if 'report_test_loss' in problem_params and problem_params['report_test_loss'] == True:
+                        torch.cuda.empty_cache()
                         with torch.no_grad():
                             start_time = time.time()
                             average_test_loss, average_test_loss_to_report = self.do_one_epoch(
@@ -137,7 +147,10 @@ class Trainer():
                             if model.is_debugging:
                                 print(f"Test time: {test_time:.2f} seconds")
                             report_dict['test_loss'] = average_test_loss_to_report
+                        torch.cuda.empty_cache()
                     train.report(report_dict)
+                    if math.isnan(average_train_loss_to_report):
+                        break
             else:
                 average_dev_loss, average_dev_loss_to_report = 0, 0
 
@@ -201,6 +214,9 @@ class Trainer():
             epoch_loss_to_report = 0  # Loss ignoring the first 'ignore_periods' periods
             total_samples = len(data_loader.dataset)
             periods_tracking_loss = periods - ignore_periods  # Number of periods for which we report the loss
+
+            amp_enabled = torch.cuda.is_bf16_supported()
+            scaler = torch.amp.GradScaler('cuda', enabled = amp_enabled)
             for i, data_batch in enumerate(data_loader):  # Loop through batches of data
                 data_batch = self.move_batch_to_device(data_batch)
                 if train:
@@ -208,23 +224,24 @@ class Trainer():
                     optimizer.zero_grad(set_to_none=True)
 
                 # Forward pass
-                total_reward, reward_to_report = self.simulate_batch(
-                    loss_function, simulator, model, periods, problem_params, data_batch, observation_params, ignore_periods, discrete_allocation
-                    )
-                epoch_loss += total_reward.item()  # Rewards from period 0
-                epoch_loss_to_report += reward_to_report.item()  # Rewards from period ignore_periods onwards
+                with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=amp_enabled):
+                    total_reward, reward_to_report = self.simulate_batch(
+                        loss_function, simulator, model, periods, problem_params, data_batch, observation_params, ignore_periods, discrete_allocation
+                        )
+                    epoch_loss += total_reward.item()  # Rewards from period 0
+                    epoch_loss_to_report += reward_to_report.item()  # Rewards from period ignore_periods onwards
+                    
+                    mean_loss = total_reward/(len(data_batch['demands'])*periods*problem_params['n_stores'])
                 
-                mean_loss = total_reward/(len(data_batch['demands'])*periods*problem_params['n_stores'])
-                
-                # Backward pass (to calculate gradient) and take gradient step
-                if model.is_debugging:
-                    pass
-                    # exit()
                 if train and model.trainable:
-                    mean_loss.backward()
+                    scaler.scale(mean_loss).backward()
+                    scaler.unscale_(optimizer)
+                    # mean_loss.backward()
                     if model.gradient_clipping_norm_value is not None:
                         torch.nn.utils.clip_grad_norm_(model.parameters(), model.gradient_clipping_norm_value)
-                    optimizer.step()
+                    scaler.step(optimizer)
+                    scaler.update()
+                    # optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
             
             return epoch_loss/(total_samples*periods*problem_params['n_stores']), epoch_loss_to_report/(total_samples*periods_tracking_loss*problem_params['n_stores'])
