@@ -42,7 +42,7 @@ problem_params :
 params_by_dataset : 
   'train': 
     'n_samples': 32768  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
-    'batch_size': 1024 
+    'batch_size': 4096
     'periods': 50 
     'ignore_periods': 30 
   'dev': 

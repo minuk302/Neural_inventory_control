@@ -166,7 +166,7 @@ if "generic_architecture_n_warehouse" == testset_name:
         # "dev_n_samples": tune.grid_search([16]),
         # "dev_batch_size": tune.grid_search([16]),
         "train_n_samples": tune.grid_search([32768]),
-        "train_batch_size": tune.grid_search([1024]),
+        "train_batch_size": tune.grid_search([4096]),
         "dev_n_samples": tune.grid_search([32768]),
         "dev_batch_size": tune.grid_search([32768]),
         "test_n_samples": tune.grid_search([32768]),
@@ -179,6 +179,26 @@ if "generic_architecture_n_warehouse" == testset_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
             "gradient_clipping_norm_value": tune.grid_search([1.0]),
+            "n_MP": tune.grid_search([2]),
+            "save_model_for_all_epochs": tune.grid_search([True]),
+        }
+    if 'GNN_pna' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+            "n_MP": tune.grid_search([3]),
+        }
+    if 'GNN_NN_per_layer' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+            "n_MP": tune.grid_search([3]),
+        }
+    if 'GNN_edge_embedding' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+            "n_MP": tune.grid_search([3]),
         }
     if 'GNN_skip_connection' == hyperparams_name:
         search_space = { **common_setups,
@@ -201,7 +221,7 @@ if "generic_architecture" == testset_name:
         # "dev_n_samples": tune.grid_search([16]),
         # "dev_batch_size": tune.grid_search([16]),
         "train_n_samples": tune.grid_search([32768]),
-        "train_batch_size": tune.grid_search([1024]),
+        "train_batch_size": tune.grid_search([4096]),
         "dev_n_samples": tune.grid_search([32768]),
         "dev_batch_size": tune.grid_search([32768]),
         "test_n_samples": tune.grid_search([32768]),
@@ -372,18 +392,6 @@ if "generic_architecture_serial_hard" == testset_name:
             "save_model_for_all_epochs": tune.grid_search([True]),
         }
     if 'GNN_MP_bottleneck_loss_stop_gradient_skip_connection' == hyperparams_name:
-        search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
-            "gradient_clipping_norm_value": tune.grid_search([1.0]),
-            "save_model_for_all_epochs": tune.grid_search([True]),
-        }
-    if 'GNN_MP_bottleneck_loss_L1_skip_connection' == hyperparams_name:
-        search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
-            "gradient_clipping_norm_value": tune.grid_search([1.0]),
-            "save_model_for_all_epochs": tune.grid_search([True]),
-        }
-    if 'GNN_MP_bottleneck_loss_stop_gradient_L1_skip_connection' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001, 0.00003]),
             "gradient_clipping_norm_value": tune.grid_search([1.0]),

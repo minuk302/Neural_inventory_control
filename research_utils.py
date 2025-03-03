@@ -16,7 +16,7 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
         'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs",
         "initial_bias_output",
-        'n_cpus_per_instance', 'base_dir_for_ray'
+        'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna'
     }
 
     # Check that all keys in overriding_params are valid
@@ -28,6 +28,15 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         if 'initial_bias' not in config_hyperparams['nn_params']:
             config_hyperparams['nn_params']['initial_bias'] = {}
         config_hyperparams['nn_params']['initial_bias']['output'] = overriding_params['initial_bias_output']
+
+    if 'use_pna' in overriding_params:
+        config_hyperparams['nn_params']['use_pna'] = overriding_params['use_pna']
+
+    if 'n_MP' in overriding_params:
+        config_hyperparams['nn_params']['n_MP'] = overriding_params['n_MP']
+
+    if 'disable_amp' in overriding_params:
+        config_setting['problem_params']['disable_amp'] = overriding_params['disable_amp']
 
     if 'early_stop_check_epochs' in overriding_params:
         config_hyperparams['trainer_params']['do_dev_every_n_epochs'] = overriding_params['early_stop_check_epochs']

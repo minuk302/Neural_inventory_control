@@ -216,6 +216,10 @@ class Trainer():
             periods_tracking_loss = periods - ignore_periods  # Number of periods for which we report the loss
 
             amp_enabled = torch.cuda.is_bf16_supported()
+            if any(x in torch.cuda.get_device_name() for x in ('V100', 'T4')):
+                amp_enabled = False
+            if 'disable_amp' in problem_params and problem_params['disable_amp']:
+                amp_enabled = False
             scaler = torch.amp.GradScaler('cuda', enabled = amp_enabled)
             for i, data_batch in enumerate(data_loader):  # Loop through batches of data
                 data_batch = self.move_batch_to_device(data_batch)
@@ -243,6 +247,9 @@ class Trainer():
                     scaler.update()
                     # optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
+
+                if model.is_debugging:
+                    exit()
             
             return epoch_loss/(total_samples*periods*problem_params['n_stores']), epoch_loss_to_report/(total_samples*periods_tracking_loss*problem_params['n_stores'])
         

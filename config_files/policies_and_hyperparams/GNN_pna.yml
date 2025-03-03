@@ -14,27 +14,32 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP_bottleneck_loss_L1'  
+  'name': 'GNN'
   'inner_layer_activations': 
-    'initial_embedding': 'elu'
-    'node_embedding': 'elu'
-    'update_embedding': 'elu'
+    'initial_node': 'elu'
+    'initial_edge': 'elu'
+    'node_update': 'elu'
+    'edge_update': 'elu'
     'output': 'elu'
   'output_layer_activation':
-    'initial_embedding': 'elu'
-    'node_embedding': 'elu'
-    'update_embedding': 'elu'
+    'initial_node': 'elu'
+    'initial_edge': 'elu'
+    'node_update': 'elu'
+    'edge_update': 'elu'
     'output': 'softplus'
   'neurons_per_hidden_layer':
-    'initial_embedding': [32, 32]
-    'node_embedding': [32, 32]
-    'update_embedding': [32, 32]
+    'initial_node': [32, 32]
+    'initial_edge': [32, 32]
+    'node_update': [32, 32]
+    'edge_update': [32, 32]
     'output': [32, 32]
   'output_sizes':
-    'initial_embedding': 32
-    'node_embedding': 32
-    'update_embedding': 32
+    'initial_node': 32
+    'initial_edge': 32
+    'node_update': 32
+    'edge_update': 32
     'output': 1
-  'initial_bias': null
-  'skip_connection': True
+  'initial_bias':
+    'output': 5.0
   'include_primitive_features': False
+  'use_pna': True
