@@ -248,8 +248,8 @@ class Trainer():
                     # optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
 
-                if model.is_debugging:
-                    exit()
+                # if model.is_debugging:
+                #     exit()
             
             return epoch_loss/(total_samples*periods*problem_params['n_stores']), epoch_loss_to_report/(total_samples*periods_tracking_loss*problem_params['n_stores'])
         

@@ -6,7 +6,7 @@ class RayResultsinterpreter:
     def __init__(self):
         pass
 
-    def extract_data(self, top_folder, sort_by):
+    def extract_data(self, top_folder, sort_by, test_loss_limit=None):
         results = []
         for submain_folder in os.listdir(top_folder):
             main_folder = os.path.join(top_folder, submain_folder)
@@ -25,6 +25,8 @@ class RayResultsinterpreter:
                     #     print(f"Error, NaN values found in loss columns {subfolder_path}: ")
                     #     continue
                     # data.fillna(99999, inplace=True)
+                    if test_loss_limit is not None:
+                        data = data[data['test_loss'] <= test_loss_limit]
                     with open(params_file, 'r') as file:
                         params = json.load(file)
                     param_dict = {
@@ -56,6 +58,7 @@ class RayResultsinterpreter:
                         'train_n_samples': 'train_n_samples',
                         'omit_context_from_store_input': 'omit_context_from_store_input',
                         'n_MP': 'n_MP',
+                        'train_dev_sample_and_batch_size': 'train_dev_sample_and_batch_size',
                     }
                     result = {}
                     for key, value in param_dict.items():
@@ -91,10 +94,10 @@ class RayResultsinterpreter:
                     print(f"Error processing files in {subfolder_path}: {e}")
         return results
 
-    def make_table(self, paths, conditions, default_condition_setter = None, custom_data_filler = None, sort_by = 'dev_loss', pick_row_from_run_by='dev_loss'):
+    def make_table(self, paths, conditions, default_condition_setter = None, custom_data_filler = None, sort_by = 'dev_loss', pick_row_from_run_by='dev_loss', test_loss_limit=None):
         results = []
         for num_stores, path in paths.items():
-            data = self.extract_data(path, pick_row_from_run_by)
+            data = self.extract_data(path, pick_row_from_run_by, test_loss_limit)
             if len(data) == 0:
                 continue
             df = pd.DataFrame(data).sort_values(by=f'{sort_by}(at best_{pick_row_from_run_by})', ascending=True)

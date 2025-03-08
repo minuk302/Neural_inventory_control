@@ -251,16 +251,19 @@ class Scenario():
             self.store_random_yield_std = torch.tensor(store_params['random_yield']['std'])
 
         self.initial_inventories = self.generate_initial_inventories(store_params, self.demands, self.lead_times, problem_params['n_stores'], seeds['initial_inventory'])
-                
-        self.warehouse_lead_times = self.generate_data_for_samples(warehouse_params['lead_time'], problem_params['n_warehouses'], seeds['lead_time'], discrete=True)
-        self.initial_warehouse_inventories = self.generate_initial_inventories(warehouse_params, self.demands, self.warehouse_lead_times, problem_params['n_warehouses'], seeds['initial_inventory'])
-        self.warehouse_holding_costs = self.generate_data_for_samples(warehouse_params['holding_cost'], problem_params['n_warehouses'], seeds['holding_cost'])
+        self.warehouse_lead_times = None
+        self.initial_warehouse_inventories = None
+        self.warehouse_holding_costs = None
         self.warehouse_store_edges = None
-        if 'edges' in warehouse_params:
-            self.warehouse_store_edges = self.generate_warehouse_store_edges(warehouse_params['edges'], problem_params['n_warehouses'], problem_params['n_stores'], seeds['warehouse'])
         self.warehouse_store_edge_lead_times = None
-        if 'edge_lead_times' in warehouse_params:
-            self.warehouse_store_edge_lead_times = self.generate_warehouse_store_edge_lead_times(warehouse_params['edge_lead_times'], self.warehouse_store_edges, seeds['warehouse'])
+        if warehouse_params is not None:
+            self.warehouse_lead_times = self.generate_data_for_samples(warehouse_params['lead_time'], problem_params['n_warehouses'], seeds['lead_time'], discrete=True)
+            self.initial_warehouse_inventories = self.generate_initial_inventories(warehouse_params, self.demands, self.warehouse_lead_times, problem_params['n_warehouses'], seeds['initial_inventory'])
+            self.warehouse_holding_costs = self.generate_data_for_samples(warehouse_params['holding_cost'], problem_params['n_warehouses'], seeds['holding_cost'])
+            if 'edges' in warehouse_params:
+                self.warehouse_store_edges = self.generate_warehouse_store_edges(warehouse_params['edges'], problem_params['n_warehouses'], problem_params['n_stores'], seeds['warehouse'])
+            if 'edge_lead_times' in warehouse_params:
+                self.warehouse_store_edge_lead_times = self.generate_warehouse_store_edge_lead_times(warehouse_params['edge_lead_times'], self.warehouse_store_edges, seeds['warehouse'])
 
         modified_echelon_params = self.generate_ehcelon_params(echelon_params, seeds)
         self.echelon_lead_times = None

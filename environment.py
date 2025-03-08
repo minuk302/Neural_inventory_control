@@ -153,12 +153,11 @@ class Simulator(gym.Env):
         
         if self.recorder.is_recording:
             data = {
-                's_underage_costs': s_underage_costs.cpu().mean(dim=1),
-                's_holding_costs': s_holding_costs.cpu().mean(dim=1),
+                's_underage_costs': s_underage_costs.cpu().sum(dim=1),
+                's_holding_costs': s_holding_costs.cpu().sum(dim=1),
                 }
             if self.problem_params['n_warehouses'] > 0:
-                data['w_holding_costs'] = w_holding_costs.detach().cpu().squeeze(-1)
-                data['warehouse_orders'] = action['warehouses'].detach().cpu().squeeze(-1)
+                data['w_holding_costs'] = w_holding_costs.detach().cpu().sum(dim=1)
             if  self.problem_params['n_extra_echelons'] > 0:
                 data['e1_holding_costs'] = e_reward_per_store[:, 0].cpu()
                 data['e2_holding_costs'] = e_reward_per_store[:, 1].cpu()

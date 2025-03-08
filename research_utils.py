@@ -15,8 +15,8 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
         'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs",
-        "initial_bias_output",
-        'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna'
+        "initial_bias_output", 'train_dev_sample_and_batch_size',
+        'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'trian_periods'
     }
 
     # Check that all keys in overriding_params are valid
@@ -28,6 +28,11 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         if 'initial_bias' not in config_hyperparams['nn_params']:
             config_hyperparams['nn_params']['initial_bias'] = {}
         config_hyperparams['nn_params']['initial_bias']['output'] = overriding_params['initial_bias_output']
+
+    if 'dev_periods' in overriding_params:
+        config_setting['params_by_dataset']['dev']['periods'] = overriding_params['dev_periods']
+    if 'trian_periods' in overriding_params:
+        config_setting['params_by_dataset']['train']['periods'] = overriding_params['trian_periods']
 
     if 'use_pna' in overriding_params:
         config_hyperparams['nn_params']['use_pna'] = overriding_params['use_pna']
@@ -78,6 +83,12 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
 
     if 'train_n_samples' in overriding_params:
         config_setting['params_by_dataset']['train']['n_samples'] = overriding_params['train_n_samples']
+
+    if 'train_dev_sample_and_batch_size' in overriding_params:
+        config_setting['params_by_dataset']['train']['n_samples'] = overriding_params['train_dev_sample_and_batch_size']
+        config_setting['params_by_dataset']['dev']['n_samples'] = overriding_params['train_dev_sample_and_batch_size']
+        config_setting['params_by_dataset']['train']['batch_size'] = overriding_params['train_dev_sample_and_batch_size']
+        config_setting['params_by_dataset']['dev']['batch_size'] = overriding_params['train_dev_sample_and_batch_size']
 
     if 'train_batch_size' in overriding_params:
         config_setting['params_by_dataset']['train']['batch_size'] = overriding_params['train_batch_size']

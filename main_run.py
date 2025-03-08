@@ -143,9 +143,12 @@ class MainRun:
 
     def create_data_loaders(self):
         if self.tuning_configs is None:
-            train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True)
-            dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False)
-            test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False)
+            # train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True)
+            # dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False)
+            # test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False)
+            train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True, prefetch_factor=8)
+            dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
+            test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
         else:
             train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=self.tuning_configs['n_cpus_per_instance'], pin_memory=True, persistent_workers=True, prefetch_factor=8)
             dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
@@ -222,7 +225,7 @@ class MainRun:
             assert False
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     train_or_test = sys.argv[1]
     setting_name = sys.argv[2]
     hyperparams_name = sys.argv[3]

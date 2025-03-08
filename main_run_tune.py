@@ -102,6 +102,41 @@ if "censored_demands_kaplanmeier" == testset_name:
             "learning_rate": tune.grid_search([1.0, 0.5, 0.1]),
         }
 
+if "models_overfit_in_many_stores_test" == testset_name:
+    config = "n_stores_lost_demand"
+    common_setups = {
+        "config": tune.grid_search([config]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+        "samples": tune.grid_search([1, 2, 3]),
+
+        'train_dev_sample_and_batch_size': tune.grid_search([8192, 256]),
+        "train_batch_size": tune.grid_search([1024]),
+
+        "test_n_samples": tune.grid_search([8192]),
+        "test_batch_size": tune.grid_search([8192]),
+
+        # "dev_periods": tune.grid_search([150]),
+        # "trian_periods": tune.grid_search([100]),
+    }
+    if 'vanilla_n_stores' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "master": tune.grid_search([512, 256, 128]),
+            "overriding_networks": ["master"],
+        }
+    if 'n_stores_shared_net' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "master": tune.grid_search([32]),
+            "overriding_networks": ["master"],
+        }
+    if 'n_stores_per_store_net' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        }
+
+
 if 'generic_architecture_real' == testset_name:
     config = "one_warehouse_lost_demand_real"
     common_setups = {
@@ -161,14 +196,14 @@ if "generic_architecture_n_warehouse" == testset_name:
     common_setups = {
         "config": tune.grid_search([config]),
         "store_underage_cost": tune.grid_search([8]),
-        # "train_n_samples": tune.grid_search([16]),
-        # "train_batch_size": tune.grid_search([16]),
-        # "dev_n_samples": tune.grid_search([16]),
-        # "dev_batch_size": tune.grid_search([16]),
-        "train_n_samples": tune.grid_search([32768]),
-        "train_batch_size": tune.grid_search([4096]),
-        "dev_n_samples": tune.grid_search([32768]),
-        "dev_batch_size": tune.grid_search([32768]),
+        "train_n_samples": tune.grid_search([16]),
+        "train_batch_size": tune.grid_search([16]),
+        "dev_n_samples": tune.grid_search([16]),
+        "dev_batch_size": tune.grid_search([16]),
+        # "train_n_samples": tune.grid_search([32768]),
+        # "train_batch_size": tune.grid_search([4096]),
+        # "dev_n_samples": tune.grid_search([32768]),
+        # "dev_batch_size": tune.grid_search([32768]),
         "test_n_samples": tune.grid_search([32768]),
         "test_batch_size": tune.grid_search([32768]),
         "early_stop_check_epochs": tune.grid_search([10]),
@@ -181,6 +216,14 @@ if "generic_architecture_n_warehouse" == testset_name:
             "gradient_clipping_norm_value": tune.grid_search([1.0]),
             "n_MP": tune.grid_search([2]),
             "save_model_for_all_epochs": tune.grid_search([True]),
+        }
+    if 'GNN_longer_dev' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "gradient_clipping_norm_value": tune.grid_search([1.0]),
+            "dev_periods": tune.grid_search([100]),
+            "n_MP": tune.grid_search([3]),
+            # "save_model_for_all_epochs": tune.grid_search([True]),
         }
     if 'GNN_pna' == hyperparams_name:
         search_space = { **common_setups,
@@ -208,6 +251,13 @@ if "generic_architecture_n_warehouse" == testset_name:
     if 'vanilla_n_warehouses' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "master": tune.grid_search([512, 256, 128]),
+            "overriding_networks": ["master"],
+        }
+    if 'vanilla_n_warehouses_longer_dev' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "dev_periods": tune.grid_search([100]),
             "master": tune.grid_search([512, 256, 128]),
             "overriding_networks": ["master"],
         }

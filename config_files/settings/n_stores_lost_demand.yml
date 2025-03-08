@@ -6,9 +6,17 @@ seeds :
   'lead_time': 41 
   'demand': 57 
   'initial_inventory': 4839
-  'different_for_each_sample': True
 
-test_seeds :  # Seeds for test set
+dev_seeds : 
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
+  'demand': 58
+  'initial_inventory': 4839
+
+test_seeds :  # seeds for test set
   'underage_cost': 28 
   'holding_cost': 73 
   'mean': 33 
@@ -21,8 +29,8 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 50  # Tested values: 3, 5, 10, 20, 30, 50
-  'n_warehouses': 1
+  'n_stores': 50  # tested values: 3, 5, 10, 20, 30, 50
+  'n_warehouses': 0
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': False
@@ -30,23 +38,23 @@ problem_params :
 
 params_by_dataset : 
   'train': 
-    'n_samples': 8192  # Tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
-    'batch_size': 2048
+    'n_samples': 8192  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
+    'batch_size': 1024 
     'periods': 50 
     'ignore_periods': 30 
   'dev': 
     'n_samples': 4096 
-    'batch_size': 4096 
+    'batch_size': 1024 
     'periods': 50 
     'ignore_periods': 30 
   'test': 
     'n_samples': 4096 
-    'batch_size': 4096 
+    'batch_size': 1024 
     'periods': 500 
     'ignore_periods': 300
 
 observation_params:
-  'include_warehouse_inventory': True
+  'include_warehouse_inventory': False
   'include_static_features':
     'holding_costs': True 
     'underage_costs': True 
@@ -64,6 +72,7 @@ observation_params:
 store_params: 
   'demand': 
     'sample_across_instances': True
+    'vary_across_samples': False
     'mean_range': [2.5, 7.5]
     'coef_of_var_range': [0.25, 0.50]
     'distribution': 'normal'
@@ -74,7 +83,7 @@ store_params:
     'sample_across_instances': True
     'vary_across_samples': False
     'expand': False
-    'range': [2, 4] # Recall that upper range is excluded from the possible values
+    'range': [2, 4] # recall that upper range is excluded from the possible values
   'holding_cost': 
     'sample_across_instances': True 
     'vary_across_samples': False
@@ -91,8 +100,8 @@ store_params:
     'inventory_periods': 3
 
 warehouse_params: 
-  'holding_cost': 0.3
-  'lead_time': 6
+  null
 
 echelon_params: 
   null
+

@@ -492,9 +492,99 @@ class VanillaOneWarehouse(MyNeuralNetwork):
             upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult
             warehouse_allocation = self.activation_functions['sigmoid'](warehouse_intermediate_outputs)*upper_bound
 
+        if self.is_debugging:
+            debug_dir = "/user/ml4723/Prj/NIC/debug"
+            if self.debug_identifier is not None:
+                debug_dir = debug_dir + self.debug_identifier
+            os.makedirs(debug_dir, exist_ok=True)
+            for sample_idx in range(min(store_allocation.size(0), 32)):
+                with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+                    f.write("\n\n")
+                    warehouse_outputs = warehouse_allocation[sample_idx].detach().cpu().to(torch.float32).numpy()
+                    f.write(np.array2string(warehouse_outputs, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+                    f.write('\n')
+                    
+                    max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
+                    for lead_time in range(max_lead_time, 0, -1):
+                        outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().to(torch.float32).numpy()
+                        f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+                        f.write('\n')
+
+                    for store_idx in range(n_stores):
+                        store_alloc = store_allocation[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+                        store_out = store_intermediate_outputs[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+                        formatted_allocation_orders = '[' + ', \t'.join([f'{store_alloc:4.1f}/{store_out:4.1f}']) + ']'
+                        f.write(formatted_allocation_orders)
+                        
+                        store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+                        formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
+                        f.write(f"[{formatted_store_inv}]\n")
+
         return {
             'stores': store_allocation, 
             'warehouses': warehouse_allocation
+            }
+
+
+class Vanilla_N_Stores(MyNeuralNetwork):
+    def forward(self, observation):
+        # Flatten input, except for the batch dimension
+        x = observation['store_inventories'].flatten(start_dim=1)
+
+        # Pass through network
+        # NN architecture has to be such that output is non-negative
+        x = self.net['master'](x) + 1
+        x = self.activation_functions['softplus'](x)
+        return {
+            'stores': x, 
+            }
+
+class N_Stores_Shared_Net(MyNeuralNetwork):
+    def forward(self, observation):
+        # Flatten input, except for the batch dimension
+        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
+        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
+        x = torch.cat([observation['store_inventories'], store_params], dim=2)
+
+        # Pass through network
+        # NN architecture has to be such that output is non-negative
+        x = self.net['master'](x).squeeze(-1) + 1
+        x = self.activation_functions['softplus'](x)
+        return {
+            'stores': x, 
+            }
+    
+class N_Stores_Per_Store_Net(MyNeuralNetwork):
+    def forward(self, observation):
+        # Flatten input, except for the batch dimension
+        x = observation['store_inventories']
+
+        # Pass through network
+        # NN architecture has to be such that output is non-negative
+        outputs = []
+        for store_idx in range(x.size(1)):
+            store_output = self.net[f'master_{store_idx}'](x[:,store_idx:store_idx+1]) + 1
+            outputs.append(store_output)
+        x = torch.cat(outputs, dim=1).squeeze(-1)
+        x = self.activation_functions['softplus'](x)
+
+        if self.is_debugging:
+            debug_dir = "/user/ml4723/Prj/NIC/debug"
+            if self.debug_identifier is not None:
+                debug_dir = debug_dir + self.debug_identifier
+            os.makedirs(debug_dir, exist_ok=True)
+            for sample_idx in range(min(x.size(0), 32)):
+                with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+                    f.write("\n\n")
+                    # Write store orders and inventories side by side
+                    orders = x[sample_idx].detach().cpu().numpy()
+                    for store_idx in range(x.size(1)):
+                        store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
+                        formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv])
+                        f.write(f"{store_idx:2d}: [{orders[store_idx]:9.1f} | {formatted_store_inv}]\n")
+
+        return {
+            'stores': x, 
             }
 
 class Vanilla_N_Warehouses(MyNeuralNetwork):
@@ -761,7 +851,7 @@ class GNN_MP(MyNeuralNetwork):
                 if self.debug_identifier is not None:
                     debug_dir = debug_dir + self.debug_identifier
                 os.makedirs(debug_dir, exist_ok=True)
-                for sample_idx in range(echelon_inventories.size(0)):
+                for sample_idx in range(32):
                     with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
                         inventory_state = []
                         numeric_inventories = []  # List to store all inventory values
@@ -972,6 +1062,7 @@ class GNN(MyNeuralNetwork):
                 warehouse_counts = one_hot_warehouse.sum(dim=0)
                 warehouse_counts = warehouse_counts.unsqueeze(0).unsqueeze(-1)
                 warehouse_recipient_aggregation = warehouse_aggregated_sum / torch.sqrt(warehouse_counts)
+                # warehouse_recipient_aggregation = warehouse_aggregated_sum / warehouse_counts
 
                 one_hot_store = torch.zeros(n_edges, self.n_stores, device=self.device)
                 one_hot_store[torch.arange(n_edges), st_idx] = 1
@@ -982,6 +1073,7 @@ class GNN(MyNeuralNetwork):
                 store_counts = one_hot_store.sum(dim=0)
                 store_counts = store_counts.unsqueeze(0).unsqueeze(-1)
                 store_supplier_aggregation = store_aggregated_sum / torch.sqrt(store_counts)
+                # store_supplier_aggregation = store_aggregated_sum / store_counts
                 store_recipient_aggregation = edges_for_aggregation[:, -self.n_stores:]
 
                 if self.use_pna:
@@ -1077,6 +1169,67 @@ class GNN(MyNeuralNetwork):
                     echelon_allocations.append(proportional_minimum(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j,0]))
             warehouse_allocation = proportional_minimum(outputs[:, -2: -1, 0], echelon_inventories[:,-1,:1])
             store_allocation = proportional_minimum(outputs[:, -1:, 0], warehouse_inventories[:,:,0])
+
+            if self.is_debugging:
+                debug_dir = "/user/ml4723/Prj/NIC/debug"
+                if self.debug_identifier is not None:
+                    debug_dir = debug_dir + self.debug_identifier
+                os.makedirs(debug_dir, exist_ok=True)
+                for sample_idx in range(32):
+                    with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+                        inventory_state = []
+                        numeric_inventories = []  # List to store all inventory values
+                        
+                        # Process echelon inventories
+                        for echelon_idx in range(echelon_inventories.size(1)):
+                            lead_time = observation['echelon_lead_times'][sample_idx, echelon_idx].item()
+                            echelon_inv = echelon_inventories[sample_idx, echelon_idx, :int(lead_time)].detach().cpu().numpy()
+                            if echelon_idx > 0:
+                                inventory_state.append('|')
+                            inventory_state.extend(echelon_inv[::-1])
+                            numeric_inventories.extend(echelon_inv[::-1])
+                        
+                        # Process warehouse inventories
+                        inventory_state.append('|')
+                        warehouse_inv = warehouse_inventories[sample_idx, :, :].detach().cpu().numpy().flatten()
+                        inventory_state.extend(warehouse_inv[::-1])
+                        numeric_inventories.extend(warehouse_inv[::-1])
+                        
+                        # Process store inventories
+                        inventory_state.append('|')
+                        lead_time = observation['lead_times'][sample_idx, 0].detach().cpu().numpy()
+                        store_inv = observation['store_inventories'][sample_idx, 0, :int(lead_time)].detach().cpu().numpy()[::-1]
+                        inventory_state.extend(store_inv)
+                        numeric_inventories.extend(store_inv)
+                        
+                        # Write inventory with separators
+                        f.write("inventory: [")
+                        for i, x in enumerate(inventory_state):
+                            if isinstance(x, str):
+                                f.write(f" {x} ")
+                            else:
+                                f.write(f"{x:.1f}")
+                                if i < len(inventory_state)-1 and isinstance(inventory_state[i+1], str) == False:
+                                    f.write(", ")
+                        f.write("]\n")
+                        
+                        # Calculate and write sum and std of all inventories
+                        total_sum = np.sum(numeric_inventories)
+                        total_std = np.std(numeric_inventories)
+                        f.write(f"sum: {total_sum:.1f}, std: {total_std:.1f}\n")
+                        
+                        # Write outputs with aligned labels
+                        raw_outputs = []
+                        for j in range(outputs.size(1)):
+                            raw_outputs.append(outputs[sample_idx, j, 0].detach().item())
+                        f.write(f"outputs: [{', '.join(f'{x:.1f}' for x in raw_outputs)}]\n")
+                        
+                        orders = []
+                        orders.extend([e[sample_idx].detach().item() for e in echelon_allocations])
+                        orders.append(warehouse_allocation[sample_idx].detach().item())
+                        orders.append(store_allocation[sample_idx].detach().item())
+                        f.write(f"orders: [{', '.join(f'{x:.1f}' for x in orders)}]\n\n")
+
             return {
                 'stores': store_allocation,
                 'warehouses': warehouse_allocation,
@@ -1110,19 +1263,19 @@ class GNN(MyNeuralNetwork):
                     with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
                         f.write("\n\n")
                         outputs_array = outputs[sample_idx, :n_warehouses, 0].detach().cpu().numpy()
-                        f.write(np.array2string(outputs_array, formatter={'float_kind':lambda x: f"{x:7.1f}"}))
+                        f.write(np.array2string(outputs_array, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
                         f.write('\n')
                         
                         max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
                         for lead_time in range(max_lead_time, 0, -1):
                             outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().numpy()
-                            f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:7.1f}"}))
+                            f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
                             f.write('\n')
     
                         for store_idx in range(self.n_stores):
                             allocation_matrix = store_allocation_matrix[sample_idx, store_idx].detach().cpu().numpy()
                             orders = store_orders_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                            formatted_allocation_orders = '[' + ', '.join([f'{allocation_matrix[i]:3.1f}/{orders[i]:3.1f}' for i in range(len(allocation_matrix))]) + ']'
+                            formatted_allocation_orders = '[' + ', \t'.join([f'{allocation_matrix[i]:4.1f}/{orders[i]:4.1f}' for i in range(len(allocation_matrix))]) + ']'
                             f.write(formatted_allocation_orders)
                             
                             store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
@@ -2533,6 +2686,9 @@ class NeuralNetworkCreator:
             'vanilla_serial_proportional': VanillaSerial_proportional,
             'vanilla_transshipment': VanillaTransshipment,
             'vanilla_one_warehouse': VanillaOneWarehouse,
+            'vanilla_n_stores': Vanilla_N_Stores,
+            'n_stores_shared_net': N_Stores_Shared_Net,
+            'n_stores_per_store_net': N_Stores_Per_Store_Net,
             'vanilla_n_warehouses': Vanilla_N_Warehouses,
             'symmetry_aware': SymmetryAware,
             'symmetry_aware_real_data': SymmetryAwareRealData,
