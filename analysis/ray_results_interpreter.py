@@ -25,8 +25,10 @@ class RayResultsinterpreter:
                     #     print(f"Error, NaN values found in loss columns {subfolder_path}: ")
                     #     continue
                     # data.fillna(99999, inplace=True)
-                    if test_loss_limit is not None:
-                        data = data[data['test_loss'] <= test_loss_limit]
+                    # if test_loss_limit is not None and 'test_loss' in data:
+                    #     # data = data[data['test_loss'] <= test_loss_limit]
+                    #     if (data['test_loss'] > test_loss_limit).any():
+                    #         continue
                     with open(params_file, 'r') as file:
                         params = json.load(file)
                     param_dict = {
@@ -87,6 +89,10 @@ class RayResultsinterpreter:
                     for loss_column in loss_columns:
                         if loss_column in data:
                             result[f'{loss_column}(at best_{sort_by})'] = data[data[sort_by] == result[f'best_{sort_by}']][loss_column].iloc[0]
+
+                    if test_loss_limit is not None and 'test_loss' in data:
+                        if (result[f'test_loss(at best_{sort_by})'] > test_loss_limit).any():
+                            continue
 
                     result['path'] = subfolder_path
                     results.append(result)

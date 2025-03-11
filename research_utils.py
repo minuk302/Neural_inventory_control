@@ -16,7 +16,7 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
         'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs",
         "initial_bias_output", 'train_dev_sample_and_batch_size',
-        'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'trian_periods'
+        'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'trian_periods',
     }
 
     # Check that all keys in overriding_params are valid

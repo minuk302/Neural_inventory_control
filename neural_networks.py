@@ -926,6 +926,121 @@ class GNN_MP(MyNeuralNetwork):
                 'warehouses': warehouse_allocation
             }
 
+class decentralized_edge(MyNeuralNetwork):
+    def __init__(self, args, problem_params, device='cpu'):
+        super().__init__(args, problem_params, device)
+        self.individual_nn = 'individual_nn' in args and args['individual_nn']
+
+    def get_store_inventory_and_params(self, observation):
+        params_to_stack = ['mean', 'std', 'holding_costs', 'lead_times', 'underage_costs']
+        if 'store_random_yield_mean' in observation:
+            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
+        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
+        return torch.cat([observation['store_inventories'], store_params], dim=2)
+
+    def forward(self, observation):
+        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
+            inv = tensor[:,:,:inv_len]
+            states = tensor[:,:,inv_len:]
+            return torch.cat([
+                F.pad(inv, (0, max_inv_len - inv_len)),
+                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
+            ], dim=2)
+
+        store_inv_len = observation['store_inventories'].size(2)
+        warehouse_inv_len = observation['warehouse_inventories'].size(2)
+        if 'echelon_inventories' in observation:
+            echelon_inventories = observation['echelon_inventories']
+            warehouse_inventories = observation['warehouse_inventories']
+            echelon_inv_len = echelon_inventories.size(2)
+
+            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['lead_times'].unsqueeze(2), observation['underage_costs'].unsqueeze(2)], dim=-1)
+            warehouse_state = torch.cat([warehouse_inventories, observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
+            echelon_state = torch.cat([echelon_inventories, observation['echelon_holding_costs'].unsqueeze(2), observation['echelon_lead_times'].unsqueeze(2)], dim=-1)
+    
+            if self.individual_nn:
+                outputs_list = []
+                for j in range(echelon_state.size(1) + 2):
+                    if j == 0:
+                        outputs_list.append(self.net[f'master_{j}'](echelon_state[:,j:j+1]))
+                    elif j < echelon_state.size(1):
+                        outputs_list.append(self.net[f'master_{j}'](torch.cat([echelon_state[:,j-1:j], echelon_state[:,j:j+1]], dim=-1)))
+                    elif j == echelon_state.size(1): # warehouse
+                        outputs_list.append(self.net[f'master_{j}'](torch.cat([echelon_state[:,j-1:j], warehouse_state], dim=-1)))
+                    else: # store
+                        outputs_list.append(self.net[f'master_{j}'](torch.cat([warehouse_state, store_state], dim=-1)))
+                outputs = torch.stack(outputs_list, dim=1).squeeze(-1)
+            else:
+                store_primitives_len = store_state.size(2) - store_inv_len
+                warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
+                echelon_primitives_len = echelon_state.size(2) - echelon_inv_len
+                max_primitives_len = max(store_primitives_len, warehouse_primitives_len, echelon_primitives_len)
+
+                max_inv_len = max(store_inv_len, warehouse_inv_len, echelon_inv_len)
+
+                store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
+                warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
+                echelon_padded = pad_features(echelon_state, echelon_inv_len, max_inv_len, max_primitives_len)
+
+                states = torch.cat([echelon_padded, warehouse_padded, store_padded], dim=1)
+                zero_node = torch.zeros_like(states[:, :1])
+                output_input = torch.cat([torch.cat([zero_node, states[:, :-1]], dim=1), states], dim=-1)
+                outputs = self.net['master'](output_input)
+
+            def proportional_minimum(x, y):
+                return torch.min(x, y)
+            echelon_allocations = []
+            for j in range(outputs.size(1) - 2):
+                if j == 0:  # First echelon
+                    echelon_allocations.append(outputs[:, j:j+1, 0])
+                else:
+                    echelon_allocations.append(proportional_minimum(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j,0]))
+            warehouse_allocation = proportional_minimum(outputs[:, -2: -1, 0], echelon_inventories[:,-1,:1])
+            store_allocation = proportional_minimum(outputs[:, -1:, 0], warehouse_inventories[:,:,0])
+            return {
+                'stores': store_allocation,
+                'warehouses': warehouse_allocation,
+                'echelons': torch.cat(echelon_allocations, dim=1)
+            }
+        else:
+            store_state = self.get_store_inventory_and_params(observation)
+            warehouse_state = torch.cat([observation['warehouse_inventories'], observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
+            
+            if self.individual_nn:
+                outputs_list = []
+                outputs_list.append(self.net['master_0'](warehouse_state))
+                for i in range(store_state.size(1)):
+                    outputs_list.append(self.net[f'master_{i + 1}'](torch.cat([warehouse_state, store_state[:,i:i+1]], dim=-1)))
+                outputs = torch.stack(outputs_list, dim=1).squeeze(-1)
+            else:
+                max_inv_len = max(store_inv_len, warehouse_inv_len)
+
+                store_primitives_len = store_state.size(2) - store_inv_len
+                warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
+                max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
+
+                store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
+                warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
+                states = torch.cat([warehouse_padded, store_padded], dim=1)
+                output_input = torch.cat(
+                    [torch.cat([torch.zeros_like(states[:, :1]), states[:, :1]], dim=-1),
+                        torch.cat([states[:, :1].expand(-1, store_state.size(1), -1), states[:, 1:]], dim=-1)],
+                    dim=1
+                )
+                outputs = self.net['master'](output_input)
+
+            store_intermediate_outputs = outputs[:, 1:]
+            warehouse_allocation = outputs[:, :1, 0]
+            store_allocation = self.apply_proportional_allocation(
+                store_intermediate_outputs[:,:,0], 
+                observation['warehouse_inventories']
+                )
+            return {
+                'stores': store_allocation,
+                'warehouses': warehouse_allocation
+            }
+
+
 class GNN(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args, problem_params, device)
@@ -2715,6 +2830,7 @@ class NeuralNetworkCreator:
             'GNN_MP_n_warehouse': GNN_MP_n_warehouse,
             'GNN': GNN,
             'GNN_real': GNN_real,
+            'decentralized_edge': decentralized_edge
             }
         return architectures[name]
     

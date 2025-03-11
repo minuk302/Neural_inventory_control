@@ -1,0 +1,278 @@
+trainer_params : 
+  'epochs': 20000
+  'stop_if_no_improve_for_epochs': 500
+  'do_dev_every_n_epochs': 50
+  'ray_report_loss': True
+  'print_results_every_n_epochs': 50
+  'save_model': True  # Path to save is defined in main script
+  'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
+  'choose_best_model_on': 'dev_loss'  # For early stopping, choose according to best performance on this dataset
+  'load_previous_model': False
+  'load_model_path': null
+
+optimizer_params: 
+  'learning_rate': 0.001
+
+nn_params: 
+  'name': 'decentralized_edge'
+  'inner_layer_activations': 
+    'master_0': 'elu'
+    'master_1': 'elu'
+    'master_2': 'elu'
+    'master_3': 'elu'
+    'master_4': 'elu'
+    'master_5': 'elu'
+    'master_6': 'elu'
+    'master_7': 'elu'
+    'master_8': 'elu'
+    'master_9': 'elu'
+    'master_10': 'elu'
+    'master_11': 'elu'
+    'master_12': 'elu'
+    'master_13': 'elu'
+    'master_14': 'elu'
+    'master_15': 'elu'
+    'master_16': 'elu'
+    'master_17': 'elu'
+    'master_18': 'elu'
+    'master_19': 'elu'
+    'master_20': 'elu'
+    'master_21': 'elu'
+    'master_22': 'elu'
+    'master_23': 'elu'
+    'master_24': 'elu'
+    'master_25': 'elu'
+    'master_26': 'elu'
+    'master_27': 'elu'
+    'master_28': 'elu'
+    'master_29': 'elu'
+    'master_30': 'elu'
+    'master_31': 'elu'
+    'master_32': 'elu'
+    'master_33': 'elu'
+    'master_34': 'elu'
+    'master_35': 'elu'
+    'master_36': 'elu'
+    'master_37': 'elu'
+    'master_38': 'elu'
+    'master_39': 'elu'
+    'master_40': 'elu'
+    'master_41': 'elu'
+    'master_42': 'elu'
+    'master_43': 'elu'
+    'master_44': 'elu'
+    'master_45': 'elu'
+    'master_46': 'elu'
+    'master_47': 'elu'
+    'master_48': 'elu'
+    'master_49': 'elu'
+    'master_50': 'elu'
+  'output_layer_activation':
+    'master_0': 'softplus'
+    'master_1': 'softplus'
+    'master_2': 'softplus'
+    'master_3': 'softplus'
+    'master_4': 'softplus'
+    'master_5': 'softplus'
+    'master_6': 'softplus'
+    'master_7': 'softplus'
+    'master_8': 'softplus'
+    'master_9': 'softplus'
+    'master_10': 'softplus'
+    'master_11': 'softplus'
+    'master_12': 'softplus'
+    'master_13': 'softplus'
+    'master_14': 'softplus'
+    'master_15': 'softplus'
+    'master_16': 'softplus'
+    'master_17': 'softplus'
+    'master_18': 'softplus'
+    'master_19': 'softplus'
+    'master_20': 'softplus'
+    'master_21': 'softplus'
+    'master_22': 'softplus'
+    'master_23': 'softplus'
+    'master_24': 'softplus'
+    'master_25': 'softplus'
+    'master_26': 'softplus'
+    'master_27': 'softplus'
+    'master_28': 'softplus'
+    'master_29': 'softplus'
+    'master_30': 'softplus'
+    'master_31': 'softplus'
+    'master_32': 'softplus'
+    'master_33': 'softplus'
+    'master_34': 'softplus'
+    'master_35': 'softplus'
+    'master_36': 'softplus'
+    'master_37': 'softplus'
+    'master_38': 'softplus'
+    'master_39': 'softplus'
+    'master_40': 'softplus'
+    'master_41': 'softplus'
+    'master_42': 'softplus'
+    'master_43': 'softplus'
+    'master_44': 'softplus'
+    'master_45': 'softplus'
+    'master_46': 'softplus'
+    'master_47': 'softplus'
+    'master_48': 'softplus'
+    'master_49': 'softplus'
+    'master_50': 'softplus'
+  'neurons_per_hidden_layer':
+    'master_0': [32, 32]
+    'master_1': [32, 32]
+    'master_2': [32, 32]
+    'master_3': [32, 32]
+    'master_4': [32, 32]
+    'master_5': [32, 32]
+    'master_6': [32, 32]
+    'master_7': [32, 32]
+    'master_8': [32, 32]
+    'master_9': [32, 32]
+    'master_10': [32, 32]
+    'master_11': [32, 32]
+    'master_12': [32, 32]
+    'master_13': [32, 32]
+    'master_14': [32, 32]
+    'master_15': [32, 32]
+    'master_16': [32, 32]
+    'master_17': [32, 32]
+    'master_18': [32, 32]
+    'master_19': [32, 32]
+    'master_20': [32, 32]
+    'master_21': [32, 32]
+    'master_22': [32, 32]
+    'master_23': [32, 32]
+    'master_24': [32, 32]
+    'master_25': [32, 32]
+    'master_26': [32, 32]
+    'master_27': [32, 32]
+    'master_28': [32, 32]
+    'master_29': [32, 32]
+    'master_30': [32, 32]
+    'master_31': [32, 32]
+    'master_32': [32, 32]
+    'master_33': [32, 32]
+    'master_34': [32, 32]
+    'master_35': [32, 32]
+    'master_36': [32, 32]
+    'master_37': [32, 32]
+    'master_38': [32, 32]
+    'master_39': [32, 32]
+    'master_40': [32, 32]
+    'master_41': [32, 32]
+    'master_42': [32, 32]
+    'master_43': [32, 32]
+    'master_44': [32, 32]
+    'master_45': [32, 32]
+    'master_46': [32, 32]
+    'master_47': [32, 32]
+    'master_48': [32, 32]
+    'master_49': [32, 32]
+    'master_50': [32, 32]
+  'output_sizes':
+    'master_0': 1
+    'master_1': 1
+    'master_2': 1
+    'master_3': 1
+    'master_4': 1
+    'master_5': 1
+    'master_6': 1
+    'master_7': 1
+    'master_8': 1
+    'master_9': 1
+    'master_10': 1
+    'master_11': 1
+    'master_12': 1
+    'master_13': 1
+    'master_14': 1
+    'master_15': 1
+    'master_16': 1
+    'master_17': 1
+    'master_18': 1
+    'master_19': 1
+    'master_20': 1
+    'master_21': 1
+    'master_22': 1
+    'master_23': 1
+    'master_24': 1
+    'master_25': 1
+    'master_26': 1
+    'master_27': 1
+    'master_28': 1
+    'master_29': 1
+    'master_30': 1
+    'master_31': 1
+    'master_32': 1
+    'master_33': 1
+    'master_34': 1
+    'master_35': 1
+    'master_36': 1
+    'master_37': 1
+    'master_38': 1
+    'master_39': 1
+    'master_40': 1
+    'master_41': 1
+    'master_42': 1
+    'master_43': 1
+    'master_44': 1
+    'master_45': 1
+    'master_46': 1
+    'master_47': 1
+    'master_48': 1
+    'master_49': 1
+    'master_50': 1
+  'initial_bias':
+    'master_0': 5.0
+    'master_1': 5.0
+    'master_2': 5.0
+    'master_3': 5.0
+    'master_4': 5.0
+    'master_5': 5.0
+    'master_6': 5.0
+    'master_7': 5.0
+    'master_8': 5.0
+    'master_9': 5.0
+    'master_10': 5.0
+    'master_11': 5.0
+    'master_12': 5.0
+    'master_13': 5.0
+    'master_14': 5.0
+    'master_15': 5.0
+    'master_16': 5.0
+    'master_17': 5.0
+    'master_18': 5.0
+    'master_19': 5.0
+    'master_20': 5.0
+    'master_21': 5.0
+    'master_22': 5.0
+    'master_23': 5.0
+    'master_24': 5.0
+    'master_25': 5.0
+    'master_26': 5.0
+    'master_27': 5.0
+    'master_28': 5.0
+    'master_29': 5.0
+    'master_30': 5.0
+    'master_31': 5.0
+    'master_32': 5.0
+    'master_33': 5.0
+    'master_34': 5.0
+    'master_35': 5.0
+    'master_36': 5.0
+    'master_37': 5.0
+    'master_38': 5.0
+    'master_39': 5.0
+    'master_40': 5.0
+    'master_41': 5.0
+    'master_42': 5.0
+    'master_43': 5.0
+    'master_44': 5.0
+    'master_45': 5.0
+    'master_46': 5.0
+    'master_47': 5.0
+    'master_48': 5.0
+    'master_49': 5.0
+    'master_50': 5.0
+  'individual_nn': True

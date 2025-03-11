@@ -20,7 +20,7 @@ nn_params:
   'output_layer_activation':  # We will apply (sigmoid x upper_bound) to warehouse intermediate outputs on forward method!
     'master': null
   'neurons_per_hidden_layer':
-    'master': [256, 256, 256]
+    'master': [32, 32, 32]
   'output_sizes':
     'master': 1 # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
   'initial_bias': null

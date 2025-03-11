@@ -14,27 +14,14 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_MP_transshipment'
+  'name': 'decentralized_edge'
   'inner_layer_activations': 
-    'initial_embedding': 'elu'
-    'node_embedding': 'elu'
-    'update_embedding': 'elu'
-    'output': 'elu'
+    'master': 'elu'
   'output_layer_activation':
-    'initial_embedding': 'elu'
-    'node_embedding': 'elu'
-    'update_embedding': 'elu'
-    'output': 'softplus'
+    'master': 'softplus'
   'neurons_per_hidden_layer':
-    'initial_embedding': [32, 32]
-    'node_embedding': [32, 32]
-    'update_embedding': [32, 32]
-    'output': [32, 32]
+    'master': [32, 32]
   'output_sizes':
-    'initial_embedding': 32
-    'node_embedding': 32
-    'update_embedding': 32
-    'output': 1
-  'initial_bias': 
-    'output': 5.0
-  'include_primitive_features': False
+    'master': 1
+  'initial_bias':
+    'master': 5.0
