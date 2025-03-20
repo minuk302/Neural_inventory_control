@@ -67,6 +67,68 @@ gpus_per_instance = num_gpus / num_instances
 ray.init(num_cpus = num_instances * n_cpus_per_instance, num_gpus = num_gpus, object_store_memory=4000000000, address='local')
 
 save_path = f'ray_results/{testset_name}/{hyperparams_name}'
+
+if "finals_one_store_sample_efficiency" == testset_name:
+    config = "one_store_lost"
+    common_setups = {
+        "config": tune.grid_search([config]),
+        "early_stop_check_epochs": tune.grid_search([5]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+
+        "store_lead_time": tune.grid_search([3, 4]),
+        "store_underage_cost": tune.grid_search([9, 19]),
+
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        'different_for_each_sample': tune.grid_search([True]),
+        "repeats": tune.grid_search([1, 2, 3]),
+
+        'train_dev_sample_and_batch_size': tune.grid_search([16, 32, 64, 128, 256, 512, 1024]),
+
+        "test_n_samples": tune.grid_search([32768]),
+        "test_batch_size": tune.grid_search([32768]),
+    }
+    if 'vanilla_one_store' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        }
+
+if "finals_serial" == testset_name:
+    config = "serial_system_hard"
+    common_setups = {
+        "config": tune.grid_search([config]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+
+        "store_lead_time": tune.grid_search([4]),
+        "store_underage_cost": tune.grid_search([19]),
+        # "n_extra_echelons": tune.grid_search([2,3,4,5,6]),
+        "n_extra_echelons": tune.grid_search([6]),
+        "dev_periods": tune.grid_search([100]),
+        
+        "samples": tune.grid_search([1]),
+        'different_for_each_sample': tune.grid_search([True]),
+        "repeats": tune.grid_search([1, 2, 3]),
+        'train_dev_sample_and_batch_size': tune.grid_search([32, 512, 8192]),
+        "train_batch_size": tune.grid_search([1024]),
+
+        "test_n_samples": tune.grid_search([32768]),
+        "test_batch_size": tune.grid_search([32768]),
+    }
+    if 'vanilla_serial' == hyperparams_name:
+        search_space = { **common_setups,
+            "master_echelon": tune.grid_search([128]),
+            "overriding_networks": ["master_echelon"],
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        }
+    if 'GNN' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+        }
+    if 'echelon_stock_hard' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.5, 0.1, 0.03]),
+        }
+
 if "censored_demands" == testset_name:
     config = "one_store_lost_censored"
     common_setups = {

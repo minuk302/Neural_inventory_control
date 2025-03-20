@@ -1,11 +1,11 @@
 trainer_params : 
   'epochs': 20000
   'stop_if_no_improve_for_epochs': 500
-  'do_dev_every_n_epochs': 50
+  'do_dev_every_n_epochs': 5
   'ray_report_loss': True
-  'print_results_every_n_epochs': 50
+  'print_results_every_n_epochs': 5
   'save_model': True
-  'epochs_between_save': 50
+  'epochs_between_save': 5
   'choose_best_model_on': 'dev_loss'
   'load_previous_model': False
   'load_model_path': null
@@ -19,7 +19,6 @@ nn_params:
     'master': [32, 32, 32]  # For lost demand setting, tested with 2 and 3 hidden layers
   'inner_layer_activations': 
     'master': 'elu'
-  # We will add 1 to the output and apply a softplus within the forward method of the NN!
   'output_layer_activation':
     'master': null
   'initial_bias':

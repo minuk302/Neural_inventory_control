@@ -7,6 +7,15 @@ seeds :
   'demand': 57 
   'initial_inventory': 4839
 
+dev_seeds : 
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
+  'demand': 58
+  'initial_inventory': 4839
+
 test_seeds :  # seeds for test set
   'underage_cost': 36 
   'holding_cost': 81 
@@ -25,6 +34,7 @@ problem_params :
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': False
+  'report_test_loss': True
 
 params_by_dataset : 
   'train': 

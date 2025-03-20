@@ -16,12 +16,12 @@ optimizer_params:
 nn_params: 
   'name': 'vanilla_serial'
   'inner_layer_activations': 
-    'master': 'elu'
+    'master_echelon': 'elu'
   'output_layer_activation':  # We will apply (sigmoid x upper_bound) to warehouse intermediate outputs on forward method!
-    'master': null
+    'master_echelon': null
   'neurons_per_hidden_layer':
-    'master': [32, 32]
+    'master_echelon': [32, 32]
   'output_sizes':
-    'master': 4 # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
+    'master_echelon': null # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
   'initial_bias': null
-  'warehouse_upper_bound_mult': 4  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores
+  'warehouse_upper_bound_mult': 20  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores

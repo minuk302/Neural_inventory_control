@@ -265,14 +265,13 @@ class Scenario():
             if 'edge_lead_times' in warehouse_params:
                 self.warehouse_store_edge_lead_times = self.generate_warehouse_store_edge_lead_times(warehouse_params['edge_lead_times'], self.warehouse_store_edges, seeds['warehouse'])
 
-        modified_echelon_params = self.generate_ehcelon_params(echelon_params, seeds)
         self.echelon_lead_times = None
         self.initial_echelon_inventories = None
         self.echelon_holding_costs = None
-        if modified_echelon_params is not None:
-            self.echelon_lead_times = self.generate_data_for_samples(modified_echelon_params['lead_time'], self.problem_params['n_extra_echelons'], seeds['lead_time'], discrete=True)
-            self.initial_echelon_inventories = self.generate_initial_inventories(modified_echelon_params, self.demands, self.echelon_lead_times, self.echelon_lead_times.size(1), seeds['initial_inventory'])
-            self.echelon_holding_costs = self.generate_data_for_samples(modified_echelon_params['holding_cost'], self.problem_params['n_extra_echelons'], seeds['holding_cost'])
+        if echelon_params is not None:
+            self.echelon_lead_times = self.generate_data_for_samples(echelon_params['lead_time'], self.problem_params['n_extra_echelons'], seeds['lead_time'], discrete=True)
+            self.initial_echelon_inventories = self.generate_initial_inventories(echelon_params, self.demands, self.echelon_lead_times, self.echelon_lead_times.size(1), seeds['initial_inventory'])
+            self.echelon_holding_costs = self.generate_data_for_samples(echelon_params['holding_cost'], self.problem_params['n_extra_echelons'], seeds['holding_cost'])
 
         time_and_sample_features = {'time_features': {}, 'sample_features': {}}
         for feature_type, feature_file in zip(['time_features', 'sample_features'], ['time_features_file', 'sample_features_file']):
@@ -322,22 +321,6 @@ class Scenario():
         if not torch.all((edges == 0) | (edges == 1)):
             raise ValueError('Edges must contain only 0 or 1 values')
         return edges.expand(self.num_samples, -1, -1)
-
-    def generate_ehcelon_params(self, echelon_params, seeds):
-        """
-        Generate echelon parameters
-        """
-        if echelon_params is None:
-            return echelon_params
-        if 'holding_cost_sample_range' in echelon_params and echelon_params['holding_cost_sample_range'] is not None:
-            if 'holding_cost' in seeds:
-                np.random.seed(seeds['holding_cost'])
-            echelon_params['holding_cost'] = np.random.uniform(*echelon_params['holding_cost_sample_range'], size=(self.problem_params['n_extra_echelons']))
-        if 'lead_time_sample_range' in echelon_params and echelon_params['lead_time_sample_range'] is not None:
-            if 'lead_time' in seeds:
-                np.random.seed(seeds['lead_time'])
-            echelon_params['lead_time'] = np.random.randint(*echelon_params['lead_time_sample_range'], size=(self.problem_params['n_extra_echelons']))
-        return echelon_params
 
     def get_data(self):
         """

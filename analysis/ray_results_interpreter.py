@@ -61,6 +61,7 @@ class RayResultsinterpreter:
                         'omit_context_from_store_input': 'omit_context_from_store_input',
                         'n_MP': 'n_MP',
                         'train_dev_sample_and_batch_size': 'train_dev_sample_and_batch_size',
+                        'dev_periods': 'dev_periods',
                     }
                     result = {}
                     for key, value in param_dict.items():

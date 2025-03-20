@@ -16,12 +16,12 @@ optimizer_params:
 nn_params: 
   'name': 'echelon_stock'
   'inner_layer_activations': 
-    'master': null
+    'master_echelon': null
   'output_layer_activation':
-    'master': null
+    'master_echelon': null
   'initial_bias':
-    'master': null
+    'master_echelon': null
   'neurons_per_hidden_layer':
-    'master': []
+    'master_echelon': []
   'output_sizes':
-    'master': 8
+    'master_echelon': null

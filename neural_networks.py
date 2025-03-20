@@ -279,7 +279,7 @@ class EchelonStock(MyNeuralNetwork):
             observation, ['store_inventories', 'warehouse_inventories', 'echelon_inventories'])
         n_extra_echelons = echelon_inventories.size(1)
         
-        x = self.activation_functions['softplus'](self.net['master'](torch.tensor([0.0]).to(self.device)) + 10.0)  # Constant base stock levels
+        x = self.activation_functions['softplus'](self.net['master_echelon'](torch.tensor([0.0]).to(self.device)) + 10.0)  # Constant base stock levels
         # The base level for each location wil be calculated as the outputs corresponding to all downstream locations and its own
         base_levels = torch.cumsum(x, dim=0).flip(dims=[0])
 
@@ -357,7 +357,7 @@ class VanillaSerial(MyNeuralNetwork):
         n_extra_echelons = echelon_inventories.size(1)
         
         input_tensor = self.flatten_then_concatenate_tensors([store_inventories, warehouse_inventories, echelon_inventories])
-        x = self.net['master'](torch.tensor(input_tensor).to(self.device))  # Constant base stock levels
+        x = self.net['master_echelon'](torch.tensor(input_tensor).to(self.device))  # Constant base stock levels
         # print(f'self.warehouse_upper_bound: {self.warehouse_upper_bound}')
         # assert False
 
@@ -2783,6 +2783,7 @@ class NeuralNetworkCreator:
         default_sizes = {
             'master': problem_params['n_stores'] + problem_params['n_warehouses'], 
             'master_cbs': problem_params['n_stores'] * 2 + problem_params['n_warehouses'],
+            'master_echelon': problem_params['n_stores'] + problem_params['n_warehouses'] + problem_params['n_extra_echelons'],
             'store': 1, 
             'warehouse': 1, 
             'context': None

@@ -12,11 +12,12 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'warehouse_lead_time', 'stores_correlation', 'n_sub_sample_for_context',
         'apply_normalization', 'store_orders_for_warehouse', 
         'include_context_for_warehouse_input', 'omit_context_from_store_input',
-        'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks',
+        'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks', 'master_echelon',
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
         'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs",
-        "initial_bias_output", 'train_dev_sample_and_batch_size',
+        "initial_bias_output", 'train_dev_sample_and_batch_size', 'different_for_each_sample',
         'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'trian_periods',
+        'n_extra_echelons',
     }
 
     # Check that all keys in overriding_params are valid
@@ -36,6 +37,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
 
     if 'use_pna' in overriding_params:
         config_hyperparams['nn_params']['use_pna'] = overriding_params['use_pna']
+
+    if 'n_echelons' in overriding_params:
+        config_setting['problem_params']['n_extra_echelons'] = overriding_params['n_extra_echelons']
 
     if 'n_MP' in overriding_params:
         config_hyperparams['nn_params']['n_MP'] = overriding_params['n_MP']
@@ -78,8 +82,15 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'stop_if_no_improve_for_epochs' in overriding_params:
         config_hyperparams['trainer_params']['stop_if_no_improve_for_epochs'] = overriding_params['stop_if_no_improve_for_epochs']
 
+    if 'different_for_each_sample' in overriding_params:
+        config_setting['seeds']['different_for_each_sample'] = overriding_params['different_for_each_sample']
+        config_setting['dev_seeds']['different_for_each_sample'] = overriding_params['different_for_each_sample']
+
     if 'different_for_each_sample' in config_setting['seeds'] and config_setting['seeds']['different_for_each_sample'] == True:
         config_setting['seeds']['demand'] = config_setting['seeds']['demand'] + overriding_params['samples'] * 100
+
+    if 'different_for_each_sample' in config_setting['dev_seeds'] and config_setting['dev_seeds']['different_for_each_sample'] == True:
+        config_setting['dev_seeds']['demand'] = config_setting['dev_seeds']['demand'] + overriding_params['samples'] * 100
 
     if 'train_n_samples' in overriding_params:
         config_setting['params_by_dataset']['train']['n_samples'] = overriding_params['train_n_samples']
