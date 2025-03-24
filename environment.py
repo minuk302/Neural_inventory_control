@@ -476,7 +476,11 @@ class Simulator(gym.Env):
             self.observation['arrivals'] = self.move_left_and_append(self.observation['arrivals'], self.observation['store_inventories'][:, :, 1])
         
         if self.observation_params['include_past_observations']['orders'] > 0:
-            self.observation['orders'] = self.move_left_and_append(self.observation['orders'], action['stores'])
+            if action['stores'].dim() == 3:
+                for i in range(action['stores'].shape[2]):
+                    self.observation['orders'] = self.move_left_and_append(self.observation['orders'], action['stores'][:,:,i])
+            else:
+                self.observation['orders'] = self.move_left_and_append(self.observation['orders'], action['stores'])
 
     def move_columns_left(self, tensor_to_displace, start_index, end_index):
         """

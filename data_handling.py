@@ -288,6 +288,8 @@ class Scenario():
         self.split_by = self.define_how_to_split_data()
 
     def generate_warehouse_store_edge_lead_times(self, edge_lead_times_params, warehouse_store_edges, seed):
+        if 'value' in edge_lead_times_params:
+            return torch.tensor(edge_lead_times_params['value']).expand(self.num_samples, -1, -1)
         np.random.seed(seed)
         if len(edge_lead_times_params['range']) != warehouse_store_edges.size(1):
             raise ValueError(f"Edge lead times range size {len(edge_lead_times_params['range'])} does not match warehouse store edges size {warehouse_store_edges.size(0)}")

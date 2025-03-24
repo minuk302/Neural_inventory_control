@@ -139,7 +139,7 @@ class MyNeuralNetwork(nn.Module):
     def initialize_bias(self, key, pos, value):
         self.layers[key][pos].bias.data.fill_(value)
     
-    def apply_proportional_allocation(self, store_intermediate_outputs, warehouse_inventories):
+    def apply_proportional_allocation(self, store_intermediate_outputs, warehouse_inventories, transshipment = False):
         """
         Apply proportional allocation feasibility enforcement function to store intermediate outputs.
         It assigns inventory proportionally to the store order quantities, whenever inventory at the
@@ -150,10 +150,11 @@ class MyNeuralNetwork(nn.Module):
         sum_allocation = store_intermediate_outputs.sum(dim=1)  # Sum of all store order quantities
 
         # Multiply current allocation by minimum between inventory/orders and 1
-        final_allocation = \
-            torch.multiply(store_intermediate_outputs,
-                           torch.clip(total_limiting_inventory / (sum_allocation + 0.000000000000001), max=1)[:, None])
-        return final_allocation
+        if transshipment == False:
+            return torch.multiply(store_intermediate_outputs,
+                               torch.clip(total_limiting_inventory / (sum_allocation + 0.000000000000001), max=1)[:, None])
+        else:
+            return torch.multiply(store_intermediate_outputs, (total_limiting_inventory / (sum_allocation + 0.000000000000001))[:, None])
     
     def apply_softmax_feasibility_function(self, store_intermediate_outputs, warehouse_inventory, transshipment=False):
         """
@@ -592,7 +593,7 @@ class Vanilla_N_Warehouses(MyNeuralNetwork):
         store_inventories, warehouse_inventories = observation['store_inventories'], observation['warehouse_inventories']
         n_stores = store_inventories.size(1)
         input_tensor = torch.cat((store_inventories.flatten(start_dim=1), warehouse_inventories.flatten(start_dim=1)), dim=1)
-        intermediate_outputs = self.net['master'](input_tensor)
+        intermediate_outputs = self.net['master_n_warehouses'](input_tensor)
         n_warehouses = warehouse_inventories.size(1)
         warehouse_intermediate_outputs = intermediate_outputs[:, :n_warehouses]
         edge_mask = observation['warehouse_store_edges'].transpose(1,2)
@@ -1403,8 +1404,41 @@ class GNN(MyNeuralNetwork):
         else:
             store_intermediate_outputs = outputs[:, 1:]
             warehouse_allocation = outputs[:, :1, 0]
-            if self.__class__.__name__ == 'GNN_MP_transshipment':
-                store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
+            if self.__class__.__name__ == 'GNN_transshipment':
+                # store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
+                store_allocation = self.apply_proportional_allocation(
+                    store_intermediate_outputs[:,:,0], 
+                    observation['warehouse_inventories'],
+                    transshipment=True
+                    )
+                
+                if self.is_debugging:
+                    debug_dir = "/user/ml4723/Prj/NIC/debug"
+                    if self.debug_identifier is not None:
+                        debug_dir = debug_dir + self.debug_identifier
+                    os.makedirs(debug_dir, exist_ok=True)
+                    for sample_idx in range(min(store_allocation.size(0), 32)):
+                        with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+                            f.write("\n\n")
+                            warehouse_outputs = warehouse_allocation[sample_idx].detach().cpu().to(torch.float32).numpy()
+                            f.write(np.array2string(warehouse_outputs, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+                            f.write('\n')
+                            
+                            max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
+                            for lead_time in range(max_lead_time, 0, -1):
+                                outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().to(torch.float32).numpy()
+                                f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+                                f.write('\n')
+
+                            for store_idx in range(self.n_stores):
+                                store_alloc = store_allocation[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+                                store_out = store_intermediate_outputs[sample_idx, store_idx, 0].detach().cpu().to(torch.float32).numpy()
+                                formatted_allocation_orders = '[' + ', \t'.join([f'{store_alloc:4.1f}/{store_out:4.1f}']) + ']'
+                                f.write(formatted_allocation_orders)
+                                
+                                store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+                                formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[::-1]])
+                                f.write(f"[{formatted_store_inv}]\n")
             else:
                 store_allocation = self.apply_proportional_allocation(
                     store_intermediate_outputs[:,:,0], 
@@ -1414,6 +1448,9 @@ class GNN(MyNeuralNetwork):
                 'stores': store_allocation,
                 'warehouses': warehouse_allocation
             }
+
+class GNN_transshipment(GNN):
+    pass
 
 class GNN_MP_n_warehouse(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
@@ -2786,6 +2823,7 @@ class NeuralNetworkCreator:
             'master_echelon': problem_params['n_stores'] + problem_params['n_warehouses'] + problem_params['n_extra_echelons'],
             'store': 1, 
             'warehouse': 1, 
+            'master_n_warehouses': problem_params['n_warehouses'] + problem_params['n_warehouses'] * problem_params['n_stores'],
             'context': None
             }
         return default_sizes[module_name]
@@ -2831,7 +2869,8 @@ class NeuralNetworkCreator:
             'GNN_MP_n_warehouse': GNN_MP_n_warehouse,
             'GNN': GNN,
             'GNN_real': GNN_real,
-            'decentralized_edge': decentralized_edge
+            'decentralized_edge': decentralized_edge,
+            'GNN_transshipment': GNN_transshipment
             }
         return architectures[name]
     

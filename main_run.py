@@ -225,7 +225,9 @@ class MainRun:
             assert False
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+    # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    # os.environ["TORCH_USE_CUDA_DSA"] = "1"
     train_or_test = sys.argv[1]
     setting_name = sys.argv[2]
     hyperparams_name = sys.argv[3]

@@ -98,7 +98,7 @@ class Trainer():
             
             if epoch % trainer_params['do_dev_every_n_epochs'] == 0:
                 start_time = time.time()
-                torch.cuda.empty_cache()
+                # torch.cuda.empty_cache()
                 average_dev_loss, average_dev_loss_to_report = self.do_one_epoch(
                     optimizer, 
                     data_loaders['dev'], 
@@ -111,7 +111,7 @@ class Trainer():
                     train=False, 
                     ignore_periods=params_by_dataset['dev']['ignore_periods']
                     )
-                torch.cuda.empty_cache()
+                # torch.cuda.empty_cache()
                 dev_time = time.time() - start_time
                 if model.is_debugging:
                     print(f"Dev time: {dev_time:.2f} seconds")
@@ -127,7 +127,7 @@ class Trainer():
                 if 'ray_report_loss' in trainer_params:
                     report_dict = {'dev_loss': average_dev_loss_to_report, 'train_loss': average_train_loss_to_report}
                     if 'report_test_loss' in problem_params and problem_params['report_test_loss'] == True:
-                        torch.cuda.empty_cache()
+                        # torch.cuda.empty_cache()
                         with torch.no_grad():
                             start_time = time.time()
                             average_test_loss, average_test_loss_to_report = self.do_one_epoch(
@@ -147,7 +147,7 @@ class Trainer():
                             if model.is_debugging:
                                 print(f"Test time: {test_time:.2f} seconds")
                             report_dict['test_loss'] = average_test_loss_to_report
-                        torch.cuda.empty_cache()
+                        # torch.cuda.empty_cache()
                     train.report(report_dict)
                     if math.isnan(average_train_loss_to_report):
                         break
@@ -254,9 +254,11 @@ class Trainer():
             return epoch_loss/(total_samples*periods*problem_params['n_stores']), epoch_loss_to_report/(total_samples*periods_tracking_loss*problem_params['n_stores'])
         
         if train:
+            model.train()
             return process_batch()
 
         with torch.no_grad():
+            model.eval()
             return process_batch()
     
     def simulate_batch(self, loss_function, simulator, model, periods, problem_params, data_batch, observation_params, ignore_periods=0, discrete_allocation=False):
