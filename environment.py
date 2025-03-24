@@ -313,7 +313,12 @@ class Simulator(gym.Env):
         # Initialize data for past observations of certain data (e.g., arrivals, orders)
         for k, v in observation_params['include_past_observations'].items():
             if v > 0:
-                observation[k] = torch.zeros(self.batch_size, self.n_stores, v, device=self.device)
+                if 'store_orders' == k:
+                    observation[k] = torch.zeros(self.batch_size, self.n_stores, self.problem_params['n_warehouses'], v, device=self.device)
+                elif 'warehouse_orders' == k or 'warehouse_arrivals' == k:
+                    observation[k] = torch.zeros(self.batch_size, self.problem_params['n_warehouses'], v, device=self.device)
+                else:
+                    observation[k] = torch.zeros(self.batch_size, self.n_stores, v, device=self.device)
 
         # Initialize past demands in the observation
         if observation_params['demand']['past_periods'] > 0:
@@ -472,15 +477,25 @@ class Simulator(gym.Env):
                 current_period=min(self.observation['current_period'].item() + 1, self._internal_data['demands'].shape[2])  # do this before updating current period!
                 )
         
-        if self.observation_params['include_past_observations']['arrivals'] > 0:
+        if 'arrivals' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['arrivals'] > 0:
             self.observation['arrivals'] = self.move_left_and_append(self.observation['arrivals'], self.observation['store_inventories'][:, :, 1])
         
-        if self.observation_params['include_past_observations']['orders'] > 0:
-            if action['stores'].dim() == 3:
-                for i in range(action['stores'].shape[2]):
-                    self.observation['orders'] = self.move_left_and_append(self.observation['orders'], action['stores'][:,:,i])
-            else:
-                self.observation['orders'] = self.move_left_and_append(self.observation['orders'], action['stores'])
+        if 'orders' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['orders'] > 0:
+            self.observation['orders'] = self.move_left_and_append(self.observation['orders'], action['stores'])
+
+
+        # below added for n warehouse setting
+        if 'store_arrivals' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['store_arrivals'] > 0:
+            self.observation['store_arrivals'] = self.move_left_and_append(self.observation['store_arrivals'], self.observation['store_inventories'][:, :, 1])
+
+        if 'store_orders' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['store_orders'] > 0:
+            self.observation['store_orders'] = torch.cat([self.observation['store_orders'][:,:,:,1:], action['stores'].unsqueeze(-1)], dim=-1)
+        
+        if 'warehouse_arrivals' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['warehouse_arrivals'] > 0:
+            self.observation['warehouse_arrivals'] = torch.cat([self.observation['warehouse_arrivals'][:,:,1:], self.observation['warehouse_inventories'][:,:,1].unsqueeze(-1)], dim=-1)
+
+        if 'warehouse_orders' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['warehouse_orders'] > 0:
+            self.observation['warehouse_orders'] = torch.cat([self.observation['warehouse_orders'][:,:,1:], action['warehouses'].unsqueeze(-1)], dim=-1)
 
     def move_columns_left(self, tensor_to_displace, start_index, end_index):
         """

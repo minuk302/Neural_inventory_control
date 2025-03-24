@@ -69,8 +69,10 @@ observation_params:
     'past_periods': 16
     'period_shift': 16
   'include_past_observations':
-    'arrivals': 4
-    'orders': 8
+    'store_arrivals': 4
+    'store_orders': 4
+    'warehouse_arrivals': 4
+    'warehouse_orders': 4
   'time_features_file': '/user/ml4723/Prj/NIC/data_files/favorita_one_warehouse/dates_with_info.csv'
   'time_features':
     ['days_from_christmas']
