@@ -17,7 +17,7 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs",
         "initial_bias_output", 'train_dev_sample_and_batch_size', 'different_for_each_sample',
         'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'trian_periods',
-        'n_extra_echelons',
+        'n_extra_echelons', 'master_n_warehouses',
     }
 
     # Check that all keys in overriding_params are valid

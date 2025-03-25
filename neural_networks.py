@@ -2430,6 +2430,37 @@ class DataDrivenNet(MyNeuralNetwork):
         
         return {'stores': store_allocation, 'warehouses': warehouse_allocation}
 
+class Data_Driven_N_Warehouses(MyNeuralNetwork):
+    def forward(self, observation):
+        store_inventories, warehouse_inventories = observation['store_inventories'], observation['warehouse_inventories']
+        n_stores = store_inventories.size(1)
+        # Get input data
+        input_data = [store_inventories[:, :, 0], warehouse_inventories[:, :, 0]]
+        input_data += [observation[key] for key in ['past_demands', 'holding_costs', 'underage_costs', 'days_from_christmas', 'store_arrivals', 'store_orders', 'warehouse_arrivals', 'warehouse_orders']]
+        input_tensor = self.flatten_then_concatenate_tensors(input_data)
+        intermediate_outputs = self.net['master_n_warehouses'](input_tensor)
+        n_warehouses = warehouse_inventories.size(1)
+        
+        edge_mask = observation['warehouse_store_edges'].transpose(1,2)
+        store_intermediate_outputs = intermediate_outputs[:, n_warehouses:].reshape(intermediate_outputs.size(0), n_stores, n_warehouses)
+        store_allocation = []
+        for warehouse_idx in range(n_warehouses):
+            connected_stores_mask = edge_mask[:, :, warehouse_idx]
+            connected_store_outputs = store_intermediate_outputs[:, :, warehouse_idx] 
+            connected_store_outputs = connected_store_outputs * connected_stores_mask
+            allocation = self.apply_proportional_allocation(
+                connected_store_outputs,
+                warehouse_inventories[:, warehouse_idx:warehouse_idx+1, :]
+                )
+            store_allocation.append(allocation)
+        store_allocation = torch.stack(store_allocation, dim=2)
+        
+        warehouse_allocation = intermediate_outputs[:, :n_warehouses]
+        return {
+            'stores': store_allocation, 
+            'warehouses': warehouse_allocation
+            }
+
 class TransformedNV_NoQuantile(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
@@ -2863,6 +2894,7 @@ class NeuralNetworkCreator:
             'symmetry_aware': SymmetryAware,
             'symmetry_aware_real_data': SymmetryAwareRealData,
             'data_driven': DataDrivenNet,
+            'data_driven_n_warehouses': Data_Driven_N_Warehouses,
             'transformed_nv': TransformedNV,
             'fixed_quantile': FixedQuantile,
             'quantile_nv': QuantileNV,

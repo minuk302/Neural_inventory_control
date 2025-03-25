@@ -1,0 +1,28 @@
+trainer_params : 
+  'epochs': 20000
+  'stop_if_no_improve_for_epochs': 500
+  'do_dev_every_n_epochs': 50
+  'ray_report_loss': True
+  'print_results_every_n_epochs': 50
+  'save_model': True
+  'load_previous_model': False
+  'load_model_path': 'Code_to_submit/models_saved/test.pt'
+  'choose_best_model_on': 'dev_loss'
+  'epochs_between_save': 50  # Save if cost improved, and at least this number of epochs have passed
+
+optimizer_params: 
+  'learning_rate': 0.003
+
+nn_params: 
+  'name': 'data_driven_n_warehouses'
+  'inner_layer_activations': 
+    'master_n_warehouses': 'elu'
+  'output_layer_activation':
+    'master_n_warehouses': 'softplus'
+  'neurons_per_hidden_layer': 
+    'master_n_warehouses': [256, 256, 256]
+  'initial_bias':
+    'master_n_warehouses': 1.0
+  'output_sizes':
+    'master_n_warehouses': null
+

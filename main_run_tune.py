@@ -209,9 +209,11 @@ if "n_warehouse_46_1_real" == testset_name or "n_warehouse_46_2_real" == testset
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
             "n_MP": tune.grid_search([3]),
         }
-    if 'vanilla_n_warehouses' == hyperparams_name:
+    if "data_driven_net_n_warehouses_real" == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "master_n_warehouses": tune.grid_search([512, 256, 128]),
+            "overriding_networks": ["master_n_warehouses"],
         }
 
 if "n_warehouse_20_2" == testset_name or "n_warehouse_40_3" == testset_name or "n_warehouse_50_4" == testset_name:
