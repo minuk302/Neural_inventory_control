@@ -222,7 +222,6 @@ class Scenario():
             self.store_random_yields = self.generate_demand_samples(problem_params, store_params, store_params['random_yield'], seeds)
         
         if problem_params.get('exp_underage_cost', False):
-            store_params['underage_cost']['range'][0] = max(np.log10(warehouse_params['holding_cost']), store_params['underage_cost']['range'][0])
             self.underage_costs = self.generate_data_for_samples(store_params['underage_cost'], problem_params['n_stores'], seeds['underage_cost'], discrete=False)
             self.underage_costs = 10**self.underage_costs
         else:
@@ -366,9 +365,13 @@ class Scenario():
         However, if it is generated, the split is according to sample indexes
         """
 
-        split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories', 'initial_warehouse_inventories'\
-                                    , 'warehouse_lead_times', 'warehouse_holding_costs'], 
+        split_by = {'sample_index': ['underage_costs', 'holding_costs', 'lead_times', 'initial_inventories'], 
                     'period': []}
+
+        if self.warehouse_lead_times is not None:
+            split_by['sample_index'].append('initial_warehouse_inventories')
+            split_by['sample_index'].append('warehouse_lead_times')
+            split_by['sample_index'].append('warehouse_holding_costs')
 
         if self.echelon_params is not None:
             split_by['sample_index'].append('initial_echelon_inventories')

@@ -399,14 +399,14 @@ class Simulator(gym.Env):
 
         return torch.cat(
             [
-                (inventory_on_hand + inventory[:, :, 1] * random_yields).unsqueeze(-1), 
-                inventory[:, :, 2:],
+                (inventory_on_hand + inventory[:, :, 1] * random_yields).unsqueeze(-1),
+                inventory[:, :, 2:], 
                 torch.zeros_like(inventory[:, :, 1]).unsqueeze(-1)
-            ], 
+            ],
                 dim=2
-                ).put(
+                ).to(dtype=allocation.dtype).put(
                     (allocation_shifter + lead_times.long() - 1).flatten(),  # Indexes where to 'put' allocation in long vector
-                    allocation.flatten(),  # Values to 'put' in long vector
+                    allocation.flatten(),  # Values to 'put' in long vector 
                     accumulate=True  # True means adding to existing values, instead of replacing
                     )
 

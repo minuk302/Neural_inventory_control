@@ -1,0 +1,111 @@
+seeds : 
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
+  'demand': 57 
+  'initial_inventory': 4839
+
+dev_seeds : 
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
+  'demand': 58
+  'initial_inventory': 4839
+
+test_seeds :  # Seeds for test set
+  'underage_cost': 36 
+  'holding_cost': 81 
+  'mean': 41 
+  'coef_of_var': 100
+  'lead_time': 49
+  'demand': 65
+  'initial_inventory': 4839
+
+sample_data_params:
+  'split_by_period': True
+  'train_periods': (0, 121)
+  'dev_periods': (105, 171)
+  'test_periods': (122, 171)
+
+problem_params : 
+  'n_stores': 1
+  'n_warehouses': 0
+  'n_extra_echelons': 0
+  'lost_demand': True
+  'maximize_profit': True
+  'report_test_loss': False
+
+params_by_dataset : 
+  'train': 
+    'n_samples': 5014 
+    'batch_size': 1024 
+    'periods': 105 
+    'ignore_periods': 16
+  'dev': 
+    'n_samples': 5014 
+    'batch_size': 5014 
+    'periods': 50 
+    'ignore_periods': 16 
+  'test': 
+    'n_samples': 416 
+    'batch_size': 416 
+    'periods': 32 
+    'ignore_periods': 16
+
+observation_params:
+  'include_warehouse_inventory': False
+  'include_static_features':
+    'holding_costs': True 
+    'underage_costs': True 
+    'lead_times': True 
+    'upper_bounds': False
+  'demand': 
+    'past_periods': 16 
+    'period_shift': 16
+  'include_past_observations':
+    'arrivals': 8
+    'orders': 8
+  'time_features_file': '/user/ml4723/Prj/NIC/data_files/favorita_one_warehouse/dates_with_info.csv'
+  'time_features':
+    ['days_from_christmas']
+
+store_params: 
+  'demand': 
+    'distribution': 'real'
+    'file_location': '/user/ml4723/Prj/NIC/data_files/favorita_one_warehouse/weekly_sales_one_store.pt'
+    'sample_across_instances': False
+    'expand': False
+    'clip': False
+    'decimals': 3
+  'lead_time': 
+    'sample_across_instances': False
+    'vary_across_samples': False
+    'expand': True
+    'value': 2
+  'holding_cost': 
+    'distribution': 'real'
+    'file_location': '/user/ml4723/Prj/NIC/data_files/favorita_one_warehouse/holding_costs.pt'
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': False
+  'underage_cost': 
+    'distribution': 'real'
+    'file_location': '/user/ml4723/Prj/NIC/data_files/favorita_one_warehouse/underage_costs.pt'
+    'sample_across_instances': False
+    'vary_across_samples': False 
+    'expand': False
+    'value': 1.0
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 3
+
+warehouse_params:
+  null
+
+echelon_params: 
+  null
+
