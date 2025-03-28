@@ -1335,6 +1335,7 @@ class GNN(MyNeuralNetwork):
         self.NN_per_layer = 'NN_per_layer' in args and args['NN_per_layer']
         self.skip_connection = 'skip_connection' in args and args['skip_connection']
         self.apply_edge_embedding = 'apply_edge_embedding' in args and args['apply_edge_embedding']
+        self.apply_bottleneck_loss = 'apply_bottleneck_loss' in args and args['apply_bottleneck_loss']
         self.n_MP = None
         if 'n_MP' in args:
             self.n_MP = args['n_MP']
@@ -1550,10 +1551,12 @@ class GNN(MyNeuralNetwork):
                 outputs = self.net['output'](edges[:, :-1])
             elif 'warehouse_store_edge_lead_times' in observation:
                 supplier_warehouse_edges_states = torch.cat([torch.zeros_like(states[:, :n_warehouses]), states[:, :n_warehouses], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
-                warehouses_states_expanded = states[:, :n_warehouses].unsqueeze(1).expand(-1, self.n_stores, -1, -1)
-                stores_states_expanded = states[:, n_warehouses:].unsqueeze(2).expand(-1, -1, n_warehouses, -1)
-                warehouse_store_edges_states = torch.cat([warehouses_states_expanded, stores_states_expanded, observation['warehouse_store_edge_lead_times'].transpose(1,2).unsqueeze(-1)], dim=-1)
-                edges_states = torch.cat([supplier_warehouse_edges_states, warehouse_store_edges_states.reshape(warehouse_store_edges_states.size(0), -1, warehouse_store_edges_states.size(-1))], dim=1)
+                
+                warehouses_states_flattened = states[:, :n_warehouses][adjacency_batch_idx, adjacency_warehouse_idx]
+                stores_states_flattened = states[:, n_warehouses:][adjacency_batch_idx, adjacency_store_idx]
+                warehouse_store_edges_states = torch.cat([warehouses_states_flattened, stores_states_flattened, lead_times], dim=-1)
+
+                edges_states = torch.cat([supplier_warehouse_edges_states, warehouse_store_edges_states.reshape(edges.size(0), -1, warehouse_store_edges_states.size(-1))], dim=1)
                 outputs = self.net['output'](torch.cat([edges_states, edges[:, :-self.n_stores, :]], dim=-1))
             else:
                 supplier_warehouse_edges_states = torch.cat([torch.zeros_like(states[:, :1]), states[:, :1], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
@@ -1661,7 +1664,6 @@ class GNN(MyNeuralNetwork):
             store_allocation_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
             batch_idx = torch.arange(outputs.size(0), device=self.device).unsqueeze(1).expand(outputs.size(0), n_edges)
             store_allocation_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_allocation
-
             if self.is_debugging:
                 debug_dir = "/user/ml4723/Prj/NIC/debug"
                 store_orders_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
@@ -1692,10 +1694,17 @@ class GNN(MyNeuralNetwork):
                             formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
                             f.write(f"[{formatted_store_inv}] - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
             
-            return {
-                'stores': store_allocation_matrix,
-                'warehouses': warehouse_allocation
-            }
+            if self.apply_bottleneck_loss:
+                return {
+                    'stores': store_allocation_matrix,
+                    'warehouses': warehouse_allocation,
+                    'bottleneck_loss': (store_orders - store_allocation).sum()
+                }
+            else:
+                return {
+                    'stores': store_allocation_matrix,
+                    'warehouses': warehouse_allocation
+                }
         else:
             store_intermediate_outputs = outputs[:, 1:]
             warehouse_allocation = outputs[:, :1, 0]

@@ -287,12 +287,13 @@ class Trainer():
             observation, reward, terminated, _, _  = simulator.step(action)
 
             total_reward = loss_function(None, action, reward)
-            if 'bottleneck_loss' in action:
-                total_reward += action['bottleneck_loss'].sum()
-
-            batch_reward += total_reward
             if t >= ignore_periods:
                 reward_to_report += total_reward
+
+            # don't include bottleneck loss in reporting rewards
+            if 'bottleneck_loss' in action:
+                total_reward += action['bottleneck_loss'].sum()
+            batch_reward += total_reward
             
             if terminated:
                 break
