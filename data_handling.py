@@ -382,13 +382,14 @@ class Scenario():
             split_by['sample_index'].append('warehouse_store_edges')
             split_by['sample_index'].append('warehouse_store_edge_lead_times')
 
-        if self.store_random_yields is not None:
-            split_by['sample_index'].append('store_random_yields')
-
         if self.store_params['demand']['distribution'] == 'real':
             split_by['period'].append('demands')
+            if self.store_random_yields is not None:
+                split_by['period'].append('store_random_yields')
         else:
             split_by['sample_index'].append('demands')
+            if self.store_random_yields is not None:
+                split_by['sample_index'].append('store_random_yields')
         
         for k in self.time_features.keys():
             split_by['period'].append(k)

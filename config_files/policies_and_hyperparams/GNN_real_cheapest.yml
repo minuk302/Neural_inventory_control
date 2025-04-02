@@ -43,3 +43,4 @@ nn_params:
     'output': 1.0
   'include_primitive_features': False
   'gradient_clipping_norm_value': 1.0
+  'edges_separation_mode': 'cheapest'

@@ -216,7 +216,7 @@ class Recorder():
         if self.is_recording == False:
             return
 
-        file_name = f"analysis/results/{self.config_setting['problem_params']['n_stores']}/{self.recorder_identifier}.csv"
+        file_name = f"analysis/results/{self.config_setting['problem_params']['n_stores']}-{self.config_setting['problem_params']['n_warehouses']}/{self.recorder_identifier}.csv"
         def append_tensors_to_csv(filename, data):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             df_new = pd.DataFrame(data)

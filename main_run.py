@@ -88,7 +88,7 @@ class MainRun:
     def create_scenario_and_datasets(self):
         if self.sample_data_params['split_by_period']:
             self.scenario = Scenario(
-                periods=None,
+                periods=int(self.sample_data_params['test_periods'].strip('()').split(',')[1]),
                 problem_params=self.problem_params,
                 store_params=self.store_params,
                 warehouse_params=self.warehouse_params,
