@@ -137,7 +137,7 @@ class Simulator(gym.Env):
         # Calculate reward and update warehouse inventories
         if self.problem_params['n_warehouses'] > 0:
 
-            w_reward, w_holding_costs = self.calculate_warehouse_reward_and_update_warehouse_inventories(
+            w_reward, w_holding_costs, w_edge_costs = self.calculate_warehouse_reward_and_update_warehouse_inventories(
                 action,
                 self.observation,
                 )
@@ -159,6 +159,7 @@ class Simulator(gym.Env):
             if self.problem_params['n_warehouses'] > 0:
                 for i in range(w_holding_costs.size(1)):
                     data[f'w_{i}_holding_costs'] = w_holding_costs.detach().cpu()[:, i]
+                    data[f'w_{i}_edge_costs'] = w_edge_costs.detach().cpu()[:, i].sum(dim=-1)
             if  self.problem_params['n_extra_echelons'] > 0:
                 data['e1_holding_costs'] = e_reward_per_store[:, 0].cpu()
                 data['e2_holding_costs'] = e_reward_per_store[:, 1].cpu()
@@ -248,7 +249,17 @@ class Simulator(gym.Env):
             post_warehouse_inventory_on_hand = warehouse_inventory_on_hand - action['stores'].sum(dim=1).unsqueeze(1)
 
         holding_costs = observation['warehouse_holding_costs'] * torch.clip(post_warehouse_inventory_on_hand, min=0)
-        reward = holding_costs.sum(dim=1)
+        reward = holding_costs.sum(dim=1) 
+
+        edge_costs = torch.zeros_like(holding_costs)
+        if 'warehouse_edge_initial_cost' in observation and 'warehouse_edge_distance_cost' in observation:
+            if 'warehouse_store_edge_lead_times' in self.observation:
+                initial_edge_cost = observation['warehouse_edge_initial_cost'].unsqueeze(-1) * action['stores'].transpose(1,2)
+                distance_edge_cost = observation['warehouse_edge_distance_cost'].unsqueeze(-1) * observation['warehouse_store_edge_lead_times'] * action['stores'].transpose(1,2)
+                edge_costs = initial_edge_cost + distance_edge_cost
+            else:
+                raise ValueError('Warehouse edge lead times not found')
+            reward += edge_costs.sum(dim=2).sum(dim=1)
         observation['warehouse_inventories'] = self.update_inventory_for_lead_times(
             warehouse_inventory, 
             post_warehouse_inventory_on_hand, 
@@ -258,8 +269,7 @@ class Simulator(gym.Env):
             None,
             )
 
-        return reward, holding_costs
-    
+        return reward, holding_costs, edge_costs
     def calculate_echelon_reward_and_update_echelon_inventories(self, action, observation):
         """
         Calculate reward and observation after action is executed for warehouses
@@ -300,6 +310,10 @@ class Simulator(gym.Env):
                 observation['warehouse_store_edges'] = data['warehouse_store_edges']
             if 'warehouse_store_edge_lead_times' in data:
                 observation['warehouse_store_edge_lead_times'] = data['warehouse_store_edge_lead_times']
+            if 'warehouse_edge_initial_cost' in data:
+                observation['warehouse_edge_initial_cost'] = data['warehouse_edge_initial_cost']
+            if 'warehouse_edge_distance_cost' in data:
+                observation['warehouse_edge_distance_cost'] = data['warehouse_edge_distance_cost']
         
         if self.problem_params['n_extra_echelons'] > 0:
             observation['echelon_lead_times'] = data['echelon_lead_times']

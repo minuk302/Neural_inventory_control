@@ -102,34 +102,40 @@ store_params:
     'range': [6.3, 11.7]
   'initial_inventory': 
     'sample': False
-    'inventory_periods': 6
+    'inventory_periods': 4
 
 warehouse_params: 
   'lead_time': 
     'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
-    'value': [6, 6, 6]
+    'value': [3, 3, 3]
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False
     'expand': True
     'value': [0.2, 0.4, 0.3]
+  'edge_initial_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.02, 0.04, 0.03]
+  'edge_distance_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.0, 0.0, 0.0]
   'initial_inventory': 
     'sample': False
-    'inventory_periods': 6  # Initial inventory will be of size max(inventory_periods, lead_time)
+    'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)
   'edge_lead_times':
-    'value': [[2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
-              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]
+    'value': [[4, 3, 4, 4, 2, 2, 2, 2, 3, 4, 3, 3, 4, 4, 4, 4, 4, 4, 3, 2],
+              [2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 3, 4, 2, 2, 2, 2, 2, 2, 3, 3],
+              [4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 3, 3]]
   'edges':
     'value': [[1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
               [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
               [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1]]
-  'edge_costs':
-    'value': [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]
 echelon_params: 
   null
 

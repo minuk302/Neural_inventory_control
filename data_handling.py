@@ -255,10 +255,16 @@ class Scenario():
         self.warehouse_holding_costs = None
         self.warehouse_store_edges = None
         self.warehouse_store_edge_lead_times = None
+        self.warehouse_edge_initial_cost = None
+        self.warehouse_edge_distance_cost = None
         if warehouse_params is not None:
             self.warehouse_lead_times = self.generate_data_for_samples(warehouse_params['lead_time'], problem_params['n_warehouses'], seeds['lead_time'], discrete=True)
             self.initial_warehouse_inventories = self.generate_initial_inventories(warehouse_params, self.demands, self.warehouse_lead_times, problem_params['n_warehouses'], seeds['initial_inventory'])
             self.warehouse_holding_costs = self.generate_data_for_samples(warehouse_params['holding_cost'], problem_params['n_warehouses'], seeds['holding_cost'])
+            if 'edge_initial_cost' in warehouse_params:
+                self.warehouse_edge_initial_cost = self.generate_data_for_samples(warehouse_params['edge_initial_cost'], problem_params['n_warehouses'], seeds['warehouse'])
+            if 'edge_distance_cost' in warehouse_params:
+                self.warehouse_edge_distance_cost = self.generate_data_for_samples(warehouse_params['edge_distance_cost'], problem_params['n_warehouses'], seeds['warehouse'])
             if 'edges' in warehouse_params:
                 self.warehouse_store_edges = self.generate_warehouse_store_edges(warehouse_params['edges'], problem_params['n_warehouses'], problem_params['n_stores'], seeds['warehouse'])
             if 'edge_lead_times' in warehouse_params:
@@ -338,6 +344,8 @@ class Scenario():
                 'initial_warehouse_inventories': self.initial_warehouse_inventories,
                 'warehouse_lead_times': self.warehouse_lead_times,
                 'warehouse_holding_costs': self.warehouse_holding_costs,
+                'warehouse_edge_initial_cost': self.warehouse_edge_initial_cost,
+                'warehouse_edge_distance_cost': self.warehouse_edge_distance_cost,
                 'initial_echelon_inventories': self.initial_echelon_inventories,
                 'echelon_holding_costs': self.echelon_holding_costs,
                 'echelon_lead_times': self.echelon_lead_times,
@@ -381,6 +389,11 @@ class Scenario():
         if self.warehouse_store_edges is not None:
             split_by['sample_index'].append('warehouse_store_edges')
             split_by['sample_index'].append('warehouse_store_edge_lead_times')
+
+        if self.warehouse_edge_initial_cost is not None:
+            split_by['sample_index'].append('warehouse_edge_initial_cost')
+        if self.warehouse_edge_distance_cost is not None:
+            split_by['sample_index'].append('warehouse_edge_distance_cost')
 
         if self.store_params['demand']['distribution'] == 'real':
             split_by['period'].append('demands')

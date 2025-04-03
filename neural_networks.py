@@ -1349,7 +1349,13 @@ class GNN(MyNeuralNetwork):
         return torch.cat([observation['store_inventories'], *list_to_cat], dim=2)
     
     def get_warehouse_inventory_and_params(self, observation):
-        return torch.cat([observation['warehouse_inventories'], observation['warehouse_holding_costs'].unsqueeze(2)], dim=-1)
+        params_to_cat = ['warehouse_holding_costs']
+        if 'warehouse_edge_initial_cost' in observation:
+            params_to_cat.append('warehouse_edge_initial_cost')
+        if 'warehouse_edge_distance_cost' in observation:
+            params_to_cat.append('warehouse_edge_distance_cost')
+        list_to_cat_to_unsqueeze = [observation[k].unsqueeze(-1) for k in params_to_cat]
+        return torch.cat([observation['warehouse_inventories'], *list_to_cat_to_unsqueeze], dim=-1)
 
     def get_network(self, layer_name, layer_idx):
         if self.NN_per_layer:
@@ -2485,7 +2491,14 @@ class GNN_real(GNN):
                          + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs']], dim=2)
 
     def get_warehouse_inventory_and_params(self, observation):
-        return torch.cat([observation['warehouse_inventories'], observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_arrivals']], dim=-1)
+        params_to_cat = ['warehouse_holding_costs']
+        if 'warehouse_edge_initial_cost' in observation:
+            params_to_cat.append('warehouse_edge_initial_cost')
+        if 'warehouse_edge_distance_cost' in observation:
+            params_to_cat.append('warehouse_edge_distance_cost')
+        list_to_cat_to_unsqueeze = [observation[k].unsqueeze(-1) for k in params_to_cat]
+        list_to_cat = [observation["warehouse_arrivals"]]
+        return torch.cat([observation['warehouse_inventories'], *list_to_cat_to_unsqueeze, *list_to_cat], dim=-1)
 
 class GNN_half_real(GNN_half):
     def get_store_inventory_and_params(self, observation):
