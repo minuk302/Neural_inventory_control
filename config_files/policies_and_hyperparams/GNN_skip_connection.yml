@@ -42,4 +42,5 @@ nn_params:
   'initial_bias':
     'output': 5.0
   'include_primitive_features': False
+  'gradient_clipping_norm_value': 1.0
   'skip_connection': True

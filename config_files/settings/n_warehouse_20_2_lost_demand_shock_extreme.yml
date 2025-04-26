@@ -87,6 +87,9 @@ store_params:
     'vary_across_samples': False
     'expand': False
     'range': [2, 4] # recall that upper range is excluded from the possible values
+  'demand_shock':
+    'prob': 0.5
+    'target_ratio': 1.0
   'holding_cost': 
     'sample_across_instances': True 
     'vary_across_samples': False
@@ -96,11 +99,11 @@ store_params:
     'sample_across_instances': True
     'vary_across_samples': False 
     'expand': False
-    'range': [6.3, 11.7]
+    'range': [3.5, 6.5]
   'initial_inventory': 
     'sample': True
     'range_mult': [0, 1]
-    'inventory_periods': 6 # should be equal to the largest edge_lead_times at least.
+    'inventory_periods': 2 # should be equal to the largest edge_lead_times at least.
 
 warehouse_params: 
   'lead_time': 
@@ -112,20 +115,21 @@ warehouse_params:
     'sample_across_instances': False 
     'vary_across_samples': False
     'expand': True
-    'value': [0.2, 0.4]
+    'value': [0.2, 0.2]
   'initial_inventory': 
     'sample': False
-    'inventory_periods': 6  # Initial inventory will be of size max(inventory_periods, lead_time)
+    'inventory_periods': 3  # Initial inventory will be of size max(inventory_periods, lead_time)
   'edge_lead_times':
     'value': [
-      [5, 0, 5, 5, 6, 4, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 5, 5, 4, 0],
-      [0, 3, 0, 0, 2, 0, 0, 2, 4, 4, 0, 3, 2, 4, 0, 0, 0, 0, 4, 3]
+      [2, 1, 2, 2, 1, 2, 2, 1, 1, 2, 2, 1, 1, 1, 2, 0, 0, 2, 2, 1],
+      [1, 0, 1, 2, 2, 1, 2, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 0]
       ]
   'edges':
     'value': [
-      [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-      [0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1]
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1],
+      [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
       ]
+
 echelon_params: 
   null
 

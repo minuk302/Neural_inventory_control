@@ -10,14 +10,14 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'n_stores', 'samples', 'train_n_samples', 'dev_n_samples', 'test_n_samples', 'censoring_threshold', 
         'train_batch_size', 'dev_batch_size', 'test_batch_size', 'learning_rate', 'warehouse_holding_cost',
         'warehouse_lead_time', 'stores_correlation', 'n_sub_sample_for_context',
-        'apply_normalization', 'store_orders_for_warehouse', 
+        'apply_normalization', 'store_orders_for_warehouse', 'dev_ignore_periods',
         'include_context_for_warehouse_input', 'omit_context_from_store_input',
         'master', 'warehouse', 'store', 'overriding_outputs', 'for_all_networks', 'overriding_networks', 'master_echelon',
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
         'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs",
         "initial_bias_output", 'train_dev_sample_and_batch_size', 'different_for_each_sample',
         'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'trian_periods',
-        'n_extra_echelons', 'master_n_warehouses',
+        'n_extra_echelons', 'master_n_warehouses', 'store_holding_cost'
     }
 
     # Check that all keys in overriding_params are valid
@@ -32,6 +32,10 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
 
     if 'dev_periods' in overriding_params:
         config_setting['params_by_dataset']['dev']['periods'] = overriding_params['dev_periods']
+
+    if 'dev_ignore_periods' in overriding_params:
+        config_setting['params_by_dataset']['dev']['ignore_periods'] = overriding_params['dev_ignore_periods']
+
     if 'trian_periods' in overriding_params:
         config_setting['params_by_dataset']['train']['periods'] = overriding_params['trian_periods']
 
@@ -126,7 +130,7 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         config_setting['warehouse_params']['holding_cost'] = overriding_params['warehouse_holding_cost']
 
     if 'warehouse_lead_time' in overriding_params:
-        config_setting['warehouse_params']['lead_time'] = overriding_params['warehouse_lead_time']
+        config_setting['warehouse_params']['lead_time']['value'] = overriding_params['warehouse_lead_time']
 
     if 'stores_correlation' in overriding_params:
         config_setting['store_params']['demand']['correlation'] = overriding_params['stores_correlation']
@@ -176,7 +180,10 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
             config_setting['store_params']['underage_cost']['value'] = overriding_params['store_underage_cost']
 
     if 'store_lead_time' in overriding_params:
-        config_setting['store_params']['lead_time']['value'] = overriding_params['store_lead_time']
+        if isinstance(overriding_params['store_lead_time'], list):
+            config_setting['store_params']['lead_time']['range'] = overriding_params['store_lead_time']
+        else:
+            config_setting['store_params']['lead_time']['value'] = overriding_params['store_lead_time']
 
     if 'overriding_networks' in overriding_params:
         for net in overriding_params['overriding_networks']:
@@ -203,10 +210,11 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
 
 
 class Recorder():
-    def __init__(self, config_setting, config_hyperparams, start_recording = False, recorder_identifier=None):
+    def __init__(self, setting_name, config_setting, config_hyperparams, start_recording = False, recorder_identifier=None):
         self.is_recording = start_recording
         self.config_setting = config_setting
         self.config_hyperparams = config_hyperparams
+        self.setting_name = setting_name
         self.recorder_identifier = recorder_identifier
 
     def start_recording(self):
@@ -216,7 +224,7 @@ class Recorder():
         if self.is_recording == False:
             return
 
-        file_name = f"analysis/results/{self.config_setting['problem_params']['n_stores']}-{self.config_setting['problem_params']['n_warehouses']}/{self.recorder_identifier}.csv"
+        file_name = f"analysis/results/{self.setting_name}/{self.config_setting['problem_params']['n_stores']}-{self.config_setting['problem_params']['n_warehouses']}/{self.recorder_identifier}.csv"
         def append_tensors_to_csv(filename, data):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             df_new = pd.DataFrame(data)

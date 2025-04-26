@@ -204,6 +204,28 @@ class Trainer():
             )
         
         return average_dev_loss, average_dev_loss_to_report
+    
+    def test_on_train(self, loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, discrete_allocation=False):
+
+        if model.trainable and self.best_performance_data['model_params_to_save'] is not None:
+            # Load the parameter weights that gave the best performance on the specified dataset
+            model.load_state_dict(self.best_performance_data['model_params_to_save'])
+
+        average_train_loss, average_train_loss_to_report = self.do_one_epoch(
+            optimizer, 
+            data_loaders['train'], 
+            loss_function, 
+            simulator, 
+            model, 
+            params_by_dataset['train']['periods'], 
+            problem_params, 
+            observation_params, 
+            train=False, 
+            ignore_periods=params_by_dataset['train']['ignore_periods'],
+            discrete_allocation=discrete_allocation
+            )
+        
+        return average_train_loss, average_train_loss_to_report
 
     def do_one_epoch(self, optimizer, data_loader, loss_function, simulator, model, periods, problem_params, observation_params, train=True, ignore_periods=0, discrete_allocation=False):
         """

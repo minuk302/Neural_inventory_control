@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN_real'
+  'name': 'GNN_half_dynamic'
   'inner_layer_activations': 
     'initial_node': 'elu'
     'initial_edge': 'elu'
@@ -28,20 +28,18 @@ nn_params:
     'edge_update': 'elu'
     'output': 'softplus'
   'neurons_per_hidden_layer':
-    'initial_node': [64, 64]
-    'initial_edge': [64, 64]
-    'node_update': [64, 64]
-    'edge_update': [64, 64]
-    'output': [64, 64]
+    'initial_node': [32, 32]
+    'initial_edge': [32, 32]
+    'node_update': [32, 32]
+    'edge_update': [32, 32]
+    'output': [32, 32]
   'output_sizes':
-    'initial_node': 64
-    'initial_edge': 64
-    'node_update': 64
-    'edge_update': 64
+    'initial_node': 32
+    'initial_edge': 32
+    'node_update': 32
+    'edge_update': 32
     'output': 1
   'initial_bias':
-    'output': 1.0
+    'output': 5.0
   'include_primitive_features': False
   'gradient_clipping_norm_value': 1.0
-  'skip_connection': True
-  'apply_bottleneck_loss': True

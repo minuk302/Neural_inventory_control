@@ -213,13 +213,34 @@ class Scenario():
         self.seeds = seeds
         self.demands = self.generate_demand_samples(problem_params, store_params, store_params['demand'], seeds, is_test)
 
+
         augment_multiplier = store_params['data_augment_multiplier_with_fixed_demands'] if 'data_augment_multiplier_with_fixed_demands' in store_params else 1
         self.demands = self.demands.repeat(augment_multiplier, 1, 1)
         self.num_samples = self.demands.size(0)
 
+        self.demand_signals = None
+        if 'demand_signal' in store_params:
+            self.demand_signals = self.demands.clone()
+            coef_of_var = store_params['demand_signal']['coef_of_var']
+            self.demands = torch.normal(mean=self.demands, std=self.demands * coef_of_var)
+
         self.store_random_yields = None
         if 'random_yield' in store_params:    
             self.store_random_yields = self.generate_demand_samples(problem_params, store_params, store_params['random_yield'], seeds)
+        if 'demand_shock' in store_params:
+            self.store_random_yields = torch.ones_like(self.demands)
+            generator = torch.Generator()
+            generator.manual_seed(seeds['demand'])
+            for batch in range(self.demands.size(0)):
+                for period in range(self.periods):
+                    if torch.rand(1, generator=generator) < store_params['demand_shock']['prob']:
+                        if 'target_ratio_range' in store_params['demand_shock']:
+                            target_ratio = torch.rand(1, generator=generator) * (store_params['demand_shock']['target_ratio_range'][1] - store_params['demand_shock']['target_ratio_range'][0]) + store_params['demand_shock']['target_ratio_range'][0]
+                        else:
+                            target_ratio = store_params['demand_shock']['target_ratio']
+                        n_stores_to_shock = int(target_ratio * problem_params['n_stores'])
+                        stores_to_shock = torch.randperm(problem_params['n_stores'], generator=generator)[:n_stores_to_shock]
+                        self.store_random_yields[batch, stores_to_shock, period] = 0
         
         if problem_params.get('exp_underage_cost', False):
             self.underage_costs = self.generate_data_for_samples(store_params['underage_cost'], problem_params['n_stores'], seeds['underage_cost'], discrete=False)
@@ -227,8 +248,10 @@ class Scenario():
         else:
             self.underage_costs = self.generate_data_for_samples(store_params['underage_cost'], problem_params['n_stores'], seeds['underage_cost'], discrete=False)
 
-        if problem_params.get('holding_cost_is_ratio_of_underage_cost', False):
-            self.holding_costs = self.underage_costs * 0.1
+        if 'holding_cost_is_ratio_of_underage_cost' in problem_params:
+            raise NotImplementedError("Holding cost is ratio of underage cost changed its implementation")
+        if 'holding_cost_ratio_to_underage_cost' in problem_params:
+            self.holding_costs = self.underage_costs * problem_params['holding_cost_ratio_to_underage_cost']
         else:
             self.holding_costs = self.generate_data_for_samples(store_params['holding_cost'], problem_params['n_stores'], seeds['holding_cost'], discrete=False)
         
@@ -254,9 +277,12 @@ class Scenario():
         self.initial_warehouse_inventories = None
         self.warehouse_holding_costs = None
         self.warehouse_store_edges = None
+        self.warehouse_cluster_edges = None
         self.warehouse_store_edge_lead_times = None
         self.warehouse_edge_initial_cost = None
         self.warehouse_edge_distance_cost = None
+        self.warehouse_demands_cap_factor = None
+        self.warehouse_demands_cap = None
         if warehouse_params is not None:
             self.warehouse_lead_times = self.generate_data_for_samples(warehouse_params['lead_time'], problem_params['n_warehouses'], seeds['lead_time'], discrete=True)
             self.initial_warehouse_inventories = self.generate_initial_inventories(warehouse_params, self.demands, self.warehouse_lead_times, problem_params['n_warehouses'], seeds['initial_inventory'])
@@ -267,8 +293,24 @@ class Scenario():
                 self.warehouse_edge_distance_cost = self.generate_data_for_samples(warehouse_params['edge_distance_cost'], problem_params['n_warehouses'], seeds['warehouse'])
             if 'edges' in warehouse_params:
                 self.warehouse_store_edges = self.generate_warehouse_store_edges(warehouse_params['edges'], problem_params['n_warehouses'], problem_params['n_stores'], seeds['warehouse'])
+            if 'cluster_edges' in warehouse_params:
+                self.warehouse_cluster_edges = self.generate_warehouse_store_edges(warehouse_params['cluster_edges'], problem_params['n_warehouses'], problem_params['n_stores'], seeds['warehouse'])
             if 'edge_lead_times' in warehouse_params:
                 self.warehouse_store_edge_lead_times = self.generate_warehouse_store_edge_lead_times(warehouse_params['edge_lead_times'], self.warehouse_store_edges, seeds['warehouse'])
+            if 'demands_cap' in warehouse_params:
+                self.warehouse_demands_cap = self.generate_data_for_samples(warehouse_params['demands_cap'], problem_params['n_warehouses'], seeds['warehouse'])
+            if 'demands_cap_sampled' in warehouse_params:
+                value_range = warehouse_params['demands_cap_sampled']['value']
+                self.warehouse_demands_cap = torch.empty(self.demands.size(0), problem_params['n_warehouses'], self.demands.size(-1))
+                torch.manual_seed(seeds['demand'])
+                self.warehouse_demands_cap.uniform_(value_range[0], value_range[1])
+            if 'demands_cap_factor' in warehouse_params:
+                self.warehouse_demands_cap_factor = self.generate_data_for_samples(warehouse_params['demands_cap_factor'], problem_params['n_warehouses'], seeds['warehouse'])
+            if 'demands_cap_factor_sampled' in warehouse_params:
+                value_range = warehouse_params['demands_cap_factor_sampled']['value']
+                self.warehouse_demands_cap_factor = torch.empty(self.demands.size(0), problem_params['n_warehouses'], self.demands.size(-1))
+                torch.manual_seed(seeds['demand'])
+                self.warehouse_demands_cap_factor.uniform_(value_range[0], value_range[1])
 
         self.echelon_lead_times = None
         self.initial_echelon_inventories = None
@@ -335,6 +377,7 @@ class Scenario():
         """
 
         data =  {'demands': self.demands,
+                'demand_signals': self.demand_signals,
                 'underage_costs': self.underage_costs,
                 'holding_costs': self.holding_costs,
                 'lead_times': self.lead_times,
@@ -346,12 +389,15 @@ class Scenario():
                 'warehouse_holding_costs': self.warehouse_holding_costs,
                 'warehouse_edge_initial_cost': self.warehouse_edge_initial_cost,
                 'warehouse_edge_distance_cost': self.warehouse_edge_distance_cost,
+                'warehouse_demands_cap_factor': self.warehouse_demands_cap_factor,
+                'warehouse_demands_cap': self.warehouse_demands_cap,
                 'initial_echelon_inventories': self.initial_echelon_inventories,
                 'echelon_holding_costs': self.echelon_holding_costs,
                 'echelon_lead_times': self.echelon_lead_times,
                 'store_random_yield_mean': self.store_random_yield_mean,
                 'store_random_yield_std': self.store_random_yield_std,
                 'warehouse_store_edges': self.warehouse_store_edges,
+                'warehouse_cluster_edges': self.warehouse_cluster_edges,
                 'warehouse_store_edge_lead_times': self.warehouse_store_edge_lead_times,
                 }
 
@@ -394,6 +440,13 @@ class Scenario():
             split_by['sample_index'].append('warehouse_edge_initial_cost')
         if self.warehouse_edge_distance_cost is not None:
             split_by['sample_index'].append('warehouse_edge_distance_cost')
+
+        if self.warehouse_cluster_edges is not None:
+            split_by['sample_index'].append('warehouse_cluster_edges')
+        if self.warehouse_demands_cap_factor is not None:
+            split_by['sample_index'].append('warehouse_demands_cap_factor')
+        if self.warehouse_demands_cap is not None:
+            split_by['sample_index'].append('warehouse_demands_cap')
 
         if self.store_params['demand']['distribution'] == 'real':
             split_by['period'].append('demands')

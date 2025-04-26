@@ -7,8 +7,9 @@ import research_utils
 import json
 
 class MainRun:
-    def __init__(self, train_or_test, config_setting, config_hyperparams, tuning_configs = None, recorder_config_path=None, recorder_identifier=None, is_debugging=False):
+    def __init__(self, train_or_test, setting_name, config_setting, config_hyperparams, tuning_configs = None, recorder_config_path=None, recorder_identifier=None, is_debugging=False):
         self.train_or_test = train_or_test
+        self.setting_name = setting_name
         self.config_setting = config_setting
         self.config_hyperparams = config_hyperparams
         self.tuning_configs = tuning_configs
@@ -22,9 +23,9 @@ class MainRun:
             start_record = True
             if recorder_identifier is None:
                 start_record = False
-            self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams, start_record, recorder_identifier)
+            self.recorder = research_utils.Recorder(self.setting_name, self.config_setting, self.config_hyperparams, start_record, recorder_identifier)
         else:
-            self.recorder = research_utils.Recorder(self.config_setting, self.config_hyperparams)
+            self.recorder = research_utils.Recorder(self.setting_name, self.config_setting, self.config_hyperparams)
         self.set_debugging(is_debugging)
 
         self.extract_configs()
@@ -220,6 +221,20 @@ class MainRun:
                     discrete_allocation=self.store_params['demand']['distribution'] == 'poisson'
                 )
             print(f'Average per-period dev loss: {average_dev_loss_to_report}')
+        elif self.train_or_test == 'test_on_train':
+            with torch.no_grad():
+                average_train_loss, average_train_loss_to_report = self.trainer.test_on_train(
+                    self.loss_function,
+                    self.simulator,
+                    self.model,
+                    self.data_loaders,
+                    self.optimizer,
+                    self.problem_params,
+                    self.observation_params,
+                    self.params_by_dataset,
+                    discrete_allocation=self.store_params['demand']['distribution'] == 'poisson'
+                )
+            print(f'Average per-period train loss: {average_train_loss_to_report}')
         else:
             print(f'Invalid argument: {self.train_or_test}')
             assert False
@@ -240,7 +255,7 @@ if __name__ == "__main__":
     config_setting = load_yaml(f'config_files/settings/{setting_name}.yml')
     config_hyperparams = load_yaml(f'config_files/policies_and_hyperparams/{hyperparams_name}.yml')
     
-    main_run = MainRun(train_or_test, config_setting, config_hyperparams, None, recorder_config_path, recorder_identifier, True)
+    main_run = MainRun(train_or_test, setting_name, config_setting, config_hyperparams, None, recorder_config_path, recorder_identifier, True)
     import time
 
     start_time = time.time()

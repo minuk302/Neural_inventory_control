@@ -32,8 +32,8 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 20  # tested values: 3, 5, 10, 20, 30, 50
-  'n_warehouses': 2
+  'n_stores': 40  # tested values: 3, 5, 10, 20, 30, 50
+  'n_warehouses': 3
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': False
@@ -107,25 +107,32 @@ warehouse_params:
     'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
-    'value': [3, 3]
+    'value': [3, 3, 3]
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False
     'expand': True
-    'value': [0.2, 0.4]
+    'value': [0.2, 0.35, 0.4]
+  'edge_initial_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.5, 1.5, 1.0]
   'initial_inventory': 
     'sample': False
     'inventory_periods': 6  # Initial inventory will be of size max(inventory_periods, lead_time)
   'edge_lead_times':
     'value': [
-      [5, 0, 5, 5, 6, 4, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 5, 5, 4, 0],
-      [0, 3, 0, 0, 2, 0, 0, 2, 4, 4, 0, 3, 2, 4, 0, 0, 0, 0, 4, 3]
-      ]
+      [0, 2, 4, 4, 2, 4, 4, 3, 0, 2, 4, 2, 0, 4, 2, 2, 0, 4, 2, 2, 3, 3, 3, 4, 4, 3, 3, 4, 4, 3, 3, 0, 4, 1, 3, 4, 0, 4, 3, 3],
+      [4, 4, 4, 0, 0, 3, 0, 0, 0, 0, 0, 0, 4, 3, 4, 0, 4, 2, 4, 0, 4, 0, 0, 3, 4, 4, 0, 0, 0, 0, 3, 0, 2, 0, 4, 4, 3, 2, 0, 0],
+      [0, 4, 2, 3, 0, 4, 2, 4, 2, 0, 0, 0, 0, 3, 0, 4, 0, 4, 4, 0, 4, 4, 4, 3, 2, 3, 0, 4, 0, 0, 4, 3, 4, 4, 0, 2, 4, 4, 0, 4]
+    ]
   'edges':
     'value': [
-      [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-      [0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1]
-      ]
-echelon_params: 
+      [0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1],
+      [1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0],
+      [0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1]
+    ]
+echelon_params:
   null
 

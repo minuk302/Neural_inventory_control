@@ -11,17 +11,26 @@ trainer_params :
   'load_model_path': null
 
 optimizer_params: 
-  'learning_rate': 0.0003
+  'learning_rate': 0.001
 
 nn_params: 
-  'name': 'vanilla_n_warehouses'
+  'name': 'GNN_decentralized'
   'inner_layer_activations': 
-    'master': 'elu'
-  'output_layer_activation':  # We will apply (sigmoid x upper_bound) to warehouse intermediate outputs on forward method!
-    'master': null
+    'initial_node': 'elu'
+    'initial_edge': 'elu'
+    'output': 'elu'
+  'output_layer_activation':
+    'initial_node': 'elu'
+    'initial_edge': 'elu'
+    'output': 'softplus'
   'neurons_per_hidden_layer':
-    'master': [256, 256, 256]
+    'initial_node': [32, 32]
+    'initial_edge': [32, 32]
+    'output': [32, 32]
   'output_sizes':
-    'master': 44 # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
-  'initial_bias': null
-  'warehouse_upper_bound_mult': 10  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores
+    'initial_node': 32
+    'initial_edge': 32
+    'output': 1
+  'initial_bias':
+    'output': 5.0
+  'include_primitive_features': False

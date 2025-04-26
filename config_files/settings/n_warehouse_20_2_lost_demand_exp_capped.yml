@@ -32,27 +32,29 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 10  # tested values: 3, 5, 10, 20, 30, 50
-  'n_warehouses': 4
+  'n_stores': 20  # tested values: 3, 5, 10, 20, 30, 50
+  'n_warehouses': 2
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': False
   'report_test_loss': True
+  'exp_underage_cost': True
+  'holding_cost_is_ratio_of_underage_cost': True
 
 params_by_dataset : 
   'train': 
-    'n_samples': 32768  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
-    'batch_size': 4096
+    'n_samples': 8192  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
+    'batch_size': 1024
     'periods': 50 
     'ignore_periods': 30 
   'dev': 
-    'n_samples': 32768 
-    'batch_size': 32768 
+    'n_samples': 8192 
+    'batch_size': 8192 
     'periods': 50 
     'ignore_periods': 30 
   'test': 
-    'n_samples': 32768 
-    'batch_size': 32768 
+    'n_samples': 8192 
+    'batch_size': 8192 
     'periods': 500 
     'ignore_periods': 300
 
@@ -91,12 +93,12 @@ store_params:
     'sample_across_instances': True 
     'vary_across_samples': False
     'expand': False
-    'range': [0.7, 1.3]
+    'range': [0.8, 1.3]
   'underage_cost': 
     'sample_across_instances': True
     'vary_across_samples': False 
     'expand': False
-    'range': [6.3, 11.7]
+    'range': [0.7, 2]
   'initial_inventory': 
     'sample': True
     'range_mult': [0, 1]
@@ -107,26 +109,35 @@ warehouse_params:
     'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
-    'value': [6, 4, 4, 2]
+    'value': [3, 3]
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False
     'expand': True
-    'value': [0.2, 0.4, 0.6, 0.6]
+    'value': [0.2, 0.4]
+  'demands_cap_factor': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.9, 0.9]
   'initial_inventory': 
     'sample': False
-    'inventory_periods': 5  # Initial inventory will be of size max(inventory_periods, lead_time)
+    'inventory_periods': 3  # Initial inventory will be of size max(inventory_periods, lead_time)
   'edge_lead_times':
-    'vary_across_samples': False
-    'range': [[5, 7], [3, 5], [1, 3], [1, 3]]
+    'value': [
+      [3, 2, 3, 3, 1, 3, 3, 2, 2, 3, 3, 2, 2, 2, 3, 0, 0, 3, 3, 2],
+      [2, 0, 2, 3, 3, 2, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 2, 2, 1, 0]
+      ]
   'edges':
     'value': [
-      [1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-      [1, 1, 1, 0, 0, 0, 0, 0, 1, 0],
-      [0, 0, 0, 1, 1, 0, 0, 0, 0, 1],
-      [0, 0, 0, 0, 0, 0, 0, 0, 1, 1]
-    ]
-
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1],
+      [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
+      ]
+  'cluster_edges':
+    'value': [
+      [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1],
+      [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+      ]
 echelon_params: 
   null
 

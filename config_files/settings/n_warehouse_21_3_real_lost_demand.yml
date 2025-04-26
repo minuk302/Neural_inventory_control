@@ -30,33 +30,33 @@ test_seeds :  # seeds for test set
 
 sample_data_params:
   'split_by_period': True
-  'train_periods': (0, 121)
-  'dev_periods': (105, 171)
-  'test_periods': (122, 171)
+  'train_periods': (0, 111)
+  'dev_periods': (88, 141)
+  'test_periods': (118, 171)
 
 problem_params : 
-  'n_stores': 46  # tested values: 3, 5, 10, 20, 30, 50
-  'n_warehouses': 1
+  'n_stores': 21  # tested values: 3, 5, 10, 20, 30, 50
+  'n_warehouses': 3
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': True
-  'report_test_loss': False
+  'report_test_loss': True
 
 params_by_dataset : 
   'train': 
-    'n_samples': 109
-    'batch_size': 109 
-    'periods': 105
+    'n_samples': 288
+    'batch_size': 72
+    'periods': 95
     'ignore_periods': 16
   'dev': 
-    'n_samples': 109
-    'batch_size': 109
-    'periods': 50
+    'n_samples': 288
+    'batch_size': 288
+    'periods': 37
     'ignore_periods': 16 
   'test': 
-    'n_samples': 416 
-    'batch_size': 416 
-    'periods': 32 
+    'n_samples': 288 
+    'batch_size': 288
+    'periods': 37 
     'ignore_periods': 16
 
 observation_params:
@@ -73,14 +73,14 @@ observation_params:
     'store_orders': 4
     'warehouse_arrivals': 4
     'warehouse_orders': 4
-  'time_features_file': '/user/ml4723/Prj/NIC/data_files/favorita_one_warehouse/dates_with_info.csv'
+  'time_features_file': '/user/ml4723/Prj/NIC/data_files/favorita_21_stores/dates_with_info.csv'
   'time_features':
     ['days_from_christmas']
 
 store_params: 
   'demand': 
     'distribution': 'real'
-    'file_location': '/user/ml4723/Prj/NIC/data_files/favorita_one_warehouse/weekly_sales.pt'
+    'file_location': '/user/ml4723/Prj/NIC/data_files/favorita_21_stores/weekly_sales.pt'
     'sample_across_instances': False
     'expand': False
     'clip': False
@@ -99,29 +99,42 @@ store_params:
     'sample_across_instances': True
     'vary_across_samples': True 
     'expand': False
-    'range': [6.3, 11.7]
+    'range': [4.9, 9.1]
   'initial_inventory': 
     'sample': False
-    'inventory_periods': 6
+    'inventory_periods': 4
 
 warehouse_params: 
   'lead_time': 
     'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
-    'value': [3]
+    'value': [3, 3, 3]
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False
     'expand': True
-    'value': [0.3]
+    'value': [0.2, 0.4, 0.1]
+  'edge_initial_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.5, 1.5, 1.0]
   'initial_inventory': 
     'sample': False
-    'inventory_periods': 3  # Initial inventory will be of size max(inventory_periods, lead_time)
+    'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)
   'edge_lead_times':
-    'value': [[4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 4, 4, 5, 4, 2, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 5, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 5]]
+    'value': [
+      [4., 4., 4., 4., 3., 3., 2., 2., 2., 2., 2., 3., 2., 2., 4., 4., 4., 4., 4., 3., 2.],
+      [2., 2., 2., 2., 3., 4., 3., 3., 3., 3., 3., 4., 3., 4., 2., 2., 2., 2., 2., 3., 3.],
+      [3., 3., 3., 3., 2., 4., 3., 3., 3., 3., 3., 4., 3., 4., 3., 3., 3., 3., 3., 2., 3.]
+    ]
   'edges':
-    'value': [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]
+    'value': [
+      [1., 1., 1., 0., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+      [1., 1., 1., 1., 1., 0., 1., 1., 1., 1., 0., 0., 0., 0., 1., 1., 1., 1., 1., 1., 1.],
+      [1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 0., 1., 1., 1., 1., 1., 1., 1., 1., 1.]
+    ]
 echelon_params: 
   null
 

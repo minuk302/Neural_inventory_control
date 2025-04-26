@@ -14,30 +14,22 @@ optimizer_params:
   'learning_rate': 0.001
 
 nn_params: 
-  'name': 'GNN'
+  'name': 'GNN_decentralized_transshipment'
   'inner_layer_activations': 
     'initial_node': 'elu'
     'initial_edge': 'elu'
-    'node_update': 'elu'
-    'edge_update': 'elu'
     'output': 'elu'
   'output_layer_activation':
     'initial_node': 'elu'
     'initial_edge': 'elu'
-    'node_update': 'elu'
-    'edge_update': 'elu'
     'output': 'softplus'
   'neurons_per_hidden_layer':
     'initial_node': [32, 32]
     'initial_edge': [32, 32]
-    'node_update': [32, 32]
-    'edge_update': [32, 32]
     'output': [32, 32]
   'output_sizes':
     'initial_node': 32
     'initial_edge': 32
-    'node_update': 32
-    'edge_update': 32
     'output': 1
   'initial_bias':
     'output': 5.0

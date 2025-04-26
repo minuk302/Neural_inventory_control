@@ -62,6 +62,8 @@ class RayResultsinterpreter:
                         'n_MP': 'n_MP',
                         'train_dev_sample_and_batch_size': 'train_dev_sample_and_batch_size',
                         'dev_periods': 'dev_periods',
+                        'store_holding_cost': 'store_holding_cost',
+                        'config': 'config',
                     }
                     result = {}
                     for key, value in param_dict.items():
@@ -80,7 +82,7 @@ class RayResultsinterpreter:
                     data = data.dropna(subset=loss_columns)
                     
                     if len(data) == 0:
-                        raise Exception("All rows contained NaN values in loss columns")
+                        continue
                         
                     if 'test_loss' in data:
                         result['best_test_loss'] = data['test_loss'].min()
@@ -122,8 +124,16 @@ class RayResultsinterpreter:
             if len(conditions.keys()) == 0:
                 grouped = [('', df)]  # Single group with empty name and all data
             elif len(conditions.keys()) == 1:
-                grouped = df.groupby(list(conditions.keys())[0])
+                # Handle list values by converting them to tuples for grouping
+                key = list(conditions.keys())[0]
+                if df[key].apply(lambda x: isinstance(x, list)).any():
+                    df[key] = df[key].apply(tuple)
+                grouped = df.groupby(key)
             else:
+                # Handle list values by converting them to tuples for grouping
+                for key in conditions.keys():
+                    if df[key].apply(lambda x: isinstance(x, list)).any():
+                        df[key] = df[key].apply(tuple)
                 grouped = df.groupby(list(conditions.keys()))
             for group_name, group_df in grouped:
                 top_row = group_df.iloc[0]

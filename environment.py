@@ -51,6 +51,9 @@ class Simulator(gym.Env):
             'period_shift': observation_params['demand']['period_shift'],
             'store_random_yields': data['store_random_yields'] if 'store_random_yields' in data else None
             }
+
+        if 'demand_signals' in data:
+            self._internal_data['demand_signals'] = data['demand_signals']
         
         if observation_params['time_features'] is not None:
             self._internal_data.update({k: data[k] for k in observation_params['time_features']})
@@ -113,7 +116,30 @@ class Simulator(gym.Env):
             Each value is a tensor of size batch_size x n_locations, where n_locations is the number of stores or warehouses
         """
 
+        data = {}
         current_demands = self.get_current_demands(self._internal_data)
+
+        if self.recorder.is_recording:
+            for i in range(current_demands.size(1)):
+                data[f's_{i}_demand'] = current_demands.detach().cpu()[:, i]
+                if 'mean' in self.observation:
+                    data[f's_{i}_demand_mean'] = self.observation['mean'].detach().cpu()[:, i]
+                if 'std' in self.observation:
+                    data[f's_{i}_demand_std'] = self.observation['std'].detach().cpu()[:, i]
+                if 'demand_signals' in self._internal_data:
+                    data[f's_{i}_demand_signal'] = self._internal_data['demand_signals'].detach().cpu()[:, i, self.get_current_period()]
+                data[f's_{i}_underage_costs'] = self.observation['underage_costs'].detach().cpu()[:, i]
+                data[f's_{i}_holding_costs'] = self.observation['holding_costs'].detach().cpu()[:, i]
+                if 'store_random_yields' in self._internal_data and self._internal_data['store_random_yields'] is not None:
+                    data[f's_{i}_random_yields'] = self._internal_data['store_random_yields'].detach().cpu()[:, i, self.get_current_period()]
+                for inv_loc in range(self.observation['store_inventories'].size(-1)):
+                    data[f's_{i}_inventory_{inv_loc}'] = self.observation['store_inventories'].detach().cpu()[:, i, inv_loc]
+                if self.problem_params['n_warehouses'] > 0:
+                    for j in range(self.problem_params['n_warehouses']):
+                        data[f's_{i}_w_{j}_order'] = action['stores'].detach().cpu()[:, i, j]
+            if self.problem_params['n_warehouses'] > 0:
+                for i in range(self.problem_params['n_warehouses']):
+                    data[f'w_{i}_inventory'] = self.observation['warehouse_inventories'].detach().cpu()[:, i, 0]
         
         # Update observation corresponding to past occurrences (e.g., arrivals, orders, demands).
         # Do this before updating current period (as we consider current period + 1)
@@ -152,14 +178,13 @@ class Simulator(gym.Env):
             reward += e_reward
         
         if self.recorder.is_recording:
-            data = {
-                's_underage_costs': s_underage_costs.cpu().sum(dim=1),
-                's_holding_costs': s_holding_costs.cpu().sum(dim=1),
-                }
+            data['s_underage_costs'] = s_underage_costs.cpu().sum(dim=1)
+            data['s_holding_costs'] = s_holding_costs.cpu().sum(dim=1)
             if self.problem_params['n_warehouses'] > 0:
                 for i in range(w_holding_costs.size(1)):
                     data[f'w_{i}_holding_costs'] = w_holding_costs.detach().cpu()[:, i]
                     data[f'w_{i}_edge_costs'] = w_edge_costs.detach().cpu()[:, i].sum(dim=-1)
+                
             if  self.problem_params['n_extra_echelons'] > 0:
                 data['e1_holding_costs'] = e_reward_per_store[:, 0].cpu()
                 data['e2_holding_costs'] = e_reward_per_store[:, 1].cpu()
@@ -252,18 +277,39 @@ class Simulator(gym.Env):
         reward = holding_costs.sum(dim=1) 
 
         edge_costs = torch.zeros_like(holding_costs)
-        if 'warehouse_edge_initial_cost' in observation and 'warehouse_edge_distance_cost' in observation:
-            if 'warehouse_store_edge_lead_times' in self.observation:
-                initial_edge_cost = observation['warehouse_edge_initial_cost'].unsqueeze(-1) * action['stores'].transpose(1,2)
+        if 'warehouse_edge_initial_cost' in observation:
+            initial_edge_cost = observation['warehouse_edge_initial_cost'].unsqueeze(-1) * action['stores'].transpose(1,2)
+            edge_costs = initial_edge_cost
+            if 'warehouse_edge_distance_cost' in observation:
+                if 'warehouse_store_edge_lead_times' not in self.observation:
+                    raise ValueError('Warehouse edge lead times not found but required for distance cost')
                 distance_edge_cost = observation['warehouse_edge_distance_cost'].unsqueeze(-1) * observation['warehouse_store_edge_lead_times'] * action['stores'].transpose(1,2)
-                edge_costs = initial_edge_cost + distance_edge_cost
-            else:
-                raise ValueError('Warehouse edge lead times not found')
+                edge_costs = edge_costs + distance_edge_cost
             reward += edge_costs.sum(dim=2).sum(dim=1)
+        
+        order_amount = action['warehouses']
+        if 'warehouse_cluster_edges' in observation and 'mean' in observation and 'warehouse_demands_cap_factor' in observation:
+            cluster_demands = torch.matmul(observation['warehouse_cluster_edges'], observation['mean'].unsqueeze(-1)).squeeze(-1)
+            if observation['warehouse_demands_cap_factor'].ndim == 2:
+                order_cap = cluster_demands * observation['warehouse_demands_cap_factor']
+            elif observation['warehouse_demands_cap_factor'].ndim == 3:
+                order_cap = cluster_demands * observation['warehouse_demands_cap_factor'][:, :, self.get_current_period()]
+            else:
+                raise ValueError('Warehouse demands cap factor has wrong number of dimensions')
+            order_amount = torch.clip(order_amount, max=order_cap)
+        
+        if 'warehouse_demands_cap' in observation:
+            if observation['warehouse_demands_cap'].ndim == 2:
+                order_amount = torch.clip(order_amount, max=observation['warehouse_demands_cap'])
+            elif observation['warehouse_demands_cap'].ndim == 3:
+                order_amount = torch.clip(order_amount, max=observation['warehouse_demands_cap'][:, :, self.get_current_period()])
+            else:
+                raise ValueError('Warehouse demands cap has wrong number of dimensions')
+
         observation['warehouse_inventories'] = self.update_inventory_for_lead_times(
             warehouse_inventory, 
             post_warehouse_inventory_on_hand, 
-            action['warehouses'], 
+            order_amount, 
             observation['warehouse_lead_times'], 
             self._internal_data['warehouse_allocation_shift'],
             None,
@@ -314,6 +360,12 @@ class Simulator(gym.Env):
                 observation['warehouse_edge_initial_cost'] = data['warehouse_edge_initial_cost']
             if 'warehouse_edge_distance_cost' in data:
                 observation['warehouse_edge_distance_cost'] = data['warehouse_edge_distance_cost']
+            if 'warehouse_cluster_edges' in data:
+                observation['warehouse_cluster_edges'] = data['warehouse_cluster_edges']
+            if 'warehouse_demands_cap_factor' in data:
+                observation['warehouse_demands_cap_factor'] = data['warehouse_demands_cap_factor']
+            if 'warehouse_demands_cap' in data:
+                observation['warehouse_demands_cap'] = data['warehouse_demands_cap']
         
         if self.problem_params['n_extra_echelons'] > 0:
             observation['echelon_lead_times'] = data['echelon_lead_times']
@@ -421,7 +473,7 @@ class Simulator(gym.Env):
                 dim=2
                 ).to(dtype=allocation.dtype).put(
                     (allocation_shifter + lead_times.long() - 1).flatten(),  # Indexes where to 'put' allocation in long vector
-                    allocation.flatten(),  # Values to 'put' in long vector 
+                    torch.where(lead_times == 1, allocation * (random_yields.unsqueeze(-1) if allocation.ndim > random_yields.ndim else random_yields), allocation).flatten(),  # Apply random yields only when lead time is 1
                     accumulate=True  # True means adding to existing values, instead of replacing
                     )
 
