@@ -139,7 +139,7 @@ class MyNeuralNetwork(nn.Module):
     def initialize_bias(self, key, pos, value):
         self.layers[key][pos].bias.data.fill_(value)
     
-    def apply_proportional_allocation(self, store_intermediate_outputs, warehouse_inventories, transshipment = False):
+    def apply_proportional_allocation(self, store_intermediate_outputs, warehouse_inventories, transshipment = False, soft_min = False):
         """
         Apply proportional allocation feasibility enforcement function to store intermediate outputs.
         It assigns inventory proportionally to the store order quantities, whenever inventory at the
@@ -148,13 +148,24 @@ class MyNeuralNetwork(nn.Module):
 
         total_limiting_inventory = warehouse_inventories[:, 0, 0]  # Total inventory at the warehouse
         sum_allocation = store_intermediate_outputs.sum(dim=1)  # Sum of all store order quantities
-
-        # Multiply current allocation by minimum between inventory/orders and 1
+        
+        ratio = total_limiting_inventory / (sum_allocation + torch.finfo(sum_allocation.dtype).eps)
         if transshipment == False:
-            return torch.multiply(store_intermediate_outputs,
-                               torch.clip(total_limiting_inventory / (sum_allocation + 0.000000000000001), max=1)[:, None])
+            if soft_min:
+                # Use log-sum-exp approximation to min(ratio, 1)
+                epsilon = 1e-1  # Smoothing parameter
+                one = torch.ones_like(ratio)
+
+                min_approx = -epsilon * torch.logsumexp(
+                    torch.stack([-ratio, -one], dim=0) / epsilon,
+                    dim=0
+                )
+                result = torch.multiply(store_intermediate_outputs, min_approx[:, None])
+            else:
+                result = torch.multiply(store_intermediate_outputs, torch.clip(ratio, max=1)[:, None])
         else:
-            return torch.multiply(store_intermediate_outputs, (total_limiting_inventory / (sum_allocation + 0.000000000000001))[:, None])
+            result = torch.multiply(store_intermediate_outputs, ratio[:, None])
+        return result
     
     def apply_softmax_feasibility_function(self, store_intermediate_outputs, warehouse_inventory, transshipment=False):
         """
@@ -179,10 +190,11 @@ class MyNeuralNetwork(nn.Module):
         if not transshipment:
             softmax_outputs = softmax_outputs[:, :-1]
 
-        return torch.multiply(
+        result = torch.multiply(
             softmax_outputs, 
             total_warehouse_inv[:, None]
             )
+        return result
 
     def flatten_then_concatenate_tensors(self, tensor_list, dim=1):
         """
@@ -384,48 +396,31 @@ class VanillaSerial(MyNeuralNetwork):
             'echelons': allocations[:, : n_extra_echelons],
                 }
 
-class VanillaSerial_proportional(MyNeuralNetwork):
-    """
-    Vanilla NN for serial system
-    """
 
+class VanillaSerialSelfloop(MyNeuralNetwork):
     def forward(self, observation):
-        """
-        We apply a sigmoid to the output of the master neural network, and multiply by the inventory on hand for the preceding location,
-        except for the left-most location, where we multiply by an upper bound on orders.
-        """
         store_inventories, warehouse_inventories, echelon_inventories = self.unpack_args(
             observation, ['store_inventories', 'warehouse_inventories', 'echelon_inventories'])
         n_extra_echelons = echelon_inventories.size(1)
         
         input_tensor = self.flatten_then_concatenate_tensors([store_inventories, warehouse_inventories, echelon_inventories])
-        x = self.net['master'](torch.tensor(input_tensor).to(self.device))  # Constant base stock levels
-        # print(f'self.warehouse_upper_bound: {self.warehouse_upper_bound}')
-        # assert False
+        outputs = self.net['master_echelon_selfloop'](torch.tensor(input_tensor).to(self.device))
+        loop_outputs = outputs[:, 2 + n_extra_echelons:]
+        non_loop_outputs = outputs[:, :2 + n_extra_echelons]
 
-        # Tensor with the inventory on hand for the preceding location for each location k
-        # For the left-most location, we set it to an upper bound (same as warehouse upper bound). Currently 4 times mean demand.
-        shifted_inv_on_hand = torch.concat((
-            #self.warehouse_upper_bound.unsqueeze(1).expand(echelon_inventories.shape[0], -1),
-            torch.zeros(echelon_inventories.size(0), 1, device=self.device),
-            echelon_inventories[:, :, 0], 
-            warehouse_inventories[:, :, 0]), 
-            dim=1
-            )
-        # print(f'x: {x.shape}')
-        # print(f'shifted_inv_on_hand: {shifted_inv_on_hand.shape}')
-        # print(f"self.activation_functions['sigmoid'](x): {self.activation_functions['sigmoid'](x)[0]}")
-        allocations = torch.min(x, shifted_inv_on_hand)
-        allocations[:, 0] = x[:, 0]
-        # print(f'allocations[0]: {allocations[0]}')
-
-
+        echelon_allocations = []
+        for j in range(n_extra_echelons):
+            if j == 0:  # First echelon
+                echelon_allocations.append(non_loop_outputs[:, j:j+1])
+            else:
+                echelon_allocations.append(self.apply_proportional_allocation(torch.cat([non_loop_outputs[:, j:j+1], loop_outputs[:, j-1:j]], dim=1), echelon_inventories[:,j-1:j])[:, :-1])
+        warehouse_allocation = self.apply_proportional_allocation(torch.cat([non_loop_outputs[:, -2: -1], loop_outputs[:, -2:-1]], dim=1), echelon_inventories[:,-1:, :])[:, :-1]
+        store_allocation = self.apply_proportional_allocation(torch.cat([non_loop_outputs[:, -1:], loop_outputs[:, -1:]], dim=1), warehouse_inventories)[:, :-1]
         return {
-            'stores': allocations[:, -1:],
-            'warehouses': allocations[:, -2: -1],
-            'echelons': allocations[:, : n_extra_echelons],
-                } 
-
+            'stores': store_allocation,
+            'warehouses': warehouse_allocation,
+            'echelons': torch.cat(echelon_allocations, dim=1),
+                }
 
 class CBS_One_Warehouse(MyNeuralNetwork):
     def forward(self, observation):
@@ -527,6 +522,35 @@ class VanillaOneWarehouse(MyNeuralNetwork):
             }
 
 
+class VanillaOneWarehouseSelfloop(MyNeuralNetwork):
+    def forward(self, observation):
+        store_inventories, warehouse_inventories = observation['store_inventories'], observation['warehouse_inventories']
+        n_stores = store_inventories.size(1)
+        input_tensor = torch.cat((store_inventories.flatten(start_dim=1), warehouse_inventories.flatten(start_dim=1)), dim=1)
+        
+        if self.__class__.__name__ == 'VanillaTransshipmentSelfloop':
+            intermediate_outputs = self.net['master'](input_tensor)
+            store_intermediate_outputs, warehouse_allocation = intermediate_outputs[:, :n_stores], intermediate_outputs[:, n_stores:]
+            store_allocation = self.apply_proportional_allocation(
+                store_intermediate_outputs, 
+                warehouse_inventories,
+                transshipment=True
+                )
+        else:
+            intermediate_outputs = self.net['master_selfloop'](input_tensor)
+            store_intermediate_outputs, warehouse_allocation, self_loop_outputs = intermediate_outputs[:, :n_stores], intermediate_outputs[:, n_stores:-1], intermediate_outputs[:, -1:]
+            allocations = self.apply_proportional_allocation(
+                torch.cat([store_intermediate_outputs, self_loop_outputs], dim=1), 
+                warehouse_inventories)
+            store_allocation = allocations[:, :-1]
+        return {
+            'stores': store_allocation, 
+            'warehouses': warehouse_allocation
+            }
+
+class VanillaTransshipmentSelfloop(VanillaOneWarehouseSelfloop):
+    pass
+
 class Vanilla_N_Stores(MyNeuralNetwork):
     def forward(self, observation):
         # Flatten input, except for the batch dimension
@@ -542,13 +566,7 @@ class Vanilla_N_Stores(MyNeuralNetwork):
 
 class N_Stores_Shared_Net(MyNeuralNetwork):
     def forward(self, observation):
-        # Flatten input, except for the batch dimension
-        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        x = torch.cat([observation['store_inventories'], store_params], dim=2)
-
-        # Pass through network
-        # NN architecture has to be such that output is non-negative
+        x = observation['store_inventories']
         x = self.net['master'](x).squeeze(-1) + 1
         x = self.activation_functions['softplus'](x)
         return {
@@ -586,6 +604,36 @@ class N_Stores_Per_Store_Net(MyNeuralNetwork):
 
         return {
             'stores': x, 
+            }
+
+class Vanilla_N_Warehouses_Selfloop(MyNeuralNetwork):
+    def forward(self, observation):
+        store_inventories, warehouse_inventories = observation['store_inventories'], observation['warehouse_inventories']
+        n_stores = store_inventories.size(1)
+        n_warehouses = warehouse_inventories.size(1)
+        input_tensor = torch.cat((store_inventories.flatten(start_dim=1), warehouse_inventories.flatten(start_dim=1)), dim=1)
+        outputs = self.net['master_n_warehouses_selfloop'](input_tensor)
+        intermediate_outputs = outputs[:, :-n_warehouses]
+        self_loop_outputs = outputs[:, -n_warehouses:]
+        warehouse_allocation = intermediate_outputs[:, :n_warehouses]
+        edge_mask = observation['warehouse_store_edges'].transpose(1,2)
+        store_intermediate_outputs = intermediate_outputs[:, n_warehouses:].reshape(intermediate_outputs.size(0), n_stores, n_warehouses)
+        
+        store_allocation = []
+        for warehouse_idx in range(warehouse_inventories.size(1)):
+            connected_stores_mask = edge_mask[:, :, warehouse_idx]
+            connected_store_outputs = store_intermediate_outputs[:, :, warehouse_idx] 
+            connected_store_outputs = connected_store_outputs * connected_stores_mask
+            connected_store_outputs = connected_store_outputs.masked_fill(~connected_stores_mask.bool(), float('-inf'))
+            allocations = self.apply_proportional_allocation(
+                torch.cat([connected_store_outputs, self_loop_outputs[:, warehouse_idx:warehouse_idx+1]], dim=1), 
+                warehouse_inventories[:,warehouse_idx:warehouse_idx+1])
+            store_allocation.append(allocations[:, :-1])
+        store_allocation = torch.stack(store_allocation, dim=2)
+
+        return {
+            'stores': store_allocation, 
+            'warehouses': warehouse_allocation
             }
 
 class Vanilla_N_Warehouses(MyNeuralNetwork):
@@ -649,638 +697,6 @@ class Vanilla_N_Warehouses(MyNeuralNetwork):
             'stores': store_allocation, 
             'warehouses': warehouse_allocation
             }
-
-class GNN_MP(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.use_attention = 'use_attention' in args and args['use_attention']
-        self.n_stores = problem_params['n_stores']
-        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
-                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
-                          / torch.tensor(self.n_stores + 1, device=self.device)
-        self.use_pna = 'use_pna' in args and args['use_pna']
-        self.NN_per_layer = 'NN_per_layer' in args and args['NN_per_layer']
-        self.skip_connection = 'skip_connection' in args and args['skip_connection']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'holding_costs', 'lead_times', 'underage_costs']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def get_network(self, layer_name, layer_idx):
-        if self.NN_per_layer:
-            return self.net[f'{layer_name}_{layer_idx+1}']
-        else:
-            return self.net[layer_name]
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len)),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-            ], dim=2)
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-        if 'echelon_inventories' in observation:
-            echelon_inventories = observation['echelon_inventories']
-            warehouse_inventories = observation['warehouse_inventories']
-            echelon_inv_len = echelon_inventories.size(2)
-
-            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['lead_times'].unsqueeze(2), observation['underage_costs'].unsqueeze(2)], dim=-1)
-            warehouse_state = torch.cat([warehouse_inventories, observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
-            echelon_state = torch.cat([echelon_inventories, observation['echelon_holding_costs'].unsqueeze(2), observation['echelon_lead_times'].unsqueeze(2)], dim=-1)
-    
-            store_primitives_len = store_state.size(2) - store_inv_len
-            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-            echelon_primitives_len = echelon_state.size(2) - echelon_inv_len
-            max_primitives_len = max(store_primitives_len, warehouse_primitives_len, echelon_primitives_len)
-
-            n_echelons = echelon_inventories.size(1)
-            max_inv_len = max(store_inv_len, warehouse_inv_len, echelon_inv_len)
-
-            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-            echelon_padded = pad_features(echelon_state, echelon_inv_len, max_inv_len, max_primitives_len)
-
-            states = torch.cat([echelon_padded, warehouse_padded, store_padded], dim=1)
-
-            face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-            face_encoding[:, :1, 0] = 1  
-            face_encoding[:, -1:, 1] = 1
-
-            n_MP = 1 + n_echelons
-        else:
-            store_state = self.get_store_inventory_and_params(observation)
-            warehouse_state = torch.cat([observation['warehouse_inventories'], observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
-            max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-            store_primitives_len = store_state.size(2) - store_inv_len
-            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-            max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-
-            states = torch.cat([warehouse_padded, store_padded], dim=1)
-
-            face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-            face_encoding[:, :1, 0] = 1 # warehouse, supply-facing
-            face_encoding[:, 1:, 1] = 1 # stores, demand-facing
-
-            n_MP = 2
-        
-        states = torch.cat([states, face_encoding], dim=-1)
-        initial_nodes = self.net['initial_embedding'](states)
-        nodes = initial_nodes
-        for layer_idx in range(n_MP):
-            embedded_nodes = self.get_network('node_embedding', layer_idx)(nodes)
-            if 'echelon_inventories' in observation:
-                zero_node = torch.zeros_like(embedded_nodes[:, :1])
-                update_input = torch.cat([
-                    nodes,
-                    torch.cat([zero_node, embedded_nodes[:, :-1]], dim=1), 
-                    torch.cat([embedded_nodes[:, 1:], zero_node], dim=1)
-                ], dim=-1)
-            else:
-                store_supplier_aggregation = embedded_nodes[:, :1].expand(-1, store_state.size(1), -1)
-                store_recipient_aggregation = torch.zeros_like(embedded_nodes[:, 1:])
-                
-                warehouse_supplier_aggregation = torch.zeros_like(embedded_nodes[:, :1])
-                if self.use_attention:
-                    attention_input = torch.cat([embedded_nodes[:, :1].expand(-1, store_state.size(1), -1),embedded_nodes[:, 1:]], dim = -1)
-                    attention_weights = self.net['attention'](attention_input)
-                    attention_weights = F.softmax(attention_weights, dim=2)
-                    warehouse_recipient_aggregation = torch.sum(attention_weights * embedded_nodes[:, 1:], dim=1, keepdim=True)
-                else:
-                    warehouse_recipient_aggregation = embedded_nodes[:, 1:].mean(dim=1, keepdim=True)
-                update_input = torch.cat(
-                    [torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
-                     torch.cat([nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
-                    dim=1
-                )
-
-            updates = self.get_network('update_embedding', layer_idx)(update_input)
-            nodes = nodes + updates
-
-            # if self.use_attention:
-            #     def construct_target_nodes_and_attention_input(self_nodes, supplier_nodes, recipient_nodes):
-            #         self_node_padded = F.pad(self_nodes, (0,2)).unsqueeze(2)
-            #         supplier_padded = F.pad(supplier_nodes, (0,2))
-            #         supplier_padded[:, :, :, -2] = 1
-            #         recipient_padded = F.pad(recipient_nodes, (0,2))
-            #         recipient_padded[:, :, :, -1] = 1
-            #         target_nodes = torch.cat([self_node_padded, supplier_padded, recipient_padded], dim=2)
-                
-            #         expanded_self_nodes = self_nodes.unsqueeze(2).expand(-1, -1, target_nodes.size(2), -1)
-            #         attention_input = torch.cat([expanded_self_nodes, target_nodes], dim=-1)
-            #         return target_nodes, attention_input
-
-            #     zero_node = torch.zeros_like(embedded_nodes[:, :1])
-            #     if 'echelon_inventories' in observation: # serial system
-            #         target_nodes, attention_input = construct_target_nodes_and_attention_input(
-            #             embedded_nodes,
-            #             torch.cat([zero_node, embedded_nodes[:, :-1]], dim=1).unsqueeze(2),
-            #             torch.cat([embedded_nodes[:, 1:], zero_node], dim=1).unsqueeze(2),
-            #         )
-            #     else:
-            #         warehouse_target_nodes, warehouse_attention_input = construct_target_nodes_and_attention_input(
-            #             embedded_nodes[:, :1],
-            #             zero_node.unsqueeze(1),
-            #             embedded_nodes[:, 1:].unsqueeze(1),
-            #         )
-
-            #         store_target_nodes, store_attention_input = construct_target_nodes_and_attention_input(
-            #             embedded_nodes[:, 1:],
-            #             embedded_nodes[:, :1].expand(-1, store_state.size(1), -1).unsqueeze(2),
-            #             zero_node.expand(-1, store_state.size(1), -1).unsqueeze(2),
-            #         )
-
-            #     attention_weights = self.net['attention'](attention_input)  # [samples, nodes, nodes, 1]
-            #     attention_weights = F.softmax(attention_weights, dim=2)  # Normalize over target nodes
-                
-            #     # Apply attention weights to aggregate nodes
-            #     update_input = torch.sum(attention_weights * target_nodes, dim=2)  # [samples, nodes, embedding]
-            #     nodes = self.net['update_embedding'](update_input)
-            # elif self.use_pna:
-            #     aggregators = [
-            #         lambda x: x.mean(dim=1),
-            #         lambda x: x.min(dim=1)[0],
-            #         lambda x: x.max(dim=1)[0],
-            #         lambda x: x.std(dim=1) if x.size(1) > 1 else torch.zeros_like(x[:,0])
-            #     ]
-            #     aggregated_stores = torch.stack([agg(store_nodes_embedded) for agg in aggregators], dim=1)
-            #     aggregated_warehouse = torch.stack([agg(warehouse_node_embedded) for agg in aggregators], dim=1)
-                
-            #     scalers = [
-            #         lambda x: x,  # identity
-            #         lambda x: x * (torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)) / self.pna_delta),  # amplification
-            #         lambda x: x * (self.pna_delta / torch.log(torch.tensor(store_inventory_and_params.size(1) + 1, device=self.device)))  # attenuation
-            #     ]
-            #     scaled_stores = torch.cat([scale(aggregated_stores) for scale in scalers], dim=1)
-            #     scaled_warehouse = torch.cat([scale(aggregated_warehouse) for scale in scalers], dim=1)
-                
-            #     store_aggregation = scaled_warehouse.unsqueeze(1).expand(-1, store_nodes.size(1), -1, -1).view(scaled_warehouse.size(0),self.n_stores,-1)
-            #     warehouse_aggregation = scaled_stores.view(scaled_stores.size(0),1,-1)
-            # else:            # Log intermediate node states
-
-
-        if self.skip_connection:
-            outputs = self.net['output'](torch.cat([states, nodes], dim=-1))
-        else:
-            outputs = self.net['output'](nodes)
-
-        if 'echelon_inventories' in observation:
-            def proportional_minimum(x, y):
-                return torch.min(x, y)
-            echelon_allocations = []
-            for j in range(outputs.size(1) - 2):
-                if j == 0:  # First echelon
-                    echelon_allocations.append(outputs[:, j:j+1, 0])
-                else:
-                    echelon_allocations.append(proportional_minimum(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j,0]))
-            warehouse_allocation = proportional_minimum(outputs[:, -2: -1, 0], echelon_inventories[:,-1,:1])
-            store_allocation = proportional_minimum(outputs[:, -1:, 0], warehouse_inventories[:,:,0])
-
-
-            if self.is_debugging:
-                debug_dir = "/user/ml4723/Prj/NIC/debug"
-                if self.debug_identifier is not None:
-                    debug_dir = debug_dir + self.debug_identifier
-                os.makedirs(debug_dir, exist_ok=True)
-                for sample_idx in range(32):
-                    with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                        inventory_state = []
-                        numeric_inventories = []  # List to store all inventory values
-                        
-                        # Process echelon inventories
-                        for echelon_idx in range(echelon_inventories.size(1)):
-                            lead_time = observation['echelon_lead_times'][sample_idx, echelon_idx].item()
-                            echelon_inv = echelon_inventories[sample_idx, echelon_idx, :int(lead_time)].detach().cpu().numpy()
-                            if echelon_idx > 0:
-                                inventory_state.append('|')
-                            inventory_state.extend(echelon_inv[::-1])
-                            numeric_inventories.extend(echelon_inv[::-1])
-                        
-                        # Process warehouse inventories
-                        inventory_state.append('|')
-                        warehouse_inv = warehouse_inventories[sample_idx, :, :].detach().cpu().numpy().flatten()
-                        inventory_state.extend(warehouse_inv[::-1])
-                        numeric_inventories.extend(warehouse_inv[::-1])
-                        
-                        # Process store inventories
-                        inventory_state.append('|')
-                        lead_time = observation['lead_times'][sample_idx, 0].detach().cpu().numpy()
-                        store_inv = observation['store_inventories'][sample_idx, 0, :int(lead_time)].detach().cpu().numpy()[::-1]
-                        inventory_state.extend(store_inv)
-                        numeric_inventories.extend(store_inv)
-                        
-                        # Write inventory with separators
-                        f.write("inventory: [")
-                        for i, x in enumerate(inventory_state):
-                            if isinstance(x, str):
-                                f.write(f" {x} ")
-                            else:
-                                f.write(f"{x:.1f}")
-                                if i < len(inventory_state)-1 and isinstance(inventory_state[i+1], str) == False:
-                                    f.write(", ")
-                        f.write("]\n")
-                        
-                        # Calculate and write sum and std of all inventories
-                        total_sum = np.sum(numeric_inventories)
-                        total_std = np.std(numeric_inventories)
-                        f.write(f"sum: {total_sum:.1f}, std: {total_std:.1f}\n")
-                        
-                        # Write outputs with aligned labels
-                        raw_outputs = []
-                        for j in range(outputs.size(1)):
-                            raw_outputs.append(outputs[sample_idx, j, 0].detach().item())
-                        f.write(f"outputs: [{', '.join(f'{x:.1f}' for x in raw_outputs)}]\n")
-                        
-                        orders = []
-                        orders.extend([e[sample_idx].detach().item() for e in echelon_allocations])
-                        orders.append(warehouse_allocation[sample_idx].detach().item())
-                        orders.append(store_allocation[sample_idx].detach().item())
-                        f.write(f"orders: [{', '.join(f'{x:.1f}' for x in orders)}]\n\n")
-
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation,
-                'echelons': torch.cat(echelon_allocations, dim=1)
-            }
-        else:
-            store_intermediate_outputs = outputs[:, 1:]
-            warehouse_allocation = outputs[:, :1, 0]
-            if self.__class__.__name__ == 'GNN_MP_transshipment':
-                store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
-            else:
-                store_allocation = self.apply_proportional_allocation(
-                    store_intermediate_outputs[:,:,0], 
-                    observation['warehouse_inventories']
-                    )
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation
-            }
-
-class decentralized_edge(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.individual_nn = 'individual_nn' in args and args['individual_nn']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'holding_costs', 'lead_times', 'underage_costs']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len)),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-            ], dim=2)
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-        if 'echelon_inventories' in observation:
-            echelon_inventories = observation['echelon_inventories']
-            warehouse_inventories = observation['warehouse_inventories']
-            echelon_inv_len = echelon_inventories.size(2)
-
-            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['lead_times'].unsqueeze(2), observation['underage_costs'].unsqueeze(2)], dim=-1)
-            warehouse_state = torch.cat([warehouse_inventories, observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
-            echelon_state = torch.cat([echelon_inventories, observation['echelon_holding_costs'].unsqueeze(2), observation['echelon_lead_times'].unsqueeze(2)], dim=-1)
-    
-            if self.individual_nn:
-                outputs_list = []
-                for j in range(echelon_state.size(1) + 2):
-                    if j == 0:
-                        outputs_list.append(self.net[f'master_{j}'](echelon_state[:,j:j+1]))
-                    elif j < echelon_state.size(1):
-                        outputs_list.append(self.net[f'master_{j}'](torch.cat([echelon_state[:,j-1:j], echelon_state[:,j:j+1]], dim=-1)))
-                    elif j == echelon_state.size(1): # warehouse
-                        outputs_list.append(self.net[f'master_{j}'](torch.cat([echelon_state[:,j-1:j], warehouse_state], dim=-1)))
-                    else: # store
-                        outputs_list.append(self.net[f'master_{j}'](torch.cat([warehouse_state, store_state], dim=-1)))
-                outputs = torch.stack(outputs_list, dim=1).squeeze(-1)
-            else:
-                store_primitives_len = store_state.size(2) - store_inv_len
-                warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-                echelon_primitives_len = echelon_state.size(2) - echelon_inv_len
-                max_primitives_len = max(store_primitives_len, warehouse_primitives_len, echelon_primitives_len)
-
-                max_inv_len = max(store_inv_len, warehouse_inv_len, echelon_inv_len)
-
-                store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-                warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-                echelon_padded = pad_features(echelon_state, echelon_inv_len, max_inv_len, max_primitives_len)
-
-                states = torch.cat([echelon_padded, warehouse_padded, store_padded], dim=1)
-                zero_node = torch.zeros_like(states[:, :1])
-                output_input = torch.cat([torch.cat([zero_node, states[:, :-1]], dim=1), states], dim=-1)
-                outputs = self.net['master'](output_input)
-
-            def proportional_minimum(x, y):
-                return torch.min(x, y)
-            echelon_allocations = []
-            for j in range(outputs.size(1) - 2):
-                if j == 0:  # First echelon
-                    echelon_allocations.append(outputs[:, j:j+1, 0])
-                else:
-                    echelon_allocations.append(proportional_minimum(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j,0]))
-            warehouse_allocation = proportional_minimum(outputs[:, -2: -1, 0], echelon_inventories[:,-1,:1])
-            store_allocation = proportional_minimum(outputs[:, -1:, 0], warehouse_inventories[:,:,0])
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation,
-                'echelons': torch.cat(echelon_allocations, dim=1)
-            }
-        else:
-            store_state = self.get_store_inventory_and_params(observation)
-            warehouse_state = torch.cat([observation['warehouse_inventories'], observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
-            
-            if self.individual_nn:
-                outputs_list = []
-                outputs_list.append(self.net['master_0'](warehouse_state))
-                for i in range(store_state.size(1)):
-                    outputs_list.append(self.net[f'master_{i + 1}'](torch.cat([warehouse_state, store_state[:,i:i+1]], dim=-1)))
-                outputs = torch.stack(outputs_list, dim=1).squeeze(-1)
-            else:
-                max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-                store_primitives_len = store_state.size(2) - store_inv_len
-                warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-                max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-                store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-                warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-                states = torch.cat([warehouse_padded, store_padded], dim=1)
-                output_input = torch.cat(
-                    [torch.cat([torch.zeros_like(states[:, :1]), states[:, :1]], dim=-1),
-                        torch.cat([states[:, :1].expand(-1, store_state.size(1), -1), states[:, 1:]], dim=-1)],
-                    dim=1
-                )
-                outputs = self.net['master'](output_input)
-
-            store_intermediate_outputs = outputs[:, 1:]
-            warehouse_allocation = outputs[:, :1, 0]
-            store_allocation = self.apply_proportional_allocation(
-                store_intermediate_outputs[:,:,0], 
-                observation['warehouse_inventories']
-                )
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation
-            }
-
-class GNN_half(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.n_stores = problem_params['n_stores']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'holding_costs', 'underage_costs']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        list_to_cat = [observation[k].unsqueeze(-1) for k in params_to_stack]
-        return torch.cat([observation['store_inventories'], *list_to_cat], dim=2)
-    
-    def get_warehouse_inventory_and_params(self, observation):
-        params_to_cat = ['warehouse_holding_costs']
-        if 'warehouse_edge_initial_cost' in observation:
-            params_to_cat.append('warehouse_edge_initial_cost')
-        if 'warehouse_edge_distance_cost' in observation:
-            params_to_cat.append('warehouse_edge_distance_cost')
-        list_to_cat_to_unsqueeze = [observation[k].unsqueeze(-1) for k in params_to_cat]
-        return torch.cat([observation['warehouse_inventories'], *list_to_cat_to_unsqueeze], dim=-1)
-
-    def get_network(self, layer_name, layer_idx):
-        return self.net[layer_name]
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return F.pad(inv, (0, max_inv_len - inv_len)), F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-
-        store_state = self.get_store_inventory_and_params(observation)
-        warehouse_state = self.get_warehouse_inventory_and_params(observation)
-        max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-        store_primitives_len = store_state.size(2) - store_inv_len
-        warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-        max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-        store_inv_padded, store_primitives_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-        warehouse_inv_padded, warehouse_primitives_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-        states = torch.cat([warehouse_primitives_padded, store_primitives_padded], dim=1)
-        
-        nodes = self.net['initial_node'](states)
-        if 'warehouse_store_edge_lead_times' in observation:
-            n_warehouses = observation['warehouse_inventories'].size(1)
-            adjacency = observation['warehouse_store_edges']  # 1 if connected, 0 otherwise
-            adjacency_batch_idx, adjacency_warehouse_idx, adjacency_store_idx = adjacency.nonzero(as_tuple=True)
-            if self.__class__.__name__ == 'GNN_half_real':
-                supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :n_warehouses]), nodes[:, :n_warehouses], observation['warehouse_lead_times'].unsqueeze(-1), observation['warehouse_orders']], dim=-1)
-            else:
-                supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :n_warehouses]), nodes[:, :n_warehouses], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
-            
-            warehouses = nodes[:, :n_warehouses]
-            stores = nodes[:, n_warehouses:]
-            warehouse_emb = warehouses[adjacency_batch_idx, adjacency_warehouse_idx]
-            store_emb = stores[adjacency_batch_idx, adjacency_store_idx]
-            lead_times = observation['warehouse_store_edge_lead_times'][adjacency.bool()].unsqueeze(-1)
-            if self.__class__.__name__ == 'GNN_half_real':
-                orders = observation['store_orders'].transpose(1,2)[adjacency.bool()]
-                warehouse_store_edges_input_flattened = torch.cat([warehouse_emb, store_emb, lead_times, orders], dim=-1)
-                warehouse_store_edges_input = warehouse_store_edges_input_flattened.view(nodes.size(0), -1, 2 * nodes.size(-1) + lead_times.size(-1) + orders.size(-1))
-                zeros_orders = torch.zeros(observation['store_orders'].size(0), observation['store_orders'].size(1), observation['store_orders'].size(3), device=self.device)
-                store_clients_edges_input = torch.cat([nodes[:, n_warehouses:], torch.zeros_like(nodes[:, n_warehouses:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1)), zeros_orders], dim=-1)
-            else:
-                warehouse_store_edges_input_flattened = torch.cat([warehouse_emb, store_emb, lead_times], dim=-1)
-                warehouse_store_edges_input = warehouse_store_edges_input_flattened.view(nodes.size(0), -1, 2 * nodes.size(-1) + lead_times.size(-1))
-                store_clients_edges_input = torch.cat([nodes[:, n_warehouses:], torch.zeros_like(nodes[:, n_warehouses:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1))], dim=-1)
-            edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input], dim=1)
-        else:
-            supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :1]), nodes[:, :1], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
-            warehouse_store_edges_input = torch.cat([nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:], observation['lead_times'].unsqueeze(-1)], dim=-1)
-            store_clients_edges_input = torch.cat([nodes[:, 1:], torch.zeros_like(nodes[:, 1:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1))], dim=-1)
-
-            edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input], dim=1)
-        edges = self.net['initial_edge'](edges_input)
-
-        edges_for_aggregation = edges
-        if 'echelon_inventories' in observation:
-            node_update_input = torch.cat([
-                nodes,
-                edges_for_aggregation[:, :-1], 
-                edges_for_aggregation[:, 1:]
-            ], dim=-1)
-        elif 'warehouse_store_edge_lead_times' in observation:
-            warehouse_supplier_aggregation = edges_for_aggregation[:, :n_warehouses]
-            warehouse_store_edges = edges_for_aggregation[:, n_warehouses:-self.n_stores]
-            wh_idx, st_idx = adjacency[0].nonzero(as_tuple=True)
-            n_edges = wh_idx.shape[0]
-
-            one_hot_warehouse = torch.zeros(n_edges, n_warehouses, device=self.device)
-            one_hot_warehouse[torch.arange(n_edges), wh_idx] = 1
-            warehouse_aggregated_sum = torch.matmul(warehouse_store_edges.transpose(1, 2), one_hot_warehouse)
-            warehouse_aggregated_sum = warehouse_aggregated_sum.transpose(1, 2)
-            warehouse_counts = one_hot_warehouse.sum(dim=0)
-            warehouse_counts = warehouse_counts.unsqueeze(0).unsqueeze(-1)
-            warehouse_recipient_aggregation = warehouse_aggregated_sum / torch.sqrt(warehouse_counts)
-            # warehouse_recipient_aggregation = warehouse_aggregated_sum / warehouse_counts
-
-            one_hot_store = torch.zeros(n_edges, self.n_stores, device=self.device)
-            one_hot_store[torch.arange(n_edges), st_idx] = 1
-            store_aggregated_sum = torch.matmul(warehouse_store_edges.transpose(1, 2), one_hot_store)
-            store_aggregated_sum = store_aggregated_sum.transpose(1, 2)
-
-            store_supplier_aggregation = store_aggregated_sum
-            store_counts = one_hot_store.sum(dim=0)
-            store_counts = store_counts.unsqueeze(0).unsqueeze(-1)
-            store_supplier_aggregation = store_aggregated_sum / torch.sqrt(store_counts)
-            # store_supplier_aggregation = store_aggregated_sum / store_counts
-            store_recipient_aggregation = edges_for_aggregation[:, -self.n_stores:]
-
-            node_update_input = torch.cat(
-                [torch.cat([nodes[:, :n_warehouses], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
-                    torch.cat([nodes[:, n_warehouses:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
-                dim=1
-            )
-        else: 
-            warehouse_supplier_aggregation = torch.mean(edges_for_aggregation[:, :1, :], dim=1, keepdim=True)
-            warehouse_recipient_aggregation = torch.mean(edges_for_aggregation[:, 1:1 + self.n_stores, :], dim=1, keepdim=True)
-
-            store_supplier_aggregation = edges_for_aggregation[:, 1:1 + self.n_stores, :]
-            store_recipient_aggregation = edges_for_aggregation[:, 1 + self.n_stores:, :]
-
-            node_update_input = torch.cat(
-                [torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
-                    torch.cat([nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
-                dim=1
-            )
-        nodes_updates = self.get_network('node_update', 0)(node_update_input)
-        nodes = nodes + nodes_updates
-
-        if 'echelon_inventories' in observation:
-            zero_node = torch.zeros_like(nodes[:, :1])
-            edges_update_input = torch.cat([
-                edges, 
-                torch.cat([nodes, zero_node], dim=1),
-            ], dim=-1)
-        elif 'warehouse_store_edge_lead_times' in observation:
-            edges_update_input = torch.zeros((edges.size(0), edges.size(1), edges.size(2) + nodes.size(2)), device=self.device)
-            edges_update_input[:, :, :edges.size(2)] = edges
-
-            # Supplier-warehouse edges
-            edges_update_input[:, :n_warehouses, edges.size(2):] = nodes[:, :n_warehouses]
-            
-            # Warehouse-store edges
-            warehouses = nodes[:, :n_warehouses]
-            stores = nodes[:, n_warehouses:]
-            warehouse_emb = warehouses[adjacency_batch_idx, adjacency_warehouse_idx]
-            store_emb = stores[adjacency_batch_idx, adjacency_store_idx]
-            edges_update_input[:, n_warehouses:-self.n_stores, edges.size(2):] = store_emb.view(nodes.size(0), -1, nodes.size(-1))
-        else:
-            supplier_warehouse_edges_update_input = torch.cat([edges[:, :1], nodes[:, :1]], dim=-1)
-            warehouse_store_edges_update_input = torch.cat([edges[:, 1:1 + self.n_stores], nodes[:, 1:]], dim=-1)
-            store_clients_edges_update_input = torch.cat([edges[:, 1 + self.n_stores:], torch.zeros_like(nodes[:, 1:])], dim=-1)
-            edges_update_input = torch.cat([supplier_warehouse_edges_update_input, warehouse_store_edges_update_input, store_clients_edges_update_input], dim=1)
-        edges_updates = self.get_network('edge_update', 0)(edges_update_input)
-        edges = edges + edges_updates
-
-        if 'echelon_inventories' in observation:
-            outputs = self.net['output'](edges[:, :-1])
-        elif 'warehouse_store_edge_lead_times' in observation:
-            store_invs = store_inv_padded[adjacency_batch_idx, adjacency_store_idx].view(store_inv_padded.size(0), -1, store_inv_padded.size(-1))
-            invs = torch.cat([warehouse_inv_padded, store_invs], dim=1)
-            outputs = self.net['output'](torch.cat([edges[:, :-self.n_stores], invs], dim=-1))
-        else:
-            outputs = self.net['output'](edges[:, :1 + self.n_stores, :])
-        
-        if 'warehouse_store_edge_lead_times' in observation:
-            warehouse_allocation = outputs[:, :n_warehouses, 0]
-
-            wh_idx, st_idx = observation['warehouse_store_edges'][0].nonzero(as_tuple=True)
-            one_hot_warehouse = torch.zeros(n_edges, n_warehouses, device=self.device)
-            one_hot_warehouse[torch.arange(n_edges), wh_idx] = 1
-            store_orders = outputs[:, n_warehouses:, 0]
-            aggregated_orders = torch.matmul(store_orders, one_hot_warehouse)
-            total_inventory = observation['warehouse_inventories'][:, :, 0]
-            scaling_factor = torch.clamp(total_inventory / (aggregated_orders + 1e-15), max=1)
-            edge_scaling = (scaling_factor.unsqueeze(1) * one_hot_warehouse.unsqueeze(0)).sum(dim=-1)
-            store_allocation = store_orders * edge_scaling
-
-            store_allocation_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
-            batch_idx = torch.arange(outputs.size(0), device=self.device).unsqueeze(1).expand(outputs.size(0), n_edges)
-            store_allocation_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_allocation
-            
-            
-            if self.is_debugging:
-                debug_dir = "/user/ml4723/Prj/NIC/debug"
-                store_orders_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
-                store_orders_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_orders
-                if self.debug_identifier is not None:
-                    debug_dir = debug_dir + self.debug_identifier
-                os.makedirs(debug_dir, exist_ok=True)
-                for sample_idx in range(min(outputs.size(0), 8)):
-                    with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                        f.write("\n\n")
-                        outputs_array = outputs[sample_idx, :n_warehouses, 0].detach().cpu().numpy()
-                        f.write(np.array2string(outputs_array, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                        f.write('\n')
-                        
-                        max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
-                        for lead_time in range(max_lead_time, 0, -1):
-                            outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().numpy()
-                            f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                            f.write('\n')
-    
-                        for store_idx in range(self.n_stores):
-                            allocation_matrix = store_allocation_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                            orders = store_orders_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                            formatted_allocation_orders = f'{store_idx} [' + ', \t'.join([f'{allocation_matrix[i]:4.1f}/{orders[i]:4.1f}' for i in range(len(allocation_matrix))]) + ']'
-                            f.write(formatted_allocation_orders)
-                            
-                            store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
-                            formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
-                            f.write(f"[{formatted_store_inv}] - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
-            
-            return {
-                'stores': store_allocation_matrix,
-                'warehouses': warehouse_allocation
-            }
-        else:
-            store_intermediate_outputs = outputs[:, 1:]
-            warehouse_allocation = outputs[:, :1, 0]
-            if self.__class__.__name__ == 'GNN_transshipment':
-                store_allocation = self.apply_proportional_allocation(
-                    store_intermediate_outputs[:,:,0], 
-                    observation['warehouse_inventories'],
-                    transshipment=True
-                    )
-            else:
-                store_allocation = self.apply_proportional_allocation(
-                    store_intermediate_outputs[:,:,0], 
-                    observation['warehouse_inventories']
-                    )
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation
-            }
-
 
 class GNN_decentralized(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
@@ -1418,294 +834,6 @@ class GNN_decentralized(MyNeuralNetwork):
 class GNN_decentralized_transshipment(GNN_decentralized):
     pass
 
-class GNN_half_dynamic(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.n_stores = problem_params['n_stores']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'holding_costs', 'underage_costs']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        list_to_cat = [observation[k].unsqueeze(-1) for k in params_to_stack]
-        return torch.cat([observation['store_inventories'], *list_to_cat], dim=2)
-    
-    def get_warehouse_inventory_and_params(self, observation):
-        params_to_cat = ['warehouse_holding_costs']
-        if 'warehouse_edge_initial_cost' in observation:
-            params_to_cat.append('warehouse_edge_initial_cost')
-        if 'warehouse_edge_distance_cost' in observation:
-            params_to_cat.append('warehouse_edge_distance_cost')
-        list_to_cat_to_unsqueeze = [observation[k].unsqueeze(-1) for k in params_to_cat]
-        return torch.cat([observation['warehouse_inventories'], *list_to_cat_to_unsqueeze], dim=-1)
-
-    def get_network(self, layer_name, layer_idx):
-        return self.net[layer_name]
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len)),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-            ], dim=2)
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-        if 'echelon_inventories' in observation:
-            echelon_inventories = observation['echelon_inventories']
-            warehouse_inventories = observation['warehouse_inventories']
-            echelon_inv_len = echelon_inventories.size(2)
-
-            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['underage_costs'].unsqueeze(2)], dim=-1)
-            warehouse_state = self.get_warehouse_inventory_and_params(observation)
-            echelon_state = torch.cat([echelon_inventories, observation['echelon_holding_costs'].unsqueeze(2)], dim=-1)
-    
-            store_primitives_len = store_state.size(2) - store_inv_len
-            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-            echelon_primitives_len = echelon_state.size(2) - echelon_inv_len
-            max_primitives_len = max(store_primitives_len, warehouse_primitives_len, echelon_primitives_len)
-
-            n_echelons = echelon_inventories.size(1)
-            max_inv_len = max(store_inv_len, warehouse_inv_len, echelon_inv_len)
-
-            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-            echelon_padded = pad_features(echelon_state, echelon_inv_len, max_inv_len, max_primitives_len)
-
-            states = torch.cat([echelon_padded, warehouse_padded, store_padded], dim=1)
-        else:
-            store_state = self.get_store_inventory_and_params(observation)
-            
-            warehouse_state = self.get_warehouse_inventory_and_params(observation)
-            max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-            store_primitives_len = store_state.size(2) - store_inv_len
-            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-            max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-
-            states = torch.cat([warehouse_padded, store_padded], dim=1)
-        
-        nodes = self.net['initial_node'](states)
-        if 'echelon_inventories' in observation:
-            zero_node = torch.zeros_like(nodes[:, :1])
-            edges_input = torch.cat([
-                torch.cat([zero_node, nodes], dim=1), 
-                torch.cat([nodes, zero_node], dim=1),
-                torch.cat([observation['echelon_lead_times'], observation['warehouse_lead_times'], observation['lead_times'], torch.zeros_like(observation['lead_times'])], dim=1).unsqueeze(-1)
-            ], dim=-1)
-        elif 'warehouse_store_edge_lead_times' in observation:
-            n_warehouses = observation['warehouse_inventories'].size(1)
-            adjacency = observation['warehouse_store_edges']  # 1 if connected, 0 otherwise
-            adjacency_batch_idx, adjacency_warehouse_idx, adjacency_store_idx = adjacency.nonzero(as_tuple=True)
-            if self.__class__.__name__ == 'GNN_half_real':
-                supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :n_warehouses]), nodes[:, :n_warehouses], observation['warehouse_lead_times'].unsqueeze(-1), observation['warehouse_orders']], dim=-1)
-            else:
-                supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :n_warehouses]), nodes[:, :n_warehouses], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
-            
-            warehouses = nodes[:, :n_warehouses]
-            stores = nodes[:, n_warehouses:]
-            warehouse_emb = warehouses[adjacency_batch_idx, adjacency_warehouse_idx]
-            store_emb = stores[adjacency_batch_idx, adjacency_store_idx]
-            lead_times = observation['warehouse_store_edge_lead_times'][adjacency.bool()].unsqueeze(-1)
-            if self.__class__.__name__ == 'GNN_half_real':
-                orders = observation['store_orders'].transpose(1,2)[adjacency.bool()]
-                warehouse_store_edges_input_flattened = torch.cat([warehouse_emb, store_emb, lead_times, orders], dim=-1)
-                warehouse_store_edges_input = warehouse_store_edges_input_flattened.view(nodes.size(0), -1, 2 * nodes.size(-1) + lead_times.size(-1) + orders.size(-1))
-                zeros_orders = torch.zeros(observation['store_orders'].size(0), observation['store_orders'].size(1), observation['store_orders'].size(3), device=self.device)
-                store_clients_edges_input = torch.cat([nodes[:, n_warehouses:], torch.zeros_like(nodes[:, n_warehouses:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1)), zeros_orders], dim=-1)
-            else:
-                warehouse_store_edges_input_flattened = torch.cat([warehouse_emb, store_emb, lead_times], dim=-1)
-                warehouse_store_edges_input = warehouse_store_edges_input_flattened.view(nodes.size(0), -1, 2 * nodes.size(-1) + lead_times.size(-1))
-                store_clients_edges_input = torch.cat([nodes[:, n_warehouses:], torch.zeros_like(nodes[:, n_warehouses:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1))], dim=-1)
-            edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input], dim=1)
-        else:
-            supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :1]), nodes[:, :1], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
-            warehouse_store_edges_input = torch.cat([nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:], observation['lead_times'].unsqueeze(-1)], dim=-1)
-            store_clients_edges_input = torch.cat([nodes[:, 1:], torch.zeros_like(nodes[:, 1:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1))], dim=-1)
-
-            edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input], dim=1)
-        edges = self.net['initial_edge'](edges_input)
-
-        edges_for_aggregation = edges
-        if 'echelon_inventories' in observation:
-            node_update_input = torch.cat([
-                nodes,
-                edges_for_aggregation[:, :-1], 
-                edges_for_aggregation[:, 1:]
-            ], dim=-1)
-        elif 'warehouse_store_edge_lead_times' in observation:
-            warehouse_supplier_aggregation = edges_for_aggregation[:, :n_warehouses]
-            warehouse_store_edges = edges_for_aggregation[:, n_warehouses:-self.n_stores]
-            wh_idx, st_idx = adjacency[0].nonzero(as_tuple=True)
-            n_edges = wh_idx.shape[0]
-
-            one_hot_warehouse = torch.zeros(n_edges, n_warehouses, device=self.device)
-            one_hot_warehouse[torch.arange(n_edges), wh_idx] = 1
-            warehouse_aggregated_sum = torch.matmul(warehouse_store_edges.transpose(1, 2), one_hot_warehouse)
-            warehouse_aggregated_sum = warehouse_aggregated_sum.transpose(1, 2)
-            warehouse_counts = one_hot_warehouse.sum(dim=0)
-            warehouse_counts = warehouse_counts.unsqueeze(0).unsqueeze(-1)
-            warehouse_recipient_aggregation = warehouse_aggregated_sum / torch.sqrt(warehouse_counts)
-            # warehouse_recipient_aggregation = warehouse_aggregated_sum / warehouse_counts
-
-            one_hot_store = torch.zeros(n_edges, self.n_stores, device=self.device)
-            one_hot_store[torch.arange(n_edges), st_idx] = 1
-            store_aggregated_sum = torch.matmul(warehouse_store_edges.transpose(1, 2), one_hot_store)
-            store_aggregated_sum = store_aggregated_sum.transpose(1, 2)
-
-            store_supplier_aggregation = store_aggregated_sum
-            store_counts = one_hot_store.sum(dim=0)
-            store_counts = store_counts.unsqueeze(0).unsqueeze(-1)
-            store_supplier_aggregation = store_aggregated_sum / torch.sqrt(store_counts)
-            # store_supplier_aggregation = store_aggregated_sum / store_counts
-            store_recipient_aggregation = edges_for_aggregation[:, -self.n_stores:]
-
-            node_update_input = torch.cat(
-                [torch.cat([nodes[:, :n_warehouses], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
-                    torch.cat([nodes[:, n_warehouses:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
-                dim=1
-            )
-        else: 
-            warehouse_supplier_aggregation = torch.mean(edges_for_aggregation[:, :1, :], dim=1, keepdim=True)
-            warehouse_recipient_aggregation = torch.mean(edges_for_aggregation[:, 1:1 + self.n_stores, :], dim=1, keepdim=True)
-
-            store_supplier_aggregation = edges_for_aggregation[:, 1:1 + self.n_stores, :]
-            store_recipient_aggregation = edges_for_aggregation[:, 1 + self.n_stores:, :]
-
-            node_update_input = torch.cat(
-                [torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
-                    torch.cat([nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
-                dim=1
-            )
-        nodes_updates = self.get_network('node_update', 0)(node_update_input)
-        nodes = nodes + nodes_updates
-
-        if 'echelon_inventories' in observation:
-            zero_node = torch.zeros_like(nodes[:, :1])
-            edges_update_input = torch.cat([
-                edges, 
-                torch.cat([nodes, zero_node], dim=1),
-            ], dim=-1)
-        elif 'warehouse_store_edge_lead_times' in observation:
-            edges_update_input = torch.zeros((edges.size(0), edges.size(1), edges.size(2) + nodes.size(2)), device=self.device)
-            edges_update_input[:, :, :edges.size(2)] = edges
-
-            # Supplier-warehouse edges
-            edges_update_input[:, :n_warehouses, edges.size(2):] = nodes[:, :n_warehouses]
-            
-            # Warehouse-store edges
-            warehouses = nodes[:, :n_warehouses]
-            stores = nodes[:, n_warehouses:]
-            warehouse_emb = warehouses[adjacency_batch_idx, adjacency_warehouse_idx]
-            store_emb = stores[adjacency_batch_idx, adjacency_store_idx]
-            edges_update_input[:, n_warehouses:-self.n_stores, edges.size(2):] = store_emb.view(nodes.size(0), -1, nodes.size(-1))
-        else:
-            supplier_warehouse_edges_update_input = torch.cat([edges[:, :1], nodes[:, :1]], dim=-1)
-            warehouse_store_edges_update_input = torch.cat([edges[:, 1:1 + self.n_stores], nodes[:, 1:]], dim=-1)
-            store_clients_edges_update_input = torch.cat([edges[:, 1 + self.n_stores:], torch.zeros_like(nodes[:, 1:])], dim=-1)
-            edges_update_input = torch.cat([supplier_warehouse_edges_update_input, warehouse_store_edges_update_input, store_clients_edges_update_input], dim=1)
-        edges_updates = self.get_network('edge_update', 0)(edges_update_input)
-        edges = edges + edges_updates
-
-        if 'echelon_inventories' in observation:
-            outputs = self.net['output'](edges[:, :-1])
-        elif 'warehouse_store_edge_lead_times' in observation:
-            outputs = self.net['output'](edges[:, :-self.n_stores])
-        else:
-            outputs = self.net['output'](edges[:, :1 + self.n_stores, :])
-
-        if 'echelon_inventories' in observation:
-            def proportional_minimum(x, y):
-                return torch.min(x, y)
-            echelon_allocations = []
-            for j in range(outputs.size(1) - 2):
-                if j == 0:  # First echelon
-                    echelon_allocations.append(outputs[:, j:j+1, 0])
-                else:
-                    echelon_allocations.append(proportional_minimum(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j,0]))
-            warehouse_allocation = proportional_minimum(outputs[:, -2: -1, 0], echelon_inventories[:,-1,:1])
-            store_allocation = proportional_minimum(outputs[:, -1:, 0], warehouse_inventories[:,:,0])
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation,
-                'echelons': torch.cat(echelon_allocations, dim=1)
-            }
-        elif 'warehouse_store_edge_lead_times' in observation:
-            warehouse_allocation = outputs[:, :n_warehouses, 0]
-
-            wh_idx, st_idx = observation['warehouse_store_edges'][0].nonzero(as_tuple=True)
-            one_hot_warehouse = torch.zeros(n_edges, n_warehouses, device=self.device)
-            one_hot_warehouse[torch.arange(n_edges), wh_idx] = 1
-            store_orders = outputs[:, n_warehouses:, 0]
-            aggregated_orders = torch.matmul(store_orders, one_hot_warehouse)
-            total_inventory = observation['warehouse_inventories'][:, :, 0]
-            scaling_factor = torch.clamp(total_inventory / (aggregated_orders + 1e-15), max=1)
-            edge_scaling = (scaling_factor.unsqueeze(1) * one_hot_warehouse.unsqueeze(0)).sum(dim=-1)
-            store_allocation = store_orders * edge_scaling
-
-            store_allocation_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
-            batch_idx = torch.arange(outputs.size(0), device=self.device).unsqueeze(1).expand(outputs.size(0), n_edges)
-            store_allocation_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_allocation
-            
-            
-            if self.is_debugging:
-                debug_dir = "/user/ml4723/Prj/NIC/debug"
-                store_orders_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
-                store_orders_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_orders
-                if self.debug_identifier is not None:
-                    debug_dir = debug_dir + self.debug_identifier
-                os.makedirs(debug_dir, exist_ok=True)
-                for sample_idx in range(min(outputs.size(0),8)):
-                    with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                        f.write("\n\n")
-                        outputs_array = outputs[sample_idx, :n_warehouses, 0].detach().cpu().numpy()
-                        f.write(np.array2string(outputs_array, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                        f.write('\n')
-                        
-                        max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
-                        for lead_time in range(max_lead_time, 0, -1):
-                            outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().numpy()
-                            f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                            f.write('\n')
-    
-                        for store_idx in range(self.n_stores):
-                            allocation_matrix = store_allocation_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                            orders = store_orders_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                            formatted_allocation_orders = f'{store_idx} [' + ', \t'.join([f'{allocation_matrix[i]:4.1f}/{orders[i]:4.1f}' for i in range(len(allocation_matrix))]) + ']'
-                            f.write(formatted_allocation_orders)
-                            
-                            store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
-                            formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
-                            f.write(f"[{formatted_store_inv}] - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
-            
-            return {
-                'stores': store_allocation_matrix,
-                'warehouses': warehouse_allocation
-            }
-        else:
-            store_intermediate_outputs = outputs[:, 1:]
-            warehouse_allocation = outputs[:, :1, 0]
-            if self.__class__.__name__ == 'GNN_transshipment':
-                store_allocation = self.apply_proportional_allocation(
-                    store_intermediate_outputs[:,:,0], 
-                    observation['warehouse_inventories'],
-                    transshipment=True
-                    )
-            else:
-                store_allocation = self.apply_proportional_allocation(
-                    store_intermediate_outputs[:,:,0], 
-                    observation['warehouse_inventories']
-                    )
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation
-            }
-
 class GNN(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args, problem_params, device)
@@ -1719,6 +847,8 @@ class GNN(MyNeuralNetwork):
         self.apply_edge_embedding = 'apply_edge_embedding' in args and args['apply_edge_embedding']
         self.apply_bottleneck_loss = 'apply_bottleneck_loss' in args and args['apply_bottleneck_loss']
         self.edges_separation_mode = args['edges_separation_mode'] if 'edges_separation_mode' in args else None
+        self.soft_min = 'soft_min' in args and args['soft_min']
+        self.self_loop = 'self_loop' in args and args['self_loop']
         self.n_MP = None
         if 'n_MP' in args:
             self.n_MP = args['n_MP']
@@ -1727,7 +857,7 @@ class GNN(MyNeuralNetwork):
         params_to_stack = ['mean', 'std', 'holding_costs', 'underage_costs']
         if 'store_random_yield_mean' in observation:
             params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        list_to_cat = [observation[k].unsqueeze(-1) for k in params_to_stack]
+        list_to_cat = [observation[k].unsqueeze(-1) for k in params_to_stack if k in observation]
         if 'demand_signals' in observation['internal_data']:
             if observation['current_period'] + 1 >= observation['internal_data']['demand_signals'].size(2):
                 demand_signal = torch.zeros_like(observation['internal_data']['demand_signals'][:, :, observation['current_period']])
@@ -1762,6 +892,7 @@ class GNN(MyNeuralNetwork):
 
         store_inv_len = observation['store_inventories'].size(2)
         warehouse_inv_len = observation['warehouse_inventories'].size(2)
+        n_warehouses = observation['warehouse_inventories'].size(1)
         if 'echelon_inventories' in observation:
             echelon_inventories = observation['echelon_inventories']
             warehouse_inventories = observation['warehouse_inventories']
@@ -1784,7 +915,7 @@ class GNN(MyNeuralNetwork):
             echelon_padded = pad_features(echelon_state, echelon_inv_len, max_inv_len, max_primitives_len)
 
             states = torch.cat([echelon_padded, warehouse_padded, store_padded], dim=1)
-            n_MP = n_echelons + 2
+            n_MP = n_echelons + 1
         else:
             store_state = self.get_store_inventory_and_params(observation)
             
@@ -1799,21 +930,26 @@ class GNN(MyNeuralNetwork):
             warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
 
             states = torch.cat([warehouse_padded, store_padded], dim=1)
-            n_MP = 2
+            n_MP = 1
         if self.n_MP is not None:
             n_MP = self.n_MP
         
         nodes = self.net['initial_node'](states)
         if 'echelon_inventories' in observation:
             zero_node = torch.zeros_like(nodes[:, :1])
-            edges_input = torch.cat([
-                torch.cat([zero_node, nodes], dim=1), 
-                torch.cat([nodes, zero_node], dim=1),
-                torch.cat([observation['echelon_lead_times'], observation['warehouse_lead_times'], observation['lead_times'], torch.zeros_like(observation['lead_times'])], dim=1).unsqueeze(-1)
-            ], dim=-1)
+            if self.self_loop:
+                edges_input = torch.cat([
+                    torch.cat([zero_node, nodes, nodes[:, :-1]], dim=1), 
+                    torch.cat([nodes, zero_node, nodes[:, :-1]], dim=1),
+                    torch.cat([observation['echelon_lead_times'], observation['warehouse_lead_times'], observation['lead_times'], torch.zeros_like(observation['lead_times']), torch.zeros(nodes.size(0), nodes.size(1) - 1, device=self.device)], dim=1).unsqueeze(-1)
+                ], dim=-1)
+            else:
+                edges_input = torch.cat([
+                    torch.cat([zero_node, nodes], dim=1), 
+                    torch.cat([nodes, zero_node], dim=1),
+                    torch.cat([observation['echelon_lead_times'], observation['warehouse_lead_times'], observation['lead_times'], torch.zeros_like(observation['lead_times'])], dim=1).unsqueeze(-1)
+                ], dim=-1)
         elif 'warehouse_store_edge_lead_times' in observation:
-            n_warehouses = observation['warehouse_inventories'].size(1)
-
             warehouse_store_edges_observation = observation['warehouse_store_edges']
             if self.edges_separation_mode != None:
                 store_connections = warehouse_store_edges_observation[0].sum(dim=0)
@@ -1823,6 +959,8 @@ class GNN(MyNeuralNetwork):
                     if self.edges_separation_mode == "fastest":
                         costs = observation['warehouse_store_edge_lead_times'][0, :, store_idx]
                     elif self.edges_separation_mode == "cheapest":
+                        costs = observation['warehouse_edge_initial_cost'][0]
+                    elif self.edges_separation_mode == "cheapest_holding":
                         costs = observation['warehouse_holding_costs'][0]
 
                     costs_connected = costs[connected_warehouses]
@@ -1855,12 +993,34 @@ class GNN(MyNeuralNetwork):
                 warehouse_store_edges_input_flattened = torch.cat([warehouse_emb, store_emb, lead_times], dim=-1)
                 warehouse_store_edges_input = warehouse_store_edges_input_flattened.view(nodes.size(0), -1, 2 * nodes.size(-1) + lead_times.size(-1))
                 store_clients_edges_input = torch.cat([nodes[:, n_warehouses:], torch.zeros_like(nodes[:, n_warehouses:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1))], dim=-1)
-            edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input], dim=1)
+            
+            if self.self_loop:
+                if self.__class__.__name__ == 'GNN_real':
+                    self_loop_input = torch.cat([nodes[:, :n_warehouses], nodes[:, :n_warehouses], torch.zeros_like(observation['warehouse_lead_times'].unsqueeze(-1)), observation['warehouse_self_loop_orders']], dim=-1)
+                else:
+                    self_loop_input = torch.cat([nodes[:, :n_warehouses], nodes[:, :n_warehouses], torch.zeros_like(observation['warehouse_lead_times'].unsqueeze(-1))], dim=-1)
+                edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input, self_loop_input], dim=1)
+            else:
+                edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input], dim=1)
         else:
-            supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :1]), nodes[:, :1], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
-            warehouse_store_edges_input = torch.cat([nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:], observation['lead_times'].unsqueeze(-1)], dim=-1)
-            store_clients_edges_input = torch.cat([nodes[:, 1:], torch.zeros_like(nodes[:, 1:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1))], dim=-1)
-            edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input], dim=1)
+            if self.__class__.__name__ == 'GNN_real':
+                supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :1]), nodes[:, :1], observation['warehouse_lead_times'].unsqueeze(-1), observation['warehouse_orders']], dim=-1)
+                warehouse_store_edges_input = torch.cat([nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:], observation['lead_times'].unsqueeze(-1), observation['store_orders']], dim=-1)
+                zeros_orders = torch.zeros(observation['store_orders'].size(0), observation['store_orders'].size(1), observation['store_orders'].size(2), device=self.device)
+                store_clients_edges_input = torch.cat([nodes[:, 1:], torch.zeros_like(nodes[:, 1:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1)), zeros_orders], dim=-1)
+            else:
+                supplier_warehouse_edges_input = torch.cat([torch.zeros_like(nodes[:, :1]), nodes[:, :1], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
+                warehouse_store_edges_input = torch.cat([nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:], observation['lead_times'].unsqueeze(-1)], dim=-1)
+                store_clients_edges_input = torch.cat([nodes[:, 1:], torch.zeros_like(nodes[:, 1:]), torch.zeros_like(observation['lead_times'].unsqueeze(-1))], dim=-1)
+                   
+            if self.self_loop:
+                if self.__class__.__name__ == 'GNN_real':
+                    self_loop_input = torch.cat([nodes[:, :1], nodes[:, :1], torch.zeros_like(observation['warehouse_lead_times'].unsqueeze(-1)), observation['warehouse_self_loop_orders']], dim=-1)
+                else:
+                    self_loop_input = torch.cat([nodes[:, :1], nodes[:, :1], torch.zeros_like(observation['warehouse_lead_times'].unsqueeze(-1))], dim=-1)
+                edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input, self_loop_input], dim=1)
+            else:
+                edges_input = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input, store_clients_edges_input], dim=1)
         edges = self.net['initial_edge'](edges_input)
 
         for layer_idx in range(n_MP):
@@ -1869,19 +1029,31 @@ class GNN(MyNeuralNetwork):
             else:
                 edges_for_aggregation = edges
             if 'echelon_inventories' in observation:
-                node_update_input = torch.cat([
-                    nodes,
-                    edges_for_aggregation[:, :-1], 
-                    edges_for_aggregation[:, 1:]
-                ], dim=-1)
+                if self.self_loop:
+                    supplier_edges_aggregation = (edges_for_aggregation[:, :nodes.size(1) - 1, :] + edges_for_aggregation[:, nodes.size(1)+1 :]) / torch.sqrt(torch.tensor(2, device=self.device))
+                    recipient_edges_aggregation = (edges_for_aggregation[:, 1:nodes.size(1), :] + edges_for_aggregation[:, nodes.size(1)+1 :]) / torch.sqrt(torch.tensor(2, device=self.device))
+                    node_update_input = torch.cat([
+                        nodes,
+                        torch.cat([supplier_edges_aggregation, edges_for_aggregation[:, nodes.size(1)-1:nodes.size(1)]], dim=1), 
+                        torch.cat([recipient_edges_aggregation, edges_for_aggregation[:, nodes.size(1):nodes.size(1)+1]], dim=1)
+                    ], dim=-1)
+                else:
+                    node_update_input = torch.cat([
+                        nodes,
+                        edges_for_aggregation[:, :-1], 
+                        edges_for_aggregation[:, 1:]
+                    ], dim=-1)
             elif 'warehouse_store_edge_lead_times' in observation:
-                warehouse_supplier_aggregation = edges_for_aggregation[:, :n_warehouses]
-                warehouse_store_edges = edges_for_aggregation[:, n_warehouses:-self.n_stores]
                 wh_idx, st_idx = adjacency[0].nonzero(as_tuple=True)
-                n_edges = wh_idx.shape[0]
+                n_edges_w_to_s = wh_idx.shape[0]
+                if self.self_loop:
+                    warehouse_supplier_aggregation = (edges_for_aggregation[:, :n_warehouses] + edges_for_aggregation[:, -n_warehouses:]) / torch.sqrt(torch.tensor(2, device=self.device))
+                else:
+                    warehouse_supplier_aggregation = edges_for_aggregation[:, :n_warehouses]
+                warehouse_store_edges = edges_for_aggregation[:, n_warehouses:n_warehouses + n_edges_w_to_s]
 
-                one_hot_warehouse = torch.zeros(n_edges, n_warehouses, device=self.device)
-                one_hot_warehouse[torch.arange(n_edges), wh_idx] = 1
+                one_hot_warehouse = torch.zeros(n_edges_w_to_s, n_warehouses, device=self.device)
+                one_hot_warehouse[torch.arange(n_edges_w_to_s), wh_idx] = 1
                 warehouse_aggregated_sum = torch.matmul(warehouse_store_edges.transpose(1, 2), one_hot_warehouse)
                 warehouse_aggregated_sum = warehouse_aggregated_sum.transpose(1, 2)
                 warehouse_counts = one_hot_warehouse.sum(dim=0)
@@ -1890,11 +1062,14 @@ class GNN(MyNeuralNetwork):
                 warehouse_counts = torch.where(warehouse_counts == 0, 
                                               torch.tensor(0.0000001, device=self.device), 
                                               warehouse_counts)
+                if self.self_loop:
+                    warehouse_aggregated_sum = warehouse_aggregated_sum + edges_for_aggregation[:, -n_warehouses:]
+                    warehouse_counts = warehouse_counts + 1
                 warehouse_recipient_aggregation = warehouse_aggregated_sum / torch.sqrt(warehouse_counts)
                 # warehouse_recipient_aggregation = warehouse_aggregated_sum / warehouse_counts
 
-                one_hot_store = torch.zeros(n_edges, self.n_stores, device=self.device)
-                one_hot_store[torch.arange(n_edges), st_idx] = 1
+                one_hot_store = torch.zeros(n_edges_w_to_s, self.n_stores, device=self.device)
+                one_hot_store[torch.arange(n_edges_w_to_s), st_idx] = 1
                 store_aggregated_sum = torch.matmul(warehouse_store_edges.transpose(1, 2), one_hot_store)
                 store_aggregated_sum = store_aggregated_sum.transpose(1, 2)
 
@@ -1918,11 +1093,15 @@ class GNN(MyNeuralNetwork):
                         dim=1
                     )
             else: 
-                warehouse_supplier_aggregation = torch.mean(edges_for_aggregation[:, :1, :], dim=1, keepdim=True)
-                warehouse_recipient_aggregation = torch.mean(edges_for_aggregation[:, 1:1 + self.n_stores, :], dim=1, keepdim=True)
-
+                if self.self_loop:
+                    warehouse_supplier_aggregation = (edges_for_aggregation[:, :1, :] + edges_for_aggregation[:, -1:, :]) / torch.sqrt(torch.tensor(2, device=self.device))
+                    warehouse_recipient_aggregation = (torch.sum(edges_for_aggregation[:, 1:1 + self.n_stores, :], dim=1, keepdim=True) + edges_for_aggregation[:, -1:, :]) / torch.sqrt(torch.tensor(self.n_stores + 1, device=self.device))
+                else:
+                    warehouse_supplier_aggregation = edges_for_aggregation[:, :1, :]
+                    warehouse_recipient_aggregation = torch.sum(edges_for_aggregation[:, 1:1 + self.n_stores, :], dim=1, keepdim=True) / torch.sqrt(torch.tensor(self.n_stores, device=self.device))
+                    
                 store_supplier_aggregation = edges_for_aggregation[:, 1:1 + self.n_stores, :]
-                store_recipient_aggregation = edges_for_aggregation[:, 1 + self.n_stores:, :]
+                store_recipient_aggregation = edges_for_aggregation[:, 1 + self.n_stores:1 + 2 * self.n_stores, :]
 
                 node_update_input = torch.cat(
                     [torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
@@ -1934,39 +1113,58 @@ class GNN(MyNeuralNetwork):
 
             if 'echelon_inventories' in observation:
                 zero_node = torch.zeros_like(nodes[:, :1])
-                edges_update_input = torch.cat([
-                    edges,
-                    torch.cat([zero_node, nodes], dim=1), 
-                    torch.cat([nodes, zero_node], dim=1),
-                ], dim=-1)
-            elif 'warehouse_store_edge_lead_times' in observation:
-                edges_update_input = torch.zeros((edges.size(0), edges.size(1), edges.size(2) + 2 * nodes.size(2)), device=self.device)
-                edges_update_input[:, :, :edges.size(2)] = edges
-
-                # Supplier-warehouse edges
-                edges_update_input[:, :n_warehouses, edges.size(2) + nodes.size(2):] = nodes[:, :n_warehouses]
-                
-                # Warehouse-store edges
-                warehouses = nodes[:, :n_warehouses]
-                stores = nodes[:, n_warehouses:]
-                warehouse_emb = warehouses[adjacency_batch_idx, adjacency_warehouse_idx]
-                store_emb = stores[adjacency_batch_idx, adjacency_store_idx]
-                edges_update_input[:, n_warehouses:-self.n_stores, edges.size(2):edges.size(2) + nodes.size(2)] = warehouse_emb.view(nodes.size(0), -1, nodes.size(-1))
-                edges_update_input[:, n_warehouses:-self.n_stores, edges.size(2) + nodes.size(2):] = store_emb.view(nodes.size(0), -1, nodes.size(-1))
-
-                # Store-client edges
-                edges_update_input[:, -self.n_stores:, edges.size(2):edges.size(2) + nodes.size(2)] = nodes[:, n_warehouses:]
+                if self.self_loop:
+                    edges_update_input = torch.cat([
+                        edges,
+                        torch.cat([zero_node, nodes, nodes[:, :-1]], dim=1), 
+                        torch.cat([nodes, zero_node, nodes[:, :-1]], dim=1),
+                    ], dim=-1)
+                else:
+                    edges_update_input = torch.cat([
+                        edges,
+                        torch.cat([zero_node, nodes], dim=1), 
+                        torch.cat([nodes, zero_node], dim=1),
+                    ], dim=-1)
             else:
-                supplier_warehouse_edges_update_input = torch.cat([edges[:, :1], torch.zeros_like(nodes[:, :1]), nodes[:, :1]], dim=-1)
-                warehouse_store_edges_update_input = torch.cat([edges[:, 1:1 + self.n_stores], nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:]], dim=-1)
-                store_clients_edges_update_input = torch.cat([edges[:, 1 + self.n_stores:], nodes[:, 1:], torch.zeros_like(nodes[:, 1:])], dim=-1)
-                edges_update_input = torch.cat([supplier_warehouse_edges_update_input, warehouse_store_edges_update_input, store_clients_edges_update_input], dim=1)
+                if 'warehouse_store_edge_lead_times' in observation:
+                    supplier_warehouse_edges_update_input = torch.cat([edges[:, :n_warehouses], torch.zeros_like(nodes[:, :n_warehouses]), nodes[:, :n_warehouses]], dim=-1)
+                    
+                    warehouses = nodes[:, :n_warehouses]
+                    stores = nodes[:, n_warehouses:]
+                    warehouse_emb = warehouses[adjacency_batch_idx, adjacency_warehouse_idx]
+                    store_emb = stores[adjacency_batch_idx, adjacency_store_idx]
+                    warehouse_store_edges = edges[:, n_warehouses:n_warehouses+n_edges_w_to_s]
+                    warehouse_store_edges_update_input = torch.cat([
+                        warehouse_store_edges,
+                        warehouse_emb.view(nodes.size(0), -1, nodes.size(-1)),
+                        store_emb.view(nodes.size(0), -1, nodes.size(-1))
+                    ], dim=-1)
+                    
+                    store_clients_edges_update_input = torch.cat([edges[:, n_warehouses+n_edges_w_to_s:n_warehouses+n_edges_w_to_s+self.n_stores], nodes[:, n_warehouses:], torch.zeros_like(nodes[:, n_warehouses:])], dim=-1)
+                else:
+                    supplier_warehouse_edges_update_input = torch.cat([edges[:, :1], torch.zeros_like(nodes[:, :1]), nodes[:, :1]], dim=-1)
+                    warehouse_store_edges_update_input = torch.cat([edges[:, 1:1 + self.n_stores], nodes[:, :1].repeat(1, self.n_stores, 1), nodes[:, 1:]], dim=-1)
+                    
+                    store_clients_edges_update_input = torch.cat([edges[:, 1 + self.n_stores:1 + 2 * self.n_stores], nodes[:, 1:], torch.zeros_like(nodes[:, 1:])], dim=-1)
+                
+                if self.self_loop:
+                    self_loop_update_input = torch.cat([edges[:, -n_warehouses:], nodes[:, :n_warehouses], nodes[:, :n_warehouses]], dim=-1)
+                    edges_update_input = torch.cat([supplier_warehouse_edges_update_input, warehouse_store_edges_update_input, store_clients_edges_update_input, self_loop_update_input], dim=1)
+                else:
+                    edges_update_input = torch.cat([supplier_warehouse_edges_update_input, warehouse_store_edges_update_input, store_clients_edges_update_input], dim=1)
+
             edges_updates = self.get_network('edge_update', layer_idx)(edges_update_input)
             edges = edges + edges_updates
 
         if self.skip_connection:
             if 'echelon_inventories' in observation:
-                outputs = self.net['output'](edges[:, :-1])
+                zero_states = torch.zeros_like(states[:, :1])
+                edge_states = torch.cat([
+                    torch.cat([zero_states, states[:, :-1]], dim=1), 
+                    states,
+                    torch.cat([observation['echelon_lead_times'], observation['warehouse_lead_times'], observation['lead_times']], dim=1).unsqueeze(-1)
+                ], dim=-1)
+                outputs = self.net['output'](torch.cat([edge_states, edges[:, :-1]], dim=-1))
             elif 'warehouse_store_edge_lead_times' in observation:
                 warehouses = states[:, :n_warehouses]
                 stores = states[:, n_warehouses:]
@@ -1988,29 +1186,52 @@ class GNN(MyNeuralNetwork):
                 edges_states = torch.cat([supplier_warehouse_edges_input, warehouse_store_edges_input], dim=1)
                 outputs = self.net['output'](torch.cat([edges_states, edges[:, :-self.n_stores, :]], dim=-1))
             else:
-                supplier_warehouse_edges_states = torch.cat([torch.zeros_like(states[:, :1]), states[:, :1], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
-                warehouse_store_edges_states = torch.cat([states[:, :1].repeat(1, self.n_stores, 1), states[:, 1:], observation['lead_times'].unsqueeze(-1)], dim=-1)
+                if self.__class__.__name__ == 'GNN_real':
+                    supplier_warehouse_edges_states = torch.cat([torch.zeros_like(states[:, :1]), states[:, :1], observation['warehouse_lead_times'].unsqueeze(-1), observation['warehouse_orders']], dim=-1)
+                    warehouse_store_edges_states = torch.cat([states[:, :1].repeat(1, self.n_stores, 1), states[:, 1:], observation['lead_times'].unsqueeze(-1), observation['store_orders']], dim=-1)
+                else:
+                    supplier_warehouse_edges_states = torch.cat([torch.zeros_like(states[:, :1]), states[:, :1], observation['warehouse_lead_times'].unsqueeze(-1)], dim=-1)
+                    warehouse_store_edges_states = torch.cat([states[:, :1].repeat(1, self.n_stores, 1), states[:, 1:], observation['lead_times'].unsqueeze(-1)], dim=-1)
                 edges_states = torch.cat([supplier_warehouse_edges_states, warehouse_store_edges_states], dim=1)
                 outputs = self.net['output'](torch.cat([edges_states, edges[:, :1 + self.n_stores, :]], dim=-1))
         else:
             if 'echelon_inventories' in observation:
-                outputs = self.net['output'](edges[:, :-1])
+                if self.self_loop:
+                    outputs = self.net['output'](edges[:, :nodes.size(1)])
+                    loop_outputs = self.net['output'](edges[:, nodes.size(1)+1:])
+                else:
+                    outputs = self.net['output'](edges[:, :-1])
             elif 'warehouse_store_edge_lead_times' in observation:
-                outputs = self.net['output'](edges[:, :-self.n_stores])
+                if self.self_loop:
+                    outputs = self.net['output'](edges[:, :-self.n_stores - n_warehouses])
+                    loop_outputs = self.net['output'](edges[:, -n_warehouses:])[:, :, 0]
+                else:
+                    outputs = self.net['output'](edges[:, :-self.n_stores])
             else:
-                outputs = self.net['output'](edges[:, :1 + self.n_stores, :])
+                if self.self_loop:
+                    outputs = self.net['output'](edges[:, :1 + self.n_stores, :])
+                    warehouse_loop_output = self.net['output'](edges[:, -1:, :])
+                else:
+                    outputs = self.net['output'](edges[:, :1 + self.n_stores, :])
 
         if 'echelon_inventories' in observation:
-            def proportional_minimum(x, y):
-                return torch.min(x, y)
             echelon_allocations = []
-            for j in range(outputs.size(1) - 2):
-                if j == 0:  # First echelon
-                    echelon_allocations.append(outputs[:, j:j+1, 0])
-                else:
-                    echelon_allocations.append(proportional_minimum(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j,0]))
-            warehouse_allocation = proportional_minimum(outputs[:, -2: -1, 0], echelon_inventories[:,-1,:1])
-            store_allocation = proportional_minimum(outputs[:, -1:, 0], warehouse_inventories[:,:,0])
+            if self.self_loop:
+                for j in range(outputs.size(1) - 2):
+                    if j == 0:  # First echelon
+                        echelon_allocations.append(outputs[:, j:j+1, 0])
+                    else:
+                        echelon_allocations.append(self.apply_proportional_allocation(torch.cat([outputs[:, j:j+1, 0], loop_outputs[:, j-1:j, 0]], dim=1), echelon_inventories[:,j-1:j])[:, :-1])
+                warehouse_allocation = self.apply_proportional_allocation(torch.cat([outputs[:, -2: -1, 0], loop_outputs[:, -2:-1, 0]], dim=1), echelon_inventories[:,-1:, :])[:, :-1]
+                store_allocation = self.apply_proportional_allocation(torch.cat([outputs[:, -1:, 0], loop_outputs[:, -1:, 0]], dim=1), warehouse_inventories)[:, :-1]
+            else:
+                for j in range(outputs.size(1) - 2):
+                    if j == 0:  # First echelon
+                        echelon_allocations.append(outputs[:, j:j+1, 0])
+                    else:
+                        echelon_allocations.append(self.apply_proportional_allocation(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j]))
+                warehouse_allocation = self.apply_proportional_allocation(outputs[:, -2: -1, 0], echelon_inventories[:,-1:, :])
+                store_allocation = self.apply_proportional_allocation(outputs[:, -1:, 0], warehouse_inventories)
 
             if self.is_debugging:
                 debug_dir = "/user/ml4723/Prj/NIC/debug"
@@ -2072,19 +1293,31 @@ class GNN(MyNeuralNetwork):
                         orders.append(store_allocation[sample_idx].detach().item())
                         f.write(f"orders: [{', '.join(f'{x:.1f}' for x in orders)}]\n\n")
 
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation,
-                'echelons': torch.cat(echelon_allocations, dim=1)
-            }
+            echelon_allocations_in_tensor = torch.cat(echelon_allocations, dim=1)
+            if self.apply_bottleneck_loss:
+                bottleneck_loss = (outputs.squeeze(-1) - torch.cat([echelon_allocations_in_tensor, warehouse_allocation, store_allocation], dim=-1)).sum()
+                return {
+                    'stores': store_allocation,
+                    'warehouses': warehouse_allocation,
+                    'echelons': echelon_allocations_in_tensor,
+                    'bottleneck_loss': bottleneck_loss
+                }
+            else:
+                return {
+                    'stores': store_allocation,
+                    'warehouses': warehouse_allocation,
+                    'echelons': echelon_allocations_in_tensor
+                }
         elif 'warehouse_store_edge_lead_times' in observation:
             warehouse_allocation = outputs[:, :n_warehouses, 0]
 
             wh_idx, st_idx = warehouse_store_edges_observation[0].nonzero(as_tuple=True)
-            one_hot_warehouse = torch.zeros(n_edges, n_warehouses, device=self.device)
-            one_hot_warehouse[torch.arange(n_edges), wh_idx] = 1
+            one_hot_warehouse = torch.zeros(n_edges_w_to_s, n_warehouses, device=self.device)
+            one_hot_warehouse[torch.arange(n_edges_w_to_s), wh_idx] = 1
             store_orders = outputs[:, n_warehouses:, 0]
             aggregated_orders = torch.matmul(store_orders, one_hot_warehouse)
+            if self.self_loop:
+                aggregated_orders = aggregated_orders + loop_outputs
             total_inventory = observation['warehouse_inventories'][:, :, 0]
 
             if self.__class__.__name__ == 'GNN_transshipment':
@@ -2095,12 +1328,12 @@ class GNN(MyNeuralNetwork):
             store_allocation = store_orders * edge_scaling
 
             store_allocation_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
-            batch_idx = torch.arange(outputs.size(0), device=self.device).unsqueeze(1).expand(outputs.size(0), n_edges)
-            store_allocation_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_allocation
+            batch_idx = torch.arange(outputs.size(0), device=self.device).unsqueeze(1).expand(outputs.size(0), n_edges_w_to_s)
+            store_allocation_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s)] = store_allocation
             if self.is_debugging:
                 debug_dir = "/user/ml4723/Prj/NIC/debug"
                 store_orders_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
-                store_orders_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_orders
+                store_orders_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s)] = store_orders
                 if self.debug_identifier is not None:
                     debug_dir = debug_dir + self.debug_identifier
                 os.makedirs(debug_dir, exist_ok=True)
@@ -2134,17 +1367,15 @@ class GNN(MyNeuralNetwork):
                             else:
                                 f.write(f"[{formatted_store_inv}] - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
             
+            results = {
+                'stores': store_allocation_matrix,
+                'warehouses': warehouse_allocation
+            }
             if self.apply_bottleneck_loss:
-                return {
-                    'stores': store_allocation_matrix,
-                    'warehouses': warehouse_allocation,
-                    'bottleneck_loss': (store_orders - store_allocation).sum()
-                }
-            else:
-                return {
-                    'stores': store_allocation_matrix,
-                    'warehouses': warehouse_allocation
-                }
+                results['bottleneck_loss'] = (store_orders - store_allocation).sum()
+            if self.self_loop:
+                results['warehouse_self_loop_orders'] = loop_outputs * scaling_factor
+            return results
         else:
             store_intermediate_outputs = outputs[:, 1:]
             warehouse_allocation = outputs[:, :1, 0]
@@ -2153,735 +1384,66 @@ class GNN(MyNeuralNetwork):
                 store_allocation = self.apply_proportional_allocation(
                     store_intermediate_outputs[:,:,0], 
                     observation['warehouse_inventories'],
-                    transshipment=True
+                    transshipment=True,
+                    soft_min=self.soft_min
                     )
-                
-                if self.is_debugging:
-                    debug_dir = "/user/ml4723/Prj/NIC/debug"
-                    if self.debug_identifier is not None:
-                        debug_dir = debug_dir + self.debug_identifier
-                    os.makedirs(debug_dir, exist_ok=True)
-                    for sample_idx in range(min(store_allocation.size(0), 32)):
-                        with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                            f.write("\n\n")
-                            warehouse_outputs = warehouse_allocation[sample_idx].detach().cpu().to(torch.float32).numpy()
-                            f.write(np.array2string(warehouse_outputs, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                            f.write('\n')
-                            
-                            max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
-                            for lead_time in range(max_lead_time, 0, -1):
-                                outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().to(torch.float32).numpy()
-                                f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                                f.write('\n')
-
-                            for store_idx in range(self.n_stores):
-                                store_alloc = store_allocation[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
-                                store_out = store_intermediate_outputs[sample_idx, store_idx, 0].detach().cpu().to(torch.float32).numpy()
-                                formatted_allocation_orders = '[' + ', \t'.join([f'{store_alloc:4.1f}/{store_out:4.1f}']) + ']'
-                                f.write(formatted_allocation_orders)
-                                
-                                store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
-                                formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[::-1]])
-                                f.write(f"[{formatted_store_inv}]\n")
             else:
-                store_allocation = self.apply_proportional_allocation(
-                    store_intermediate_outputs[:,:,0], 
-                    observation['warehouse_inventories']
-                    )
-            return {
+                if self.self_loop:
+                    allocations = self.apply_proportional_allocation(
+                        torch.cat([store_intermediate_outputs[:,:,0], warehouse_loop_output[:,:,0]], dim=1), 
+                        observation['warehouse_inventories'],
+                        soft_min=self.soft_min
+                        )
+                    store_allocation = allocations[:, :-1]
+                else:
+                    store_allocation = self.apply_proportional_allocation(
+                        store_intermediate_outputs[:,:,0], 
+                        observation['warehouse_inventories'],
+                        soft_min=self.soft_min
+                        )
+                
+            # if self.is_debugging:
+            #     debug_dir = "/user/ml4723/Prj/NIC/debug"
+            #     if self.debug_identifier is not None:
+            #         debug_dir = debug_dir + self.debug_identifier
+            #     os.makedirs(debug_dir, exist_ok=True)
+            #     for sample_idx in range(min(store_allocation.size(0), 8)):
+            #         with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+            #             f.write("\n\n")
+            #             warehouse_outputs = warehouse_allocation[sample_idx].detach().cpu().to(torch.float32).numpy()
+            #             f.write(np.array2string(warehouse_outputs, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+            #             f.write('\n')
+                        
+            #             max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
+            #             for lead_time in range(max_lead_time, 0, -1):
+            #                 outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().to(torch.float32).numpy()
+            #                 f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+            #                 f.write('\n')
+
+            #             for store_idx in range(self.n_stores):
+            #                 store_alloc = store_allocation[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+            #                 store_out = store_intermediate_outputs[sample_idx, store_idx, 0].detach().cpu().to(torch.float32).numpy()
+            #                 formatted_allocation_orders = '[' + ', \t'.join([f'{store_alloc:4.1f}/{store_out:4.1f}']) + ']'
+            #                 f.write(formatted_allocation_orders)
+                            
+            #                 store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+            #                 formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[::-1]])
+            #                 f.write(f"[{formatted_store_inv}]\n")
+            result = {
                 'stores': store_allocation,
                 'warehouses': warehouse_allocation
             }
+            result['stores_intermediate_outputs'] = store_intermediate_outputs[:,:,0]
+            if self.self_loop:
+                result['warehouse_loop_output'] = warehouse_loop_output[:,:,0]
+                result['warehouse_self_loop_orders'] = allocations[:, -1:]
+            if self.apply_bottleneck_loss:
+                result['bottleneck_loss'] = torch.clamp(store_intermediate_outputs[:,:,0] - store_allocation, min=0).sum()
+            return result
 
 class GNN_transshipment(GNN):
     pass
 
-class GNN_MP_n_warehouse(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.use_attention = 'use_attention' in args and args['use_attention']
-        self.n_stores = problem_params['n_stores']
-        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
-                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
-                          / torch.tensor(self.n_stores + 1, device=self.device)
-        self.use_pna = 'use_pna' in args and args['use_pna']
-        self.NN_per_layer = 'NN_per_layer' in args and args['NN_per_layer']
-        self.skip_connection = 'skip_connection' in args and args['skip_connection']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'holding_costs', 'underage_costs']
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        # Transpose warehouse_store_edge_lead_times from (n_samples, n_warehouse, n_stores) to (n_samples, n_stores, n_warehouse)
-        edge_lead_times = observation['warehouse_store_edge_lead_times'].transpose(1, 2)
-        return torch.cat([observation['store_inventories'], store_params, edge_lead_times], dim=2)
-
-    def get_network(self, layer_name, layer_idx):
-        if self.NN_per_layer:
-            return self.net[f'{layer_name}_{layer_idx+1}']
-        else:
-            return self.net[layer_name]
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len)),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-            ], dim=2)
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-        store_state = self.get_store_inventory_and_params(observation)
-        warehouse_state = torch.cat([observation['warehouse_inventories'], observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
-        max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-        store_primitives_len = store_state.size(2) - store_inv_len
-        warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-        max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-        store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-        warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-
-        states = torch.cat([warehouse_padded, store_padded], dim=1)
-
-        n_warehouse = warehouse_state.size(1)
-        face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-        face_encoding[:, :n_warehouse, 0] = 1 # warehouse, supply-facing
-        face_encoding[:, n_warehouse:, 1] = 1 # stores, demand-facing
-
-        n_MP = 2
-        
-        states = torch.cat([states, face_encoding], dim=-1)
-        initial_nodes = self.net['initial_embedding'](states)
-        nodes = initial_nodes
-        for layer_idx in range(n_MP):
-            embedded_nodes = self.get_network('node_embedding', layer_idx)(nodes)
-
-            warehouses_expanded = embedded_nodes[:, :n_warehouse].unsqueeze(1).repeat(1, self.n_stores, 1, 1)
-            store_edges_mask = observation['warehouse_store_edges'].transpose(1,2).unsqueeze(-1)
-            store_supplier_aggregation = torch.mean(warehouses_expanded * store_edges_mask, dim=2)
-            store_recipient_aggregation = torch.zeros_like(embedded_nodes[:, n_warehouse:])
-            
-            warehouse_supplier_aggregation = torch.zeros_like(embedded_nodes[:, :n_warehouse])
-            stores_expanded = embedded_nodes[:, n_warehouse:].unsqueeze(1).repeat(1, n_warehouse, 1, 1)
-            warehouse_edges_mask = observation['warehouse_store_edges'].unsqueeze(-1)
-            warehouse_recipient_aggregation  = torch.mean(stores_expanded * warehouse_edges_mask, dim=2)
-            update_input = torch.cat(
-                [torch.cat([nodes[:, :n_warehouse], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
-                    torch.cat([nodes[:, n_warehouse:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
-                dim=1
-            )
-
-            updates = self.get_network('update_embedding', layer_idx)(update_input)
-            nodes = nodes + updates
-
-        if self.skip_connection:
-            output_net_inputs = torch.cat([states, nodes], dim=-1)
-        else:
-            output_net_inputs = nodes
-
-        # warehouse orders
-        warehouse_edges = torch.cat([output_net_inputs[:, :n_warehouse], torch.zeros_like(output_net_inputs[:, :n_warehouse])], dim=-1)
-        warehouse_allocations = self.net['output'](warehouse_edges)
-
-        # store orders
-        warehouses_expanded = output_net_inputs[:, :n_warehouse].unsqueeze(1).repeat(1, self.n_stores, 1, 1)
-        warehouse_allocation = warehouse_allocations[:, :, 0]
-
-        stores_expanded = output_net_inputs[:, n_warehouse:].unsqueeze(2).repeat(1,1,n_warehouse,1)
-        store_edges = torch.cat([stores_expanded, warehouses_expanded], dim=-1)
-        store_intermediate_outputs_for_all = self.net['output'](store_edges)
-        store_edges_mask = observation['warehouse_store_edges'].transpose(1,2).unsqueeze(-1)
-        store_intermediate_outputs = (store_intermediate_outputs_for_all * store_edges_mask)[:,:,:,0]
-
-        store_allocation = torch.zeros_like(store_intermediate_outputs)
-        for w in range(n_warehouse):
-            store_allocation[:, :, w] += self.apply_proportional_allocation(
-                store_intermediate_outputs[:, :, w], 
-                observation['warehouse_inventories'][:,w:w+1]
-                )
-        return {
-            'stores': store_allocation,
-            'warehouses': warehouse_allocation
-        }
-
-class GNN_MP_shared_weights(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.n_stores = problem_params['n_stores']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def get_network(self, layer_name, layer_idx):
-        if self.NN_per_layer:
-            return self.net[f'{layer_name}_{layer_idx+1}']
-        else:
-            return self.net[layer_name]
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len)),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-            ], dim=2)
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-        store_state = self.get_store_inventory_and_params(observation)
-        warehouse_state = observation['warehouse_inventories']
-        max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-        store_primitives_len = store_state.size(2) - store_inv_len
-        warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-        max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-        store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-        warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-
-        states = torch.cat([warehouse_padded, store_padded], dim=1)
-
-        face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-        face_encoding[:, :1, 0] = 1 # warehouse, supply-facing
-        face_encoding[:, 1:, 1] = 1 # stores, demand-facing
-
-        states = torch.cat([states, face_encoding], dim=-1)
-        outputs = self.net['output'](states)
-
-        store_intermediate_outputs = outputs[:, 1:]
-        warehouse_allocation = outputs[:, :1, 0]
-        store_allocation = self.apply_proportional_allocation(
-            store_intermediate_outputs[:,:,0], 
-            observation['warehouse_inventories']
-            )
-        return {
-            'stores': store_allocation,
-            'warehouses': warehouse_allocation
-        }
-
-class GNN_MP_individual_weights(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.n_stores = problem_params['n_stores']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def get_network(self, layer_name, layer_idx):
-        if self.NN_per_layer:
-            return self.net[f'{layer_name}_{layer_idx+1}']
-        else:
-            return self.net[layer_name]
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len)),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-            ], dim=2)
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-        store_state = self.get_store_inventory_and_params(observation)
-        warehouse_state = observation['warehouse_inventories']
-        max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-        store_primitives_len = store_state.size(2) - store_inv_len
-        warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-        max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-        store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-        warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-
-        states = torch.cat([warehouse_padded, store_padded], dim=1)
-
-        face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-        face_encoding[:, :1, 0] = 1 # warehouse, supply-facing
-        face_encoding[:, 1:, 1] = 1 # stores, demand-facing
-
-        states = torch.cat([states, face_encoding], dim=-1)
-        # Process warehouse (index 0) and stores (indices 1 to n) separately
-        outputs = []
-        outputs.append(self.net['output_0'](states[:,:1])) # warehouse
-        for i in range(1, states.shape[1]):
-            outputs.append(self.net[f'output_{i}'](states[:,i:i+1]))
-        outputs = torch.cat(outputs, dim=1)
-
-        store_intermediate_outputs = outputs[:, 1:]
-        warehouse_allocation = outputs[:, :1, 0]
-        store_allocation = self.apply_proportional_allocation(
-            store_intermediate_outputs[:,:,0], 
-            observation['warehouse_inventories']
-            )
-        return {
-            'stores': store_allocation,
-            'warehouses': warehouse_allocation
-        }
-
-class GNN_MP_bottleneck_loss(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.use_attention = 'use_attention' in args and args['use_attention']
-        self.n_stores = problem_params['n_stores']
-        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
-                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
-                          / torch.tensor(self.n_stores + 1, device=self.device)
-        self.use_pna = 'use_pna' in args and args['use_pna']
-        self.NN_per_layer = 'NN_per_layer' in args and args['NN_per_layer']
-        self.skip_connection = 'skip_connection' in args and args['skip_connection']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def get_network(self, layer_name, layer_idx):
-        if self.NN_per_layer:
-            return self.net[f'{layer_name}_{layer_idx+1}']
-        else:
-            return self.net[layer_name]
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len)),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-            ], dim=2)
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-        if 'echelon_inventories' in observation:
-            echelon_inventories = observation['echelon_inventories']
-            warehouse_inventories = observation['warehouse_inventories']
-            echelon_inv_len = echelon_inventories.size(2)
-
-            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['lead_times'].unsqueeze(2)], dim=-1)
-            warehouse_state = torch.cat([warehouse_inventories, observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
-            echelon_state = torch.cat([echelon_inventories, observation['echelon_holding_costs'].unsqueeze(2), observation['echelon_lead_times'].unsqueeze(2)], dim=-1)
-    
-            store_primitives_len = store_state.size(2) - store_inv_len
-            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-            echelon_primitives_len = echelon_state.size(2) - echelon_inv_len
-            max_primitives_len = max(store_primitives_len, warehouse_primitives_len, echelon_primitives_len)
-
-            n_echelons = echelon_inventories.size(1)
-            max_inv_len = max(store_inv_len, warehouse_inv_len, echelon_inv_len)
-
-            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-            echelon_padded = pad_features(echelon_state, echelon_inv_len, max_inv_len, max_primitives_len)
-
-            states = torch.cat([echelon_padded, warehouse_padded, store_padded], dim=1)
-
-            face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-            face_encoding[:, :1, 0] = 1  
-            face_encoding[:, -1:, 1] = 1
-
-            n_MP = 1 + n_echelons
-        else:
-            store_state = self.get_store_inventory_and_params(observation)
-            warehouse_state = observation['warehouse_inventories']
-            max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-            store_primitives_len = store_state.size(2) - store_inv_len
-            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-            max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-
-            states = torch.cat([warehouse_padded, store_padded], dim=1)
-
-            face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-            face_encoding[:, :1, 0] = 1 # warehouse, supply-facing
-            face_encoding[:, 1:, 1] = 1 # stores, demand-facing
-
-            n_MP = 2
-        
-        states = torch.cat([states, face_encoding], dim=-1)
-        initial_nodes = self.net['initial_embedding'](states)
-        nodes = initial_nodes
-        for layer_idx in range(n_MP):
-            embedded_nodes = self.get_network('node_embedding', layer_idx)(nodes)
-            if 'echelon_inventories' in observation:
-                zero_node = torch.zeros_like(embedded_nodes[:, :1])
-                update_input = torch.cat([
-                    nodes,
-                    torch.cat([zero_node, embedded_nodes[:, :-1]], dim=1), 
-                    torch.cat([embedded_nodes[:, 1:], zero_node], dim=1)
-                ], dim=-1)
-            else:
-                store_supplier_aggregation = embedded_nodes[:, :1].expand(-1, store_state.size(1), -1)
-                store_recipient_aggregation = torch.zeros_like(embedded_nodes[:, 1:])
-                
-                warehouse_supplier_aggregation = torch.zeros_like(embedded_nodes[:, :1])
-                if self.use_attention:
-                    attention_input = torch.cat([embedded_nodes[:, :1].expand(-1, store_state.size(1), -1),embedded_nodes[:, 1:]], dim = -1)
-                    attention_weights = self.net['attention'](attention_input)
-                    attention_weights = F.softmax(attention_weights, dim=2)
-                    warehouse_recipient_aggregation = torch.sum(attention_weights * embedded_nodes[:, 1:], dim=1, keepdim=True)
-                else:
-                    warehouse_recipient_aggregation = embedded_nodes[:, 1:].mean(dim=1, keepdim=True)
-                update_input = torch.cat(
-                    [torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
-                     torch.cat([nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
-                    dim=1
-                )
-
-            updates = self.get_network('update_embedding', layer_idx)(update_input)
-            nodes = nodes + updates
-        if self.skip_connection:
-            outputs = self.net['output'](torch.cat([states, nodes], dim=-1))
-        else:
-            outputs = self.net['output'](nodes)
-
-        if 'echelon_inventories' in observation:
-            def proportional_minimum_with_loss(x, y):
-                return torch.norm(torch.max(x-y, torch.zeros_like(x)), p=2), torch.min(x, y)
-            bottleneck_loss = 0
-            echelon_allocations = []
-            for j in range(outputs.size(1) - 2):
-                if j == 0:  # First echelon
-                    echelon_allocations.append(outputs[:, j:j+1, 0])
-                else:
-                    echelon_bottleneck_loss, echelon_allocation = proportional_minimum_with_loss(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j,0])
-                    echelon_allocations.append(echelon_allocation)
-                    bottleneck_loss += echelon_bottleneck_loss
-            warehouse_bottleneck_loss, warehouse_allocation = proportional_minimum_with_loss(outputs[:, -2: -1, 0], echelon_inventories[:,-1,:1])
-            bottleneck_loss += warehouse_bottleneck_loss
-            store_bottleneck_loss, store_allocation = proportional_minimum_with_loss(outputs[:, -1:, 0], warehouse_inventories[:,:,0])
-            bottleneck_loss += store_bottleneck_loss
-
-
-            if self.is_debugging:
-                debug_dir = "/user/ml4723/Prj/NIC/debug"
-                if self.debug_identifier is not None:
-                    debug_dir = debug_dir + self.debug_identifier
-                os.makedirs(debug_dir, exist_ok=True)
-                for sample_idx in range(echelon_inventories.size(0)):
-                    with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                        inventory_state = []
-                        numeric_inventories = []  # List to store all inventory values
-                        
-                        # Process echelon inventories
-                        for echelon_idx in range(echelon_inventories.size(1)):
-                            lead_time = observation['echelon_lead_times'][sample_idx, echelon_idx].item()
-                            echelon_inv = echelon_inventories[sample_idx, echelon_idx, :int(lead_time)].detach().cpu().numpy()
-                            if echelon_idx > 0:
-                                inventory_state.append('|')
-                            inventory_state.extend(echelon_inv[::-1])
-                            numeric_inventories.extend(echelon_inv[::-1])
-                        
-                        # Process warehouse inventories
-                        inventory_state.append('|')
-                        warehouse_inv = warehouse_inventories[sample_idx, :, :].detach().cpu().numpy().flatten()
-                        inventory_state.extend(warehouse_inv[::-1])
-                        numeric_inventories.extend(warehouse_inv[::-1])
-                        
-                        # Process store inventories
-                        inventory_state.append('|')
-                        lead_time = observation['lead_times'][sample_idx, 0].detach().cpu().numpy()
-                        store_inv = observation['store_inventories'][sample_idx, 0, :int(lead_time)].detach().cpu().numpy()[::-1]
-                        inventory_state.extend(store_inv)
-                        numeric_inventories.extend(store_inv)
-                        
-                        # Write inventory with separators
-                        f.write("inventory: [")
-                        for i, x in enumerate(inventory_state):
-                            if isinstance(x, str):
-                                f.write(f" {x} ")
-                            else:
-                                f.write(f"{x:.1f}")
-                                if i < len(inventory_state)-1 and isinstance(inventory_state[i+1], str) == False:
-                                    f.write(", ")
-                        f.write("]\n")
-                        
-                        # Calculate and write sum and std of all inventories
-                        total_sum = np.sum(numeric_inventories)
-                        total_std = np.std(numeric_inventories)
-                        f.write(f"sum: {total_sum:.1f}, std: {total_std:.1f}\n")
-                        
-                        # Write outputs with aligned labels
-                        raw_outputs = []
-                        for j in range(outputs.size(1)):
-                            raw_outputs.append(outputs[sample_idx, j, 0].detach().item())
-                        f.write(f"outputs: [{', '.join(f'{x:.1f}' for x in raw_outputs)}]\n")
-                        
-                        orders = []
-                        orders.extend([e[sample_idx].detach().item() for e in echelon_allocations])
-                        orders.append(warehouse_allocation[sample_idx].detach().item())
-                        orders.append(store_allocation[sample_idx].detach().item())
-                        f.write(f"orders: [{', '.join(f'{x:.1f}' for x in orders)}]\n\n")
-
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation,
-                'echelons': torch.cat(echelon_allocations, dim=1),
-                'bottleneck_loss': bottleneck_loss
-            }
-        else:
-            store_intermediate_outputs = outputs[:, 1:]
-            warehouse_allocation = outputs[:, :1, 0]
-            if self.__class__.__name__ == 'GNN_MP_transshipment':
-                store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
-            else:
-                store_allocation = self.apply_proportional_allocation(
-                    store_intermediate_outputs[:,:,0], 
-                    observation['warehouse_inventories']
-                    )
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation
-            }
-
-class GNN_MP_bottleneck_loss_stop_gradient(MyNeuralNetwork):
-    def __init__(self, args, problem_params, device='cpu'):
-        super().__init__(args, problem_params, device)
-        self.use_attention = 'use_attention' in args and args['use_attention']
-        self.n_stores = problem_params['n_stores']
-        self.pna_delta = (torch.log(torch.tensor(self.n_stores + 1, device=self.device)) 
-                          + self.n_stores * torch.log(torch.tensor(2, device=self.device))) \
-                          / torch.tensor(self.n_stores + 1, device=self.device)
-        self.use_pna = 'use_pna' in args and args['use_pna']
-        self.NN_per_layer = 'NN_per_layer' in args and args['NN_per_layer']
-        self.skip_connection = 'skip_connection' in args and args['skip_connection']
-
-    def get_store_inventory_and_params(self, observation):
-        params_to_stack = ['mean', 'std', 'underage_costs', 'lead_times']
-        if 'store_random_yield_mean' in observation:
-            params_to_stack.extend(['store_random_yield_mean', 'store_random_yield_std'])
-        store_params = torch.stack([observation[k] for k in params_to_stack], dim=2)
-        return torch.cat([observation['store_inventories'], store_params], dim=2)
-
-    def get_network(self, layer_name, layer_idx):
-        if self.NN_per_layer:
-            return self.net[f'{layer_name}_{layer_idx+1}']
-        else:
-            return self.net[layer_name]
-
-    def forward(self, observation):
-        def pad_features(tensor, inv_len, max_inv_len, max_states_len):
-            inv = tensor[:,:,:inv_len]
-            states = tensor[:,:,inv_len:]
-            return torch.cat([
-                F.pad(inv, (0, max_inv_len - inv_len)),
-                F.pad(states, (0, max_states_len - (tensor.size(2) - inv_len)))
-            ], dim=2)
-
-        store_inv_len = observation['store_inventories'].size(2)
-        warehouse_inv_len = observation['warehouse_inventories'].size(2)
-        if 'echelon_inventories' in observation:
-            echelon_inventories = observation['echelon_inventories']
-            warehouse_inventories = observation['warehouse_inventories']
-            echelon_inv_len = echelon_inventories.size(2)
-
-            store_state = torch.cat([observation['store_inventories'], observation['holding_costs'].unsqueeze(2), observation['lead_times'].unsqueeze(2)], dim=-1)
-            warehouse_state = torch.cat([warehouse_inventories, observation['warehouse_holding_costs'].unsqueeze(2), observation['warehouse_lead_times'].unsqueeze(2)], dim=-1)
-            echelon_state = torch.cat([echelon_inventories, observation['echelon_holding_costs'].unsqueeze(2), observation['echelon_lead_times'].unsqueeze(2)], dim=-1)
-    
-            store_primitives_len = store_state.size(2) - store_inv_len
-            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-            echelon_primitives_len = echelon_state.size(2) - echelon_inv_len
-            max_primitives_len = max(store_primitives_len, warehouse_primitives_len, echelon_primitives_len)
-
-            n_echelons = echelon_inventories.size(1)
-            max_inv_len = max(store_inv_len, warehouse_inv_len, echelon_inv_len)
-
-            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-            echelon_padded = pad_features(echelon_state, echelon_inv_len, max_inv_len, max_primitives_len)
-
-            states = torch.cat([echelon_padded, warehouse_padded, store_padded], dim=1)
-
-            face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-            face_encoding[:, :1, 0] = 1  
-            face_encoding[:, -1:, 1] = 1
-
-            n_MP = 1 + n_echelons
-        else:
-            store_state = self.get_store_inventory_and_params(observation)
-            warehouse_state = observation['warehouse_inventories']
-            max_inv_len = max(store_inv_len, warehouse_inv_len)
-
-            store_primitives_len = store_state.size(2) - store_inv_len
-            warehouse_primitives_len = warehouse_state.size(2) - warehouse_inv_len
-            max_primitives_len = max(store_primitives_len, warehouse_primitives_len)
-
-            store_padded = pad_features(store_state, store_inv_len, max_inv_len, max_primitives_len)
-            warehouse_padded = pad_features(warehouse_state, warehouse_inv_len, max_inv_len, max_primitives_len)
-
-            states = torch.cat([warehouse_padded, store_padded], dim=1)
-
-            face_encoding = torch.zeros(*states.shape[:-1], 2, device=self.device)
-            face_encoding[:, :1, 0] = 1 # warehouse, supply-facing
-            face_encoding[:, 1:, 1] = 1 # stores, demand-facing
-
-            n_MP = 2
-        
-        states = torch.cat([states, face_encoding], dim=-1)
-        initial_nodes = self.net['initial_embedding'](states)
-        nodes = initial_nodes
-        for layer_idx in range(n_MP):
-            embedded_nodes = self.get_network('node_embedding', layer_idx)(nodes)
-            if 'echelon_inventories' in observation:
-                zero_node = torch.zeros_like(embedded_nodes[:, :1])
-                update_input = torch.cat([
-                    nodes,
-                    torch.cat([zero_node, embedded_nodes[:, :-1]], dim=1), 
-                    torch.cat([embedded_nodes[:, 1:], zero_node], dim=1)
-                ], dim=-1)
-            else:
-                store_supplier_aggregation = embedded_nodes[:, :1].expand(-1, store_state.size(1), -1)
-                store_recipient_aggregation = torch.zeros_like(embedded_nodes[:, 1:])
-                
-                warehouse_supplier_aggregation = torch.zeros_like(embedded_nodes[:, :1])
-                if self.use_attention:
-                    attention_input = torch.cat([embedded_nodes[:, :1].expand(-1, store_state.size(1), -1),embedded_nodes[:, 1:]], dim = -1)
-                    attention_weights = self.net['attention'](attention_input)
-                    attention_weights = F.softmax(attention_weights, dim=2)
-                    warehouse_recipient_aggregation = torch.sum(attention_weights * embedded_nodes[:, 1:], dim=1, keepdim=True)
-                else:
-                    warehouse_recipient_aggregation = embedded_nodes[:, 1:].mean(dim=1, keepdim=True)
-                update_input = torch.cat(
-                    [torch.cat([nodes[:, :1], warehouse_supplier_aggregation, warehouse_recipient_aggregation], dim=-1),
-                     torch.cat([nodes[:, 1:], store_supplier_aggregation, store_recipient_aggregation], dim=-1)],
-                    dim=1
-                )
-
-            updates = self.get_network('update_embedding', layer_idx)(update_input)
-            nodes = nodes + updates
-        if self.skip_connection:
-            outputs = self.net['output'](torch.cat([states, nodes], dim=-1))
-        else:
-            outputs = self.net['output'](nodes)
-
-        if 'echelon_inventories' in observation:
-            def proportional_minimum_with_loss(x, y):
-                x_close_to_y = torch.abs(x - y) < 0.01
-                result = torch.where(x_close_to_y & (x >= y), x - x.detach() + y,
-                         torch.where(x_close_to_y & (y >= x), y - y.detach() + x, 
-                         torch.min(x, y)))
-                
-                return torch.norm(torch.max(x-y, torch.zeros_like(x)), p=2), result
-            bottleneck_loss = 0
-            echelon_allocations = []
-            for j in range(outputs.size(1) - 2):
-                if j == 0:  # First echelon
-                    echelon_allocations.append(outputs[:, j:j+1, 0])
-                else:
-                    echelon_bottleneck_loss, echelon_allocation = proportional_minimum_with_loss(outputs[:, j:j+1, 0], echelon_inventories[:,j-1:j,0])
-                    echelon_allocations.append(echelon_allocation)
-                    bottleneck_loss += echelon_bottleneck_loss
-            warehouse_bottleneck_loss, warehouse_allocation = proportional_minimum_with_loss(outputs[:, -2: -1, 0], echelon_inventories[:,-1,:1])
-            bottleneck_loss += warehouse_bottleneck_loss
-            store_bottleneck_loss, store_allocation = proportional_minimum_with_loss(outputs[:, -1:, 0], warehouse_inventories[:,:,0])
-            bottleneck_loss += store_bottleneck_loss
-
-
-            if self.is_debugging:
-                debug_dir = "/user/ml4723/Prj/NIC/debug"
-                if self.debug_identifier is not None:
-                    debug_dir = debug_dir + self.debug_identifier
-                os.makedirs(debug_dir, exist_ok=True)
-                for sample_idx in range(echelon_inventories.size(0)):
-                    with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                        inventory_state = []
-                        numeric_inventories = []  # List to store all inventory values
-                        
-                        # Process echelon inventories
-                        for echelon_idx in range(echelon_inventories.size(1)):
-                            lead_time = observation['echelon_lead_times'][sample_idx, echelon_idx].item()
-                            echelon_inv = echelon_inventories[sample_idx, echelon_idx, :int(lead_time)].detach().cpu().numpy()
-                            if echelon_idx > 0:
-                                inventory_state.append('|')
-                            inventory_state.extend(echelon_inv[::-1])
-                            numeric_inventories.extend(echelon_inv[::-1])
-                        
-                        # Process warehouse inventories
-                        inventory_state.append('|')
-                        warehouse_inv = warehouse_inventories[sample_idx, :, :].detach().cpu().numpy().flatten()
-                        inventory_state.extend(warehouse_inv[::-1])
-                        numeric_inventories.extend(warehouse_inv[::-1])
-                        
-                        # Process store inventories
-                        inventory_state.append('|')
-                        lead_time = observation['lead_times'][sample_idx, 0].detach().cpu().numpy()
-                        store_inv = observation['store_inventories'][sample_idx, 0, :int(lead_time)].detach().cpu().numpy()[::-1]
-                        inventory_state.extend(store_inv)
-                        numeric_inventories.extend(store_inv)
-                        
-                        # Write inventory with separators
-                        f.write("inventory: [")
-                        for i, x in enumerate(inventory_state):
-                            if isinstance(x, str):
-                                f.write(f" {x} ")
-                            else:
-                                f.write(f"{x:.1f}")
-                                if i < len(inventory_state)-1 and isinstance(inventory_state[i+1], str) == False:
-                                    f.write(", ")
-                        f.write("]\n")
-                        
-                        # Calculate and write sum and std of all inventories
-                        total_sum = np.sum(numeric_inventories)
-                        total_std = np.std(numeric_inventories)
-                        f.write(f"sum: {total_sum:.1f}, std: {total_std:.1f}\n")
-                        
-                        # Write outputs with aligned labels
-                        raw_outputs = []
-                        for j in range(outputs.size(1)):
-                            raw_outputs.append(outputs[sample_idx, j, 0].detach().item())
-                        f.write(f"outputs: [{', '.join(f'{x:.1f}' for x in raw_outputs)}]\n")
-                        
-                        orders = []
-                        orders.extend([e[sample_idx].detach().item() for e in echelon_allocations])
-                        orders.append(warehouse_allocation[sample_idx].detach().item())
-                        orders.append(store_allocation[sample_idx].detach().item())
-                        f.write(f"orders: [{', '.join(f'{x:.1f}' for x in orders)}]\n\n")
-
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation,
-                'echelons': torch.cat(echelon_allocations, dim=1),
-                'bottleneck_loss': bottleneck_loss
-            }
-        else:
-            store_intermediate_outputs = outputs[:, 1:]
-            warehouse_allocation = outputs[:, :1, 0]
-            if self.__class__.__name__ == 'GNN_MP_transshipment':
-                store_allocation = self.apply_softmax_feasibility_function(store_intermediate_outputs[:,:,0], observation['warehouse_inventories'], transshipment=True)
-            else:
-                store_allocation = self.apply_proportional_allocation(
-                    store_intermediate_outputs[:,:,0], 
-                    observation['warehouse_inventories']
-                    )
-            return {
-                'stores': store_allocation,
-                'warehouses': warehouse_allocation
-            }
-
-class GNN_MP_real(GNN_MP):
-    def get_store_inventory_and_params(self, observation):
-        return torch.cat([observation['store_inventories'][:, :, 0].unsqueeze(-1)] \
-             + [observation[k].unsqueeze(-1) for k in ['days_from_christmas', 'underage_costs', 'holding_costs']] \
-             + [observation[k] for k in ['past_demands', 'arrivals', 'orders']], dim=2)
-    
 class GNN_real(GNN):
     def get_store_inventory_and_params(self, observation):
         return torch.cat([observation['store_inventories'][:, :, 0].unsqueeze(-1)] \
@@ -2898,9 +1460,6 @@ class GNN_real(GNN):
         list_to_cat_to_unsqueeze = [observation[k].unsqueeze(-1) for k in params_to_cat]
         list_to_cat = [observation["warehouse_arrivals"]]
         return torch.cat([observation['warehouse_inventories'], *list_to_cat_to_unsqueeze, *list_to_cat], dim=-1)
-
-class GNN_MP_transshipment(GNN_MP):
-    pass
 
 class SymmetryAware(MyNeuralNetwork):
     """
@@ -3143,12 +1702,16 @@ class DataDrivenNet(MyNeuralNetwork):
             
             input_data = [normalized_store_inventories, normalized_past_demands, normalized_arrivals, normalized_orders]
         else:
-            input_data = [observation['store_inventories'][:, :, 0], observation['past_demands'], observation['arrivals'], observation['orders']]
+            input_data = [observation['store_inventories'][:, :, 0], observation['past_demands'], observation['store_arrivals'], observation['store_orders']]
         
         input_data += [observation[key] for key in ['underage_costs', 'days_from_christmas']]
 
         if 'warehouse_inventories' in observation:
             warehouse_inventories = observation['warehouse_inventories'] / R if self.apply_normalization else observation['warehouse_inventories']
+            warehouse_arrivals = observation['warehouse_arrivals'] / R if self.apply_normalization else observation['warehouse_arrivals']
+            warehouse_orders = observation['warehouse_orders'] / R if self.apply_normalization else observation['warehouse_orders']
+            input_data.append(warehouse_arrivals)
+            input_data.append(warehouse_orders)
             input_data.append(warehouse_inventories)
         
         input_tensor = self.flatten_then_concatenate_tensors(input_data)
@@ -3525,7 +2088,7 @@ class JustInTime(MyNeuralNetwork):
         current_period = observation['current_period']
         lead_times = observation['lead_times']
         if 'warehouse_store_edge_lead_times' in observation:
-            lead_times = observation['warehouse_store_edge_lead_times'].transpose(1,2).squeeze(-1)
+            lead_times = torch.ones_like(observation['lead_times'])
         demands, period_shift = self.unpack_args(observation['internal_data'], ["demands", "period_shift"])
     
         num_samples, num_stores, max_lead_time = demands.shape
@@ -3541,19 +2104,73 @@ class JustInTime(MyNeuralNetwork):
 
         if 'warehouse_lead_times' in observation:
             warehouse_lead_times = self.unpack_args(observation, ["warehouse_lead_times"])
-            warehouse_future_demands = torch.stack([
-                demands[:, j][
-                    torch.arange(num_samples), 
-                    torch.clip(current_period.to(self.device) + period_shift + warehouse_lead_times[:, 0].long() + lead_times[:, j].long(), max=max_lead_time - 1)
-                    ] 
-                for j in range(num_stores)
-                ], dim=1
-                )
-            warehouse_future_demands = warehouse_future_demands.sum(dim=1).unsqueeze(-1)
-            store_allocation = self.apply_proportional_allocation(torch.clip(stores_future_demands, min=0), observation['warehouse_inventories'])
             if 'warehouse_store_edge_lead_times' in observation:
-                return {'stores': store_allocation.unsqueeze(-1),'warehouses': torch.clip(warehouse_future_demands, min=0)} 
-            return {'stores': store_allocation,'warehouses': torch.clip(warehouse_future_demands, min=0),} 
+                n_warehouses = observation['warehouse_inventories'].size(1)
+                warehouse_store_edges_observation = observation['warehouse_store_edges']
+                
+                # Handle multi-connected stores by selecting cheapest warehouse
+                store_connections = warehouse_store_edges_observation[0].sum(dim=0)
+                multi_connected_stores = (store_connections > 1).nonzero().squeeze(-1)
+                for store_idx in multi_connected_stores:
+                    connected_warehouses = warehouse_store_edges_observation[0, :, store_idx].bool()
+                    costs = observation['warehouse_edge_initial_cost'][0]
+                    costs_connected = costs[connected_warehouses]
+                    min_cost_idx = costs_connected.argmin(dim=-1)
+                    connected_warehouse_indices = connected_warehouses.nonzero().squeeze(-1)
+                    connection_index = connected_warehouse_indices[min_cost_idx]
+                    warehouse_store_edges_observation[:, :, store_idx] = 0
+                    warehouse_store_edges_observation[:, connection_index, store_idx] = 1
+                
+                # Create store allocation matrix with shape (n_samples, n_stores, n_warehouses)
+                store_allocation = torch.zeros(num_samples, num_stores, n_warehouses, device=self.device)
+                
+                # For each store, allocate its future demand to the connected warehouse
+                for store_idx in range(num_stores):
+                    # Skip if current period is shorter than warehouse's lead time
+                    if current_period < warehouse_lead_times[0, 0].long().cpu():
+                        continue
+                    # Find which warehouse is connected to this store
+                    connected_warehouse = warehouse_store_edges_observation[0, :, store_idx].nonzero().squeeze(-1)
+                    if connected_warehouse.numel() > 0:  # If there is a connected warehouse
+                        warehouse_idx = connected_warehouse.item()
+                        store_allocation[:, store_idx, warehouse_idx] = stores_future_demands[:, store_idx]
+                
+                # Calculate future demands for each warehouse based on connected stores
+                warehouse_future_demands = torch.zeros(num_samples, n_warehouses, device=self.device)
+                
+                for warehouse_idx in range(n_warehouses):
+                    # Get stores connected to this warehouse
+                    connected_stores = warehouse_store_edges_observation[0, warehouse_idx].bool()
+                    connected_store_indices = connected_stores.nonzero().squeeze(-1)
+                    
+                    # For each connected store, calculate its future demand
+                    for store_idx in connected_store_indices:
+                        store_lead_time = lead_times[:, store_idx].long()
+                        warehouse_lead_time = warehouse_lead_times[:, warehouse_idx].long()
+                        total_lead_time = store_lead_time + warehouse_lead_time + period_shift
+                        
+                        future_period = torch.clip(
+                            current_period.to(self.device) + total_lead_time, 
+                            max=max_lead_time - 1
+                        )
+                        
+                        store_future_demand = demands[:, store_idx][torch.arange(num_samples), future_period]
+                        warehouse_future_demands[:, warehouse_idx] += store_future_demand
+                
+                # Return store allocation and warehouse future demands
+                return {'stores': store_allocation, 'warehouses': torch.clip(warehouse_future_demands, min=0)}
+            else:
+                warehouse_future_demands = torch.stack([
+                    demands[:, j][
+                        torch.arange(num_samples), 
+                        torch.clip(current_period.to(self.device) + period_shift + warehouse_lead_times[:, 0].long() + lead_times[:, j].long(), max=max_lead_time - 1)
+                        ] 
+                    for j in range(num_stores)
+                    ], dim=1
+                    )
+                warehouse_future_demands = warehouse_future_demands.sum(dim=1).unsqueeze(-1)
+                store_allocation = self.apply_proportional_allocation(torch.clip(stores_future_demands, min=0), observation['warehouse_inventories'])
+                return {'stores': store_allocation,'warehouses': torch.clip(warehouse_future_demands, min=0),}
         return {'stores': torch.clip(stores_future_demands, min=0)}
 
 class WeeklyForecastNN(MyNeuralNetwork):
@@ -3639,9 +2256,12 @@ class NeuralNetworkCreator:
             'master': problem_params['n_stores'] + problem_params['n_warehouses'], 
             'master_cbs': problem_params['n_stores'] * 2 + problem_params['n_warehouses'],
             'master_echelon': problem_params['n_stores'] + problem_params['n_warehouses'] + problem_params['n_extra_echelons'],
+            'master_echelon_selfloop': problem_params['n_stores'] + 2 * (problem_params['n_warehouses'] + problem_params['n_extra_echelons']),
+            'master_selfloop': problem_params['n_stores'] + problem_params['n_warehouses'] * 2,
             'store': 1, 
             'warehouse': 1, 
             'master_n_warehouses': problem_params['n_warehouses'] + problem_params['n_warehouses'] * problem_params['n_stores'],
+            'master_n_warehouses_selfloop': problem_params['n_warehouses'] * 2 + problem_params['n_warehouses'] * problem_params['n_stores'],
             'context': None
             }
         return default_sizes[module_name]
@@ -3655,13 +2275,16 @@ class NeuralNetworkCreator:
             'capped_base_stock': CappedBaseStock,
             'echelon_stock': EchelonStock,
             'vanilla_serial': VanillaSerial,
-            'vanilla_serial_proportional': VanillaSerial_proportional,
+            'VanillaSerialSelfloop': VanillaSerialSelfloop,
             'vanilla_transshipment': VanillaTransshipment,
+            'VanillaTransshipmentSelfloop': VanillaTransshipmentSelfloop,
             'vanilla_one_warehouse': VanillaOneWarehouse,
+            'VanillaOneWarehouseSelfloop': VanillaOneWarehouseSelfloop,
             'vanilla_n_stores': Vanilla_N_Stores,
             'n_stores_shared_net': N_Stores_Shared_Net,
             'n_stores_per_store_net': N_Stores_Per_Store_Net,
             'vanilla_n_warehouses': Vanilla_N_Warehouses,
+            'Vanilla_N_Warehouses_Selfloop': Vanilla_N_Warehouses_Selfloop,
             'symmetry_aware': SymmetryAware,
             'symmetry_aware_real_data': SymmetryAwareRealData,
             'data_driven': DataDrivenNet,
@@ -3677,23 +2300,12 @@ class NeuralNetworkCreator:
             'transformed_nv_calculated_quantile': TransformedNV_CalculatedQuantile,
             'transformed_nv_noquantile_sep_stores': TransformedNV_NoQuantile_SeparateStores,
             'pretrained_store': Pretrained_Store,
-            'GNN_MP': GNN_MP,
-            'GNN_MP_shared_weights': GNN_MP_shared_weights,
-            'GNN_MP_individual_weights': GNN_MP_individual_weights,
-            'GNN_MP_bottleneck_loss': GNN_MP_bottleneck_loss,
-            'GNN_MP_bottleneck_loss_stop_gradient': GNN_MP_bottleneck_loss_stop_gradient,
-            'GNN_MP_real': GNN_MP_real,
-            'GNN_MP_transshipment': GNN_MP_transshipment,
             'CBS_One_Warehouse': CBS_One_Warehouse,
-            'GNN_MP_n_warehouse': GNN_MP_n_warehouse,
             'GNN': GNN,
             'GNN_real': GNN_real,
-            'GNN_half': GNN_half,
             'GNN_decentralized': GNN_decentralized,
             'GNN_decentralized_transshipment': GNN_decentralized_transshipment,
-            'GNN_half_dynamic': GNN_half_dynamic,
-            'decentralized_edge': decentralized_edge,
-            'GNN_transshipment': GNN_transshipment
+            'GNN_transshipment': GNN_transshipment,
             }
         return architectures[name]
     

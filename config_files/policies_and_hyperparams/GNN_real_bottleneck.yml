@@ -41,7 +41,6 @@ nn_params:
     'output': 1
   'initial_bias':
     'output': 1.0
-  'include_primitive_features': False
   'gradient_clipping_norm_value': 1.0
   'skip_connection': True
   'apply_bottleneck_loss': True

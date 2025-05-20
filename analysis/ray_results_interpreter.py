@@ -64,6 +64,10 @@ class RayResultsinterpreter:
                         'dev_periods': 'dev_periods',
                         'store_holding_cost': 'store_holding_cost',
                         'config': 'config',
+                        'n_extra_echelons': 'n_extra_echelons',
+                        'test_n_samples': 'test_n_samples',
+                        'train_batch_size': 'train_batch_size',
+                        'warehouse_demands_cap': 'warehouse_demands_cap',
                     }
                     result = {}
                     for key, value in param_dict.items():

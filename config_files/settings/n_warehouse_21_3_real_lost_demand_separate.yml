@@ -92,7 +92,7 @@ store_params:
     'range': [2, 4] # recall that upper range is excluded from the possible values
   'holding_cost': 
     'sample_across_instances': True 
-    'vary_across_samples': True
+    'vary_across_samples': False
     'expand': False
     'range': [0.7, 1.3]
   'underage_cost': 

@@ -136,10 +136,24 @@ class Simulator(gym.Env):
                     data[f's_{i}_inventory_{inv_loc}'] = self.observation['store_inventories'].detach().cpu()[:, i, inv_loc]
                 if self.problem_params['n_warehouses'] > 0:
                     for j in range(self.problem_params['n_warehouses']):
-                        data[f's_{i}_w_{j}_order'] = action['stores'].detach().cpu()[:, i, j]
+                        if action['stores'].dim() == 3:
+                            data[f's_{i}_w_{j}_order'] = action['stores'].detach().cpu()[:, i, j]
+                        else:
+                            data[f's_{i}_w_{j}_order'] = action['stores'].detach().cpu()[:, i]
+
+                # considers one warehouse
+                if 'stores_intermediate_outputs' in action:
+                    data[f's_{i}_stores_intermediate_outputs'] = action['stores_intermediate_outputs'].detach().cpu()[:, i]
             if self.problem_params['n_warehouses'] > 0:
                 for i in range(self.problem_params['n_warehouses']):
-                    data[f'w_{i}_inventory'] = self.observation['warehouse_inventories'].detach().cpu()[:, i, 0]
+                    for inv_loc in range(self.observation['warehouse_inventories'].size(-1)):
+                        data[f'w_{i}_inventory_{inv_loc}'] = self.observation['warehouse_inventories'].detach().cpu()[:, i, inv_loc]
+                    if 'warehouses' in action and action['warehouses'] is not None:
+                        data[f'w_{i}_order'] = action['warehouses'].detach().cpu()[:, i]
+                    if 'warehouse_loop_output' in action:
+                        data[f's_{i}_warehouse_loop_output'] = action['warehouse_loop_output'].detach().cpu()[:, i]
+
+
         
         # Update observation corresponding to past occurrences (e.g., arrivals, orders, demands).
         # Do this before updating current period (as we consider current period + 1)
@@ -381,8 +395,11 @@ class Simulator(gym.Env):
         for k, v in observation_params['include_past_observations'].items():
             if v > 0:
                 if 'store_orders' == k:
-                    observation[k] = torch.zeros(self.batch_size, self.n_stores, self.problem_params['n_warehouses'], v, device=self.device)
-                elif 'warehouse_orders' == k or 'warehouse_arrivals' == k:
+                    if self.problem_params['n_warehouses'] == 1:
+                        observation[k] = torch.zeros(self.batch_size, self.n_stores, v, device=self.device)
+                    else:
+                        observation[k] = torch.zeros(self.batch_size, self.n_stores, self.problem_params['n_warehouses'], v, device=self.device)
+                elif 'warehouse_orders' == k or 'warehouse_arrivals' == k or 'warehouse_self_loop_orders' == k:
                     observation[k] = torch.zeros(self.batch_size, self.problem_params['n_warehouses'], v, device=self.device)
                 else:
                     observation[k] = torch.zeros(self.batch_size, self.n_stores, v, device=self.device)
@@ -556,13 +573,23 @@ class Simulator(gym.Env):
             self.observation['store_arrivals'] = self.move_left_and_append(self.observation['store_arrivals'], self.observation['store_inventories'][:, :, 1])
 
         if 'store_orders' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['store_orders'] > 0:
-            self.observation['store_orders'] = torch.cat([self.observation['store_orders'][:,:,:,1:], action['stores'].unsqueeze(-1)], dim=-1)
+            if len(self.observation['store_orders'].shape) == 4:
+                self.observation['store_orders'] = torch.cat([self.observation['store_orders'][:,:,:,1:], action['stores'].unsqueeze(-1)], dim=-1)
+            else:  # 3 dimensions
+                if len(action['stores'].shape) == 3:
+                    self.observation['store_orders'] = torch.cat([self.observation['store_orders'][:,:,1:], action['stores']], dim=-1)
+                else:
+                    self.observation['store_orders'] = torch.cat([self.observation['store_orders'][:,:,1:], action['stores'].unsqueeze(-1)], dim=-1)
         
         if 'warehouse_arrivals' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['warehouse_arrivals'] > 0:
             self.observation['warehouse_arrivals'] = torch.cat([self.observation['warehouse_arrivals'][:,:,1:], self.observation['warehouse_inventories'][:,:,1].unsqueeze(-1)], dim=-1)
 
         if 'warehouse_orders' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['warehouse_orders'] > 0:
             self.observation['warehouse_orders'] = torch.cat([self.observation['warehouse_orders'][:,:,1:], action['warehouses'].unsqueeze(-1)], dim=-1)
+
+        if 'warehouse_self_loop_orders' in self.observation_params['include_past_observations'] and self.observation_params['include_past_observations']['warehouse_self_loop_orders'] > 0:
+            if 'warehouse_self_loop_orders' in action:
+                self.observation['warehouse_self_loop_orders'] = torch.cat([self.observation['warehouse_self_loop_orders'][:,:,1:], action['warehouse_self_loop_orders'].unsqueeze(-1)], dim=-1)
 
     def move_columns_left(self, tensor_to_displace, start_index, end_index):
         """

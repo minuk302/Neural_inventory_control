@@ -24,4 +24,4 @@ nn_params:
   'output_sizes':
     'master_echelon': null # If null, default is n_warehouse + n_stores (set in NeuralNetworkCreator)
   'initial_bias': null
-  'warehouse_upper_bound_mult': 20  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores
+  'warehouse_upper_bound_mult': 4  # Get warehouse upper bound by multiplying this number times average of sum of demands across stores

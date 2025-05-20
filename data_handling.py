@@ -334,6 +334,14 @@ class Scenario():
         self.sample_features = time_and_sample_features['sample_features']
         self.split_by = self.define_how_to_split_data()
 
+        if 'calculate_lower_bound' in problem_params:
+            self.lower_bound = self.calculate_lower_bound()
+        
+        save_costs_file_for_debugging = False # change the value in debug mode.
+        if save_costs_file_for_debugging == True:
+            torch.save(self.underage_costs, '/user/ml4723/Prj/NIC/data_files/favorita_21_stores/underage_costs.pt')
+            torch.save(self.holding_costs, '/user/ml4723/Prj/NIC/data_files/favorita_21_stores/holding_costs.pt')
+
     def generate_warehouse_store_edge_lead_times(self, edge_lead_times_params, warehouse_store_edges, seed):
         if 'value' in edge_lead_times_params:
             return torch.tensor(edge_lead_times_params['value']).expand(self.num_samples, -1, -1)
@@ -490,6 +498,41 @@ class Scenario():
         
         return torch.tensor(demand)
 
+    def calculate_lower_bound(self):
+        lower_bound = -1
+
+        L = self.warehouse_lead_times[0][0]
+        l = self.lead_times[0][0]
+
+        relaxation_mean = ((L + l + 1)*sum(self.means[0]))
+        demand_correlation = 0.5
+        p = self.underage_costs[0][0]
+        h = self.holding_costs[0][0]
+        relaxation_var = ((l+1)*(sum(self.stds[0])**2)
+                            + L*sum([demand_correlation * std1 * std2 if i != j else std1 * std2
+                                    for i, std1 in enumerate(self.stds[0])
+                                    for j, std2 in enumerate(self.stds[0])]))
+        
+        relaxation_std = ((relaxation_var)**(1/2)).cpu()
+
+        import scipy.stats as stats
+        relaxation_S = stats.norm.ppf(q=p/(p + h), loc=relaxation_mean, scale=relaxation_std)
+        standardized_s = ((relaxation_S - relaxation_mean)/relaxation_std).cpu()
+
+        # cost of bast-stock policy
+        relaxation_cost = p*(relaxation_mean - relaxation_S) + \
+                            (p + h)*relaxation_std*(standardized_s*stats.norm.cdf(standardized_s) + stats.norm.pdf(standardized_s))
+        
+
+        common = relaxation_std*(standardized_s*stats.norm.cdf(standardized_s) + stats.norm.pdf(standardized_s))
+        underage_cost = p*(relaxation_mean - relaxation_S) + p*common
+        holding_cost = h*common
+        relaxation_cost = underage_cost + holding_cost
+
+        # (p*max(0, relaxation_mean - relaxation_S) + (p + h)*relaxation_std*(standardized_s*stats.norm.cdf(standardized_s) + stats.norm.pdf(standardized_s))) / len(self.lead_times[0])
+        # # we express it in per-store basis
+        lower_bound = (relaxation_cost/len(self.lead_times[0])).item()
+        return lower_bound
     def generate_costs_for_exponential_underage_costs(self, problem_params, store_params, seed):
         np.random.seed(seed)
 
@@ -570,14 +613,40 @@ class Scenario():
                         cov_matrices[:, i, j] = demand_params['std'][:, i] * demand_params['std'][:, i]
                     else:
                         cov_matrices[:, i, j] = correlation * demand_params['std'][:, i] * demand_params['std'][:, j]
-            
-            # Generate correlated normal samples for all samples at once
+
             demand = np.array([np.random.multivariate_normal(m, cov, size=self.periods) 
                              for m, cov in zip(demand_params['mean'], cov_matrices)])
             
             # Transpose to get shape (num_samples, n_stores, periods)
             demand = np.transpose(demand, (0, 2, 1))
 
+            bog = False
+            if bog == True:
+                correlation_matrix = np.ones((n_stores, n_stores))
+                for i in range(n_stores):
+                    for j in range(n_stores):
+                        if i != j:
+                            correlation_matrix[i, j] = correlation
+                try:
+                    np.linalg.cholesky(correlation_matrix)  # Will raise error if matrix is not PSD
+                except np.linalg.LinAlgError:
+                    # Either adjust correlation or find nearest PSD matrix
+                    # For simplicity, just warn about potential issues
+                    print("Warning: Correlation matrix is not positive semi-definite. Results may not be valid.")
+
+                # Now create covariance matrices correctly for each sample
+                demands = []
+                for s in range(self.num_samples):
+                    # Create covariance matrix for this sample
+                    std_vector = demand_params['std'][s]
+                    # Correct way to create covariance from correlation and standard deviations
+                    D = np.diag(std_vector)
+                    cov_matrix = D @ correlation_matrix @ D
+                    
+                    # Generate demands for this sample across all periods
+                    mean_vector = demand_params['mean'][s]
+                    sample_demand = np.random.multivariate_normal(mean_vector, cov_matrix, size=self.periods)
+                    demands.append(sample_demand)
         return demand
 
     def generate_poisson_demand(self, problem_params, demand_params, seed, is_test=False):

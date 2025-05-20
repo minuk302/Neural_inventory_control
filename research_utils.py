@@ -16,8 +16,9 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         'store_lead_time', 'store_underage_cost', 'stop_if_no_improve_for_epochs', 'early_stop_check_epochs',
         'kaplanmeier_n_fit', 'store', 'warehouse', 'weight_decay', 'gradient_clipping_norm_value', "save_model_for_all_epochs",
         "initial_bias_output", 'train_dev_sample_and_batch_size', 'different_for_each_sample',
-        'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'trian_periods',
-        'n_extra_echelons', 'master_n_warehouses', 'store_holding_cost'
+        'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'train_periods', 'train_ignore_periods',
+        'n_extra_echelons', 'master_n_warehouses', 'store_holding_cost', 'master_n_warehouses', 'to_collect_data',
+        'all_edges_have_lead_time_one', 'no_edge_cost', 'warehouse_demands_cap', 'master_selfloop', 'master_echelon_selfloop'
     }
 
     # Check that all keys in overriding_params are valid
@@ -36,17 +37,39 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
     if 'dev_ignore_periods' in overriding_params:
         config_setting['params_by_dataset']['dev']['ignore_periods'] = overriding_params['dev_ignore_periods']
 
-    if 'trian_periods' in overriding_params:
-        config_setting['params_by_dataset']['train']['periods'] = overriding_params['trian_periods']
+    if 'train_periods' in overriding_params:
+        config_setting['params_by_dataset']['train']['periods'] = overriding_params['train_periods']
+
+    if 'train_ignore_periods' in overriding_params:
+        config_setting['params_by_dataset']['train']['ignore_periods'] = overriding_params['train_ignore_periods']
 
     if 'use_pna' in overriding_params:
         config_hyperparams['nn_params']['use_pna'] = overriding_params['use_pna']
 
-    if 'n_echelons' in overriding_params:
+    if 'warehouse_demands_cap' in overriding_params:
+        config_setting['warehouse_params']['demands_cap']['value'] = overriding_params['warehouse_demands_cap']
+
+    if 'no_edge_cost' in overriding_params and overriding_params['no_edge_cost']:
+        del config_setting['warehouse_params']['edge_initial_cost']
+
+    if 'n_extra_echelons' in overriding_params:
         config_setting['problem_params']['n_extra_echelons'] = overriding_params['n_extra_echelons']
+
+    if 'to_collect_data' in overriding_params:
+        config_setting['problem_params']['to_collect_data'] = overriding_params['to_collect_data']
 
     if 'n_MP' in overriding_params:
         config_hyperparams['nn_params']['n_MP'] = overriding_params['n_MP']
+
+    if 'all_edges_have_lead_time_one' in overriding_params:
+        if 'edge_lead_times' in config_setting['warehouse_params']:
+            original_shape = config_setting['warehouse_params']['edge_lead_times']['value']
+            if isinstance(original_shape, list):
+                n_warehouses = len(original_shape)
+                n_stores = len(original_shape[0]) if n_warehouses > 0 else 0
+                config_setting['warehouse_params']['edge_lead_times']['value'] = [
+                    [1. for _ in range(n_stores)] for _ in range(n_warehouses)
+                ]
 
     if 'disable_amp' in overriding_params:
         config_setting['problem_params']['disable_amp'] = overriding_params['disable_amp']

@@ -1,0 +1,103 @@
+seeds : 
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
+  'demand': 57 
+  'initial_inventory': 4839
+
+dev_seeds : 
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
+  'demand': 58
+  'initial_inventory': 4839
+
+test_seeds :  # seeds for test set
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33 
+  'coef_of_var': 92
+  'lead_time': 41
+  'demand': 65
+  'initial_inventory': 4839
+
+sample_data_params:
+  'split_by_period': False
+
+problem_params : 
+  'n_stores': 5  # tested values: 3, 5, 10, 20, 30, 50
+  'n_warehouses': 0
+  'n_extra_echelons': 0
+  'lost_demand': True
+  'maximize_profit': False
+  'report_test_loss': True
+
+params_by_dataset : 
+  'train': 
+    'n_samples': 8192  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
+    'batch_size': 1024 
+    'periods': 50 
+    'ignore_periods': 30 
+  'dev': 
+    'n_samples': 4096 
+    'batch_size': 1024 
+    'periods': 50 
+    'ignore_periods': 30 
+  'test': 
+    'n_samples': 4096 
+    'batch_size': 1024 
+    'periods': 10000
+    'ignore_periods': 300
+
+observation_params:
+  'include_warehouse_inventory': False
+  'include_static_features':
+    'holding_costs': True 
+    'underage_costs': True 
+    'lead_times': True 
+  'demand': 
+    'past_periods': 0 
+    'period_shift': 0
+  'include_past_observations':
+    'arrivals': 0
+    'orders': 0
+  'include_days_to_christmas': False
+
+store_params: 
+  'demand': 
+    'sample_across_stores': False
+    'sample_across_instances': False
+    'expand': True
+    'mean': 5.0
+    'distribution': 'poisson'
+    'clip': True
+    'decimals': 3
+  'lead_time': 
+    'sample_across_instances': False
+    'vary_across_samples': False
+    'expand': True
+    'value': 3
+  'holding_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': 1.0
+  'underage_cost': 
+    'sample_across_instances': False
+    'vary_across_samples': False 
+    'expand': True
+    'value': 9.0
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 3
+
+warehouse_params: 
+  null
+
+echelon_params: 
+  null
+
