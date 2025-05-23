@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "main_run.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/main_run.py",
+            "console": "integratedTerminal",
+            "args": ["train", "one_store_backlogged", "base_stock_distribution"],
+            "justMyCode": true
+        },
+        {
+            "name": "main_run_tune.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/main_run_tune.py",
+            "console": "integratedTerminal",
+            "args": ["separate_store", "data_driven_net_n_warehouses_real", "1", "-1", "0"],
+            "justMyCode": true
+        }
+    ]
+}

@@ -32,8 +32,8 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 20  # tested values: 3, 5, 10, 20, 30, 50
-  'n_warehouses': 3
+  'n_stores': 30  # tested values: 3, 5, 10, 20, 30, 50
+  'n_warehouses': 4
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': False
@@ -53,8 +53,8 @@ params_by_dataset :
   'test': 
     'n_samples': 8192 
     'batch_size': 8192 
-    'periods': 500 
-    'ignore_periods': 300
+    'periods': 5000
+    'ignore_periods': 3000
 
 observation_params:
   'include_warehouse_inventory': True
@@ -107,26 +107,33 @@ warehouse_params:
     'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
-    'value': [3, 3, 3]
+    'value': [3, 3, 3, 3]
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False
     'expand': True
-    'value': [0.1, 0.6, 0.2]
+    'value': [0.3, 0.4, 0.2, 0.5]
+  'edge_initial_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.5, 1.5, 0.7, 1.3]
   'initial_inventory': 
     'sample': False
     'inventory_periods': 3  # Initial inventory will be of size max(inventory_periods, lead_time)
   'edge_lead_times':
     'value': [
-      [0, 0, 6, 6, 6, 0, 0, 5, 6, 0, 6, 5, 0, 6, 0, 6, 0, 0, 6, 0],
-      [2, 2, 2, 2, 2, 2, 1, 0, 2, 1, 2, 2, 2, 2, 1, 0, 0, 2, 0, 2],
-      [5, 0, 5, 6, 6, 6, 0, 6, 6, 6, 4, 6, 0, 5, 6, 5, 6, 5, 6, 0]
+      [6, 6, 5, 5, 0, 5, 5, 6, 0, 5, 6, 5, 5, 0, 6, 6, 0, 0, 6, 6, 6, 6, 6, 0, 0, 6, 6, 0, 5, 6],
+      [2, 0, 2, 2, 2, 2, 2, 2, 0, 0, 1, 2, 0, 2, 0, 0, 0, 1, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1, 2, 2],
+      [0, 6, 0, 0, 0, 6, 0, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 3, 0, 0, 3, 0, 0, 3, 0, 3, 0, 0, 2, 2, 3, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 3, 3]
     ]
   'edges':
     'value': [
-      [0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0],
-      [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1],
-      [1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0]
+      [1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1],
+      [1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1],
+      [0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1]
     ]
 echelon_params: 
   null

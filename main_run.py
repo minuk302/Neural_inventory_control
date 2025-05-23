@@ -27,18 +27,18 @@ class MainRun:
         else:
             self.recorder = research_utils.Recorder(self.setting_name, self.config_setting, self.config_hyperparams)
         self.set_debugging(is_debugging)
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
         self.extract_configs()
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.trainer = Trainer(device=self.device)
+        self.create_model_and_optimizer()
+        self.setup_trainer_params()
+
         self.dataset_creator = DatasetCreator()
 
         self.create_scenario_and_datasets()
         self.create_data_loaders()
-        self.create_model_and_optimizer()
         self.simulator = Simulator(self.recorder, device=self.device)
-        self.trainer = Trainer(device=self.device)
-
-        self.setup_trainer_params()
 
     def set_debugging(self, is_debugging):
         self.config_hyperparams['nn_params']['is_debugging'] = is_debugging
@@ -68,6 +68,12 @@ class MainRun:
         model_name = path_parts[-1]
         # Construct debug identifier path
         debug_path = f"/{'/'.join(relevant_parts)}/{run_date}/run_{run_num}/{model_name}"
+
+        if 'n_samples_fix' in self.config_setting['params_by_dataset']['test']:
+            self.config_setting['params_by_dataset']['test']['n_samples'] = self.config_setting['params_by_dataset']['test']['n_samples_fix']
+        if 'batch_size_fix' in self.config_setting['params_by_dataset']['test']:
+            self.config_setting['params_by_dataset']['test']['batch_size'] = self.config_setting['params_by_dataset']['test']['batch_size_fix']
+            
         self.config_hyperparams['nn_params']['debug_identifier'] = debug_path
 
     def extract_configs(self):
@@ -105,55 +111,69 @@ class MainRun:
                 periods_for_split=[self.sample_data_params[k] for k in ['train_periods', 'dev_periods', 'test_periods']]
             )
         else:
-            self.training_scenario = Scenario(
-                periods=self.params_by_dataset['train']['periods'],
-                problem_params=self.problem_params,
-                store_params=self.store_training_params if self.store_training_params else self.store_params,
-                warehouse_params=self.warehouse_training_params if self.warehouse_training_params else self.warehouse_params,
-                echelon_params=self.echelon_training_params if self.echelon_training_params else self.echelon_params,
-                num_samples=self.params_by_dataset['train']['n_samples'],
-                observation_params=self.observation_params,
-                seeds=self.seeds
-            )
-            self.train_dataset = self.dataset_creator.create_datasets(self.training_scenario, split=False)
+            self.train_dataset = None
+            self.dev_dataset = None
+            self.test_dataset = None
+            if self.train_or_test != 'test':
+                self.training_scenario = Scenario(
+                    periods=self.params_by_dataset['train']['periods'],
+                    problem_params=self.problem_params,
+                    store_params=self.store_training_params if self.store_training_params else self.store_params,
+                    warehouse_params=self.warehouse_training_params if self.warehouse_training_params else self.warehouse_params,
+                    echelon_params=self.echelon_training_params if self.echelon_training_params else self.echelon_params,
+                    num_samples=self.params_by_dataset['train']['n_samples'],
+                    observation_params=self.observation_params,
+                    seeds=self.seeds
+                )
+                self.train_dataset = self.dataset_creator.create_datasets(self.training_scenario, split=False)
 
-            self.dev_scenario = Scenario(
-                periods=self.params_by_dataset['dev']['periods'],
-                problem_params=self.problem_params,
-                store_params=self.store_params,
-                warehouse_params=self.warehouse_params,
-                echelon_params=self.echelon_params,
-                num_samples=self.params_by_dataset['dev']['n_samples'],
-                observation_params=self.observation_params,
-                seeds=self.dev_seeds
-            )
-            self.dev_dataset = self.dataset_creator.create_datasets(self.dev_scenario, split=False)
+                self.dev_scenario = Scenario(
+                    periods=self.params_by_dataset['dev']['periods'],
+                    problem_params=self.problem_params,
+                    store_params=self.store_params,
+                    warehouse_params=self.warehouse_params,
+                    echelon_params=self.echelon_params,
+                    num_samples=self.params_by_dataset['dev']['n_samples'],
+                    observation_params=self.observation_params,
+                    seeds=self.dev_seeds
+                )
+                self.dev_dataset = self.dataset_creator.create_datasets(self.dev_scenario, split=False)
 
-            self.test_scenario = Scenario(
-                self.params_by_dataset['test']['periods'],
-                self.problem_params,
-                self.store_params,
-                self.warehouse_params, 
-                self.echelon_params, 
-                self.params_by_dataset['test']['n_samples'],
-                self.observation_params,
-                self.test_seeds,
-                True
-            )
-            self.test_dataset = self.dataset_creator.create_datasets(self.test_scenario, split=False)
+            if self.does_load_test_data():
+                self.test_scenario = Scenario(
+                    self.params_by_dataset['test']['periods'],
+                    self.problem_params,
+                    self.store_params,
+                    self.warehouse_params, 
+                    self.echelon_params, 
+                    self.params_by_dataset['test']['n_samples'],
+                    self.observation_params,
+                    self.test_seeds,
+                    True
+                )
+                self.test_dataset = self.dataset_creator.create_datasets(self.test_scenario, split=False)
 
     def create_data_loaders(self):
+        train_loader = None
+        dev_loader = None
+        test_loader = None
         if self.tuning_configs is None:
             # train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True)
             # dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False)
             # test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False)
-            train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True, prefetch_factor=8)
-            dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
-            test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
+            if self.train_dataset is not None:
+                train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True, prefetch_factor=8)
+            if self.dev_dataset is not None:
+                dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
         else:
-            train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=self.tuning_configs['n_cpus_per_instance'], pin_memory=True, persistent_workers=True, prefetch_factor=8)
-            dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
+            if self.train_dataset is not None:
+                train_loader = DataLoader(self.train_dataset, batch_size=self.params_by_dataset['train']['batch_size'], shuffle=True, num_workers=self.tuning_configs['n_cpus_per_instance'], pin_memory=True, persistent_workers=True, prefetch_factor=8)
+            if self.dev_dataset is not None:
+                dev_loader = DataLoader(self.dev_dataset, batch_size=self.params_by_dataset['dev']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
+        
+        if self.test_dataset is not None:
             test_loader = DataLoader(self.test_dataset, batch_size=self.params_by_dataset['test']['batch_size'], shuffle=False, num_workers=2, pin_memory=False, prefetch_factor=1)
+
         self.data_loaders = {'train': train_loader, 'dev': dev_loader, 'test': test_loader}
 
     def create_model_and_optimizer(self):
@@ -165,6 +185,14 @@ class MainRun:
         if 'weight_decay' in self.optimizer_params:
             weight_decay = self.optimizer_params['weight_decay']
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.optimizer_params['learning_rate'], weight_decay=weight_decay)
+
+    def does_load_test_data(self):
+        if 'report_test_loss' in self.problem_params and self.problem_params['report_test_loss'] == True:
+            return True
+        elif self.train_or_test == 'test':
+            return True
+        else:
+            return False
 
     def setup_trainer_params(self):
         if self.tuning_configs is not None:
@@ -207,6 +235,9 @@ class MainRun:
                     discrete_allocation=self.store_params['demand']['distribution'] == 'poisson'
                 )
             print(f'Average per-period test loss: {average_test_loss_to_report}')
+            test_loss_path = os.path.join(os.path.dirname(self.recorder_config_path), self.setting_name + '_test_loss.txt')
+            with open(test_loss_path, 'w') as f:
+                f.write(str(average_test_loss_to_report))
         elif self.train_or_test == 'test_on_dev':
             with torch.no_grad():
                 average_dev_loss, average_dev_loss_to_report = self.trainer.test_on_dev(
@@ -240,14 +271,16 @@ class MainRun:
             assert False
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-    # os.environ["TORCH_USE_CUDA_DSA"] = "1"
     train_or_test = sys.argv[1]
     setting_name = sys.argv[2]
     hyperparams_name = sys.argv[3]
     recorder_config_path = sys.argv[4] if len(sys.argv) > 4 else None
-    recorder_identifier = sys.argv[5] if recorder_config_path is not None and len(sys.argv) > 5 else None
+    gpu_id = sys.argv[5] if len(sys.argv) > 5 else 0
+    recorder_identifier = sys.argv[6] if recorder_config_path is not None and len(sys.argv) > 6 else None
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    # os.environ["TORCH_USE_CUDA_DSA"] = "1"
 
     def load_yaml(file_path):
         with open(file_path, 'r') as file:

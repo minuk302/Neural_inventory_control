@@ -481,18 +481,25 @@ class Simulator(gym.Env):
         else:
             random_yields = torch.ones_like(inventory_on_hand)
 
-        return torch.cat(
-            [
-                (inventory_on_hand + inventory[:, :, 1] * random_yields).unsqueeze(-1),
-                inventory[:, :, 2:], 
-                torch.zeros_like(inventory[:, :, 1]).unsqueeze(-1)
-            ],
-                dim=2
-                ).to(dtype=allocation.dtype).put(
-                    (allocation_shifter + lead_times.long() - 1).flatten(),  # Indexes where to 'put' allocation in long vector
-                    torch.where(lead_times == 1, allocation * (random_yields.unsqueeze(-1) if allocation.ndim > random_yields.ndim else random_yields), allocation).flatten(),  # Apply random yields only when lead time is 1
-                    accumulate=True  # True means adding to existing values, instead of replacing
-                    )
+        if inventory.size()[2] == 1:
+            return inventory_on_hand.unsqueeze(-1).to(dtype=allocation.dtype).put(
+                        (allocation_shifter + lead_times.long() - 1).flatten(),  # Indexes where to 'put' allocation in long vector
+                        torch.where(lead_times == 1, allocation * (random_yields.unsqueeze(-1) if allocation.ndim > random_yields.ndim else random_yields), allocation).flatten(),  # Apply random yields only when lead time is 1
+                        accumulate=True  # True means adding to existing values, instead of replacing
+                        )
+        else:
+            return torch.cat(
+                [
+                    (inventory_on_hand + inventory[:, :, 1] * random_yields).unsqueeze(-1),
+                    inventory[:, :, 2:], 
+                    torch.zeros_like(inventory[:, :, 1]).unsqueeze(-1)
+                ],
+                    dim=2
+                    ).to(dtype=allocation.dtype).put(
+                        (allocation_shifter + lead_times.long() - 1).flatten(),  # Indexes where to 'put' allocation in long vector
+                        torch.where(lead_times == 1, allocation * (random_yields.unsqueeze(-1) if allocation.ndim > random_yields.ndim else random_yields), allocation).flatten(),  # Apply random yields only when lead time is 1
+                        accumulate=True  # True means adding to existing values, instead of replacing
+                        )
 
     def update_past_demands(self, data, observation_params, batch_size, stores, current_period):
         """

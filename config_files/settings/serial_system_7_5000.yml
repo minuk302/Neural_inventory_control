@@ -29,29 +29,29 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 5  # Tested values: 3, 5, 10
+  'n_stores': 1
   'n_warehouses': 1
-  'n_extra_echelons': 0
+  'n_extra_echelons': 5
   'lost_demand': False
   'maximize_profit': False
   'report_test_loss': True
 
 params_by_dataset : 
   'train': 
-    'n_samples': 32768 
-    'batch_size': 1024 
-    'periods': 100 
-    'ignore_periods': 60 
+    'n_samples': 8192 # 32768 
+    'batch_size': 8192 # 8192 
+    'periods': 50 
+    'ignore_periods': 30 
   'dev': 
-    'n_samples': 32768 
-    'batch_size': 1024 
+    'n_samples': 8192 
+    'batch_size': 8192 
     'periods': 100 
     'ignore_periods': 60 
   'test': 
-    'n_samples': 32768 
-    'batch_size': 1024 
-    'periods': 100 
-    'ignore_periods': 60
+    'n_samples': 8192 
+    'batch_size': 8192 
+    'periods': 5000
+    'ignore_periods': 3000
 
 observation_params:
   'include_warehouse_inventory': True
@@ -59,8 +59,6 @@ observation_params:
     'holding_costs': True 
     'underage_costs': True 
     'lead_times': True 
-    'mean': True 
-    'std': True 
   'demand': 
     'past_periods': 0 
     'period_shift': 0
@@ -71,18 +69,18 @@ observation_params:
 
 store_params: 
   'demand': 
-    'sample_across_instances': True
-    'mean_range': [2.5, 7.5]
-    'coef_of_var_range': [0.25, 0.5]
+    'sample_across_instances': False
+    'expand': True
+    'mean': 5.0
+    'std': 2.0
     'distribution': 'normal'
-    'correlation': 0.5  # Tested values: 0.0, 0.5
-    'clip': False
+    'clip': True
     'decimals': 3
   'lead_time': 
     'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
-    'value': 6  # Tested values: 2, 6
+    'value': 4  # Values tested: 1, 2, 3, 4
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False
@@ -92,11 +90,11 @@ store_params:
     'sample_across_instances': False
     'vary_across_samples': False 
     'expand': True
-    'value': 9.0  # Tested values: 4.0, 9.0
+    'value': 9.0  # Values tested: 4, 9, 19, 39
   'initial_inventory': 
     'sample': True
     'range_mult': [0, 1]
-    'inventory_periods': 2
+    'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 warehouse_params: 
   'lead_time': 
@@ -114,4 +112,16 @@ warehouse_params:
     'inventory_periods': 3  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 echelon_params: 
-  null
+  'lead_time': 
+    'sample_across_instances': False
+    'vary_across_samples': False
+    'expand': True
+    'value': [2, 4, 1, 3, 2]
+  'holding_cost': 
+    'sample_across_instances': False 
+    'vary_across_samples': False
+    'expand': True
+    'value': [0.1, 0.2, 0.25, 0.3, 0.4]
+  'initial_inventory': 
+    'sample': False
+    'inventory_periods': 4  # Initial inventory will be of size max(inventory_periods, lead_time)

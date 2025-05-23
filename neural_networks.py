@@ -276,6 +276,41 @@ class BaseStock(MyNeuralNetwork):
         x = self.net['master'](torch.tensor([0.0]).to(self.device))  # Constant base stock level
         return {'stores': torch.clip(x - inv_pos, min=0)} # Clip output to be non-negative
 
+class BaseStockDistribution(MyNeuralNetwork):
+    def forward(self, observation):
+        self.trainable = False
+        # Get required parameters
+        x = observation['store_inventories']  # shape: (batch, 1, 1)
+        inv_pos = x.sum(dim=2)  # (batch, 1)
+
+        underage_costs = observation['underage_costs']  # (batch, 1)
+        holding_costs = observation['holding_costs']    # (batch, 1)
+        lead_times = observation['lead_times']          # (batch, 1)
+
+        mean = 5.0  # (batch, 1)
+        std = 1.6    # (batch, 1)
+        L = lead_times              # (batch, 1)
+        L_plus_1 = L + 1
+
+        demand_mean = mean * L_plus_1
+        demand_std = std * torch.sqrt(L_plus_1.float())
+
+        p = underage_costs
+        h = holding_costs
+        critical_ratio = p / (p + h)
+
+        # Use the inverse CDF (ppf) of the normal distribution
+        from scipy.stats import norm
+        demand_mean_np = demand_mean.detach().cpu().numpy()
+        demand_std_np = demand_std.detach().cpu().numpy()
+        critical_ratio_np = critical_ratio.detach().cpu().numpy()
+        S_star_np = norm.ppf(critical_ratio_np, loc=demand_mean_np, scale=demand_std_np)
+        S_star = torch.tensor(S_star_np, dtype=inv_pos.dtype, device=inv_pos.device)
+
+        order = torch.clamp(S_star - inv_pos, min=0.0)
+
+        return {'stores': order}
+        
 class EchelonStock(MyNeuralNetwork):
     """
     Echelon stock policy
@@ -488,33 +523,33 @@ class VanillaOneWarehouse(MyNeuralNetwork):
             upper_bound = observation['mean'].sum(dim=1, keepdim=True) * self.warehouse_upper_bound_mult
             warehouse_allocation = self.activation_functions['sigmoid'](warehouse_intermediate_outputs)*upper_bound
 
-        if self.is_debugging:
-            debug_dir = "/user/ml4723/Prj/NIC/debug"
-            if self.debug_identifier is not None:
-                debug_dir = debug_dir + self.debug_identifier
-            os.makedirs(debug_dir, exist_ok=True)
-            for sample_idx in range(min(store_allocation.size(0), 32)):
-                with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                    f.write("\n\n")
-                    warehouse_outputs = warehouse_allocation[sample_idx].detach().cpu().to(torch.float32).numpy()
-                    f.write(np.array2string(warehouse_outputs, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                    f.write('\n')
+        # if self.is_debugging:
+        #     debug_dir = "/user/ml4723/Prj/NIC/debug"
+        #     if self.debug_identifier is not None:
+        #         debug_dir = debug_dir + self.debug_identifier
+        #     os.makedirs(debug_dir, exist_ok=True)
+        #     for sample_idx in range(min(store_allocation.size(0), 32)):
+        #         with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+        #             f.write("\n\n")
+        #             warehouse_outputs = warehouse_allocation[sample_idx].detach().cpu().to(torch.float32).numpy()
+        #             f.write(np.array2string(warehouse_outputs, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+        #             f.write('\n')
                     
-                    max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
-                    for lead_time in range(max_lead_time, 0, -1):
-                        outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().to(torch.float32).numpy()
-                        f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                        f.write('\n')
+        #             max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
+        #             for lead_time in range(max_lead_time, 0, -1):
+        #                 outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().to(torch.float32).numpy()
+        #                 f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+        #                 f.write('\n')
 
-                    for store_idx in range(n_stores):
-                        store_alloc = store_allocation[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
-                        store_out = store_intermediate_outputs[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
-                        formatted_allocation_orders = '[' + ', \t'.join([f'{store_alloc:4.1f}/{store_out:4.1f}']) + ']'
-                        f.write(formatted_allocation_orders)
+        #             for store_idx in range(n_stores):
+        #                 store_alloc = store_allocation[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+        #                 store_out = store_intermediate_outputs[sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+        #                 formatted_allocation_orders = '[' + ', \t'.join([f'{store_alloc:4.1f}/{store_out:4.1f}']) + ']'
+        #                 f.write(formatted_allocation_orders)
                         
-                        store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
-                        formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
-                        f.write(f"[{formatted_store_inv}]\n")
+        #                 store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().to(torch.float32).numpy()
+        #                 formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
+        #                 f.write(f"[{formatted_store_inv}]\n")
 
         return {
             'stores': store_allocation, 
@@ -788,43 +823,43 @@ class GNN_decentralized(MyNeuralNetwork):
         batch_idx = torch.arange(outputs.size(0), device=self.device).unsqueeze(1).expand(outputs.size(0), n_edges)
         store_allocation_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_allocation
         
-        if self.is_debugging:
-            debug_dir = "/user/ml4723/Prj/NIC/debug"
-            store_orders_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
-            store_orders_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_orders
-            if self.debug_identifier is not None:
-                debug_dir = debug_dir + self.debug_identifier
-            os.makedirs(debug_dir, exist_ok=True)
-            for sample_idx in range(min(outputs.size(0),8)):
-                with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                    f.write("\n\n")
-                    outputs_array = outputs[sample_idx, :n_warehouses, 0].detach().cpu().numpy()
-                    f.write(np.array2string(outputs_array, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                    f.write('\n')
+        # if self.is_debugging:
+        #     debug_dir = "/user/ml4723/Prj/NIC/debug"
+        #     store_orders_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
+        #     store_orders_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges)] = store_orders
+        #     if self.debug_identifier is not None:
+        #         debug_dir = debug_dir + self.debug_identifier
+        #     os.makedirs(debug_dir, exist_ok=True)
+        #     for sample_idx in range(min(outputs.size(0),8)):
+        #         with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+        #             f.write("\n\n")
+        #             outputs_array = outputs[sample_idx, :n_warehouses, 0].detach().cpu().numpy()
+        #             f.write(np.array2string(outputs_array, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+        #             f.write('\n')
                     
-                    max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
-                    for lead_time in range(max_lead_time, 0, -1):
-                        outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().numpy()
-                        f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                        f.write('\n')
+        #             max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
+        #             for lead_time in range(max_lead_time, 0, -1):
+        #                 outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().numpy()
+        #                 f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+        #                 f.write('\n')
 
-                    for store_idx in range(self.n_stores):
-                        allocation_matrix = store_allocation_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                        orders = store_orders_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                        formatted_allocation_orders = f'{store_idx} [' + ', \t'.join([f'{allocation_matrix[i]:4.1f}/{orders[i]:4.1f}' for i in range(len(allocation_matrix))]) + ']'
-                        f.write(formatted_allocation_orders)
+        #             for store_idx in range(self.n_stores):
+        #                 allocation_matrix = store_allocation_matrix[sample_idx, store_idx].detach().cpu().numpy()
+        #                 orders = store_orders_matrix[sample_idx, store_idx].detach().cpu().numpy()
+        #                 formatted_allocation_orders = f'{store_idx} [' + ', \t'.join([f'{allocation_matrix[i]:4.1f}/{orders[i]:4.1f}' for i in range(len(allocation_matrix))]) + ']'
+        #                 f.write(formatted_allocation_orders)
                         
-                        store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
-                        formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
+        #                 store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
+        #                 formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
 
-                        if 'demand_signals' in observation['internal_data']:
-                            if observation['current_period'] + 1 >= observation['internal_data']['demand_signals'].size(2):
-                                demand_signal = torch.zeros_like(observation['internal_data']['demand_signals'][:, :, observation['current_period']])
-                            else:
-                                demand_signal = observation['internal_data']['demand_signals'][:, :, observation['current_period'] + 1]
-                            f.write(f"[{formatted_store_inv}] - {demand_signal[sample_idx, store_idx].detach().cpu().numpy()} - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
-                        else:
-                            f.write(f"[{formatted_store_inv}] - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
+        #                 if 'demand_signals' in observation['internal_data']:
+        #                     if observation['current_period'] + 1 >= observation['internal_data']['demand_signals'].size(2):
+        #                         demand_signal = torch.zeros_like(observation['internal_data']['demand_signals'][:, :, observation['current_period']])
+        #                     else:
+        #                         demand_signal = observation['internal_data']['demand_signals'][:, :, observation['current_period'] + 1]
+        #                     f.write(f"[{formatted_store_inv}] - {demand_signal[sample_idx, store_idx].detach().cpu().numpy()} - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
+        #                 else:
+        #                     f.write(f"[{formatted_store_inv}] - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
         
         return {
             'stores': store_allocation_matrix,
@@ -1330,42 +1365,42 @@ class GNN(MyNeuralNetwork):
             store_allocation_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
             batch_idx = torch.arange(outputs.size(0), device=self.device).unsqueeze(1).expand(outputs.size(0), n_edges_w_to_s)
             store_allocation_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s)] = store_allocation
-            if self.is_debugging:
-                debug_dir = "/user/ml4723/Prj/NIC/debug"
-                store_orders_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
-                store_orders_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s)] = store_orders
-                if self.debug_identifier is not None:
-                    debug_dir = debug_dir + self.debug_identifier
-                os.makedirs(debug_dir, exist_ok=True)
-                for sample_idx in range(min(outputs.size(0), 8)):
-                    with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                        f.write("\n\n")
-                        outputs_array = outputs[sample_idx, :n_warehouses, 0].detach().cpu().numpy()
-                        f.write(np.array2string(outputs_array, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                        f.write('\n')
+            # if self.is_debugging:
+            #     debug_dir = "/user/ml4723/Prj/NIC/debug"
+            #     store_orders_matrix = torch.zeros(outputs.size(0), self.n_stores, n_warehouses, device=self.device)
+            #     store_orders_matrix[batch_idx, st_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s), wh_idx.unsqueeze(0).expand(outputs.size(0), n_edges_w_to_s)] = store_orders
+            #     if self.debug_identifier is not None:
+            #         debug_dir = debug_dir + self.debug_identifier
+            #     os.makedirs(debug_dir, exist_ok=True)
+            #     for sample_idx in range(min(outputs.size(0), 8)):
+            #         with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+            #             f.write("\n\n")
+            #             outputs_array = outputs[sample_idx, :n_warehouses, 0].detach().cpu().numpy()
+            #             f.write(np.array2string(outputs_array, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+            #             f.write('\n')
                         
-                        max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
-                        for lead_time in range(max_lead_time, 0, -1):
-                            outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().numpy()
-                            f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
-                            f.write('\n')
+            #             max_lead_time = int(observation['warehouse_lead_times'][sample_idx].max().item())
+            #             for lead_time in range(max_lead_time, 0, -1):
+            #                 outstanding_orders = observation['warehouse_inventories'][sample_idx, :, lead_time - 1].detach().cpu().numpy()
+            #                 f.write(np.array2string(outstanding_orders, formatter={'float_kind':lambda x: f"{x:9.1f}\t"}))
+            #                 f.write('\n')
     
-                        for store_idx in range(self.n_stores):
-                            allocation_matrix = store_allocation_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                            orders = store_orders_matrix[sample_idx, store_idx].detach().cpu().numpy()
-                            formatted_allocation_orders = f'{store_idx} [' + ', \t'.join([f'{allocation_matrix[i]:4.1f}/{orders[i]:4.1f}' for i in range(len(allocation_matrix))]) + ']'
-                            f.write(formatted_allocation_orders)
+            #             for store_idx in range(self.n_stores):
+            #                 allocation_matrix = store_allocation_matrix[sample_idx, store_idx].detach().cpu().numpy()
+            #                 orders = store_orders_matrix[sample_idx, store_idx].detach().cpu().numpy()
+            #                 formatted_allocation_orders = f'{store_idx} [' + ', \t'.join([f'{allocation_matrix[i]:4.1f}/{orders[i]:4.1f}' for i in range(len(allocation_matrix))]) + ']'
+            #                 f.write(formatted_allocation_orders)
                             
-                            store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
-                            formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
-                            if 'demand_signals' in observation['internal_data']:
-                                if observation['current_period'] + 1 >= observation['internal_data']['demand_signals'].size(2):
-                                    demand_signal = torch.zeros_like(observation['internal_data']['demand_signals'][:, :, observation['current_period']])
-                                else:
-                                    demand_signal = observation['internal_data']['demand_signals'][:, :, observation['current_period'] + 1]
-                                f.write(f"[{formatted_store_inv}] - {demand_signal[sample_idx, store_idx].detach().cpu().numpy()} - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
-                            else:
-                                f.write(f"[{formatted_store_inv}] - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
+            #                 store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
+            #                 formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv[:-1]])
+            #                 if 'demand_signals' in observation['internal_data']:
+            #                     if observation['current_period'] + 1 >= observation['internal_data']['demand_signals'].size(2):
+            #                         demand_signal = torch.zeros_like(observation['internal_data']['demand_signals'][:, :, observation['current_period']])
+            #                     else:
+            #                         demand_signal = observation['internal_data']['demand_signals'][:, :, observation['current_period'] + 1]
+            #                     f.write(f"[{formatted_store_inv}] - {demand_signal[sample_idx, store_idx].detach().cpu().numpy()} - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
+            #                 else:
+            #                     f.write(f"[{formatted_store_inv}] - {observation['underage_costs'][sample_idx, store_idx].detach().cpu().numpy()}\n")
             
             results = {
                 'stores': store_allocation_matrix,
@@ -2272,6 +2307,7 @@ class NeuralNetworkCreator:
             'vanilla_one_store': VanillaOneStore, 
             'vanilla_one_store_for_warehouse': VanillaOneStoreForWarehouse,
             'base_stock': BaseStock,
+            'base_stock_distribution': BaseStockDistribution,
             'capped_base_stock': CappedBaseStock,
             'echelon_stock': EchelonStock,
             'vanilla_serial': VanillaSerial,

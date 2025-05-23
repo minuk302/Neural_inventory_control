@@ -18,7 +18,8 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
         "initial_bias_output", 'train_dev_sample_and_batch_size', 'different_for_each_sample',
         'n_cpus_per_instance', 'base_dir_for_ray', 'disable_amp', 'n_MP', 'use_pna', 'dev_periods', 'train_periods', 'train_ignore_periods',
         'n_extra_echelons', 'master_n_warehouses', 'store_holding_cost', 'master_n_warehouses', 'to_collect_data',
-        'all_edges_have_lead_time_one', 'no_edge_cost', 'warehouse_demands_cap', 'master_selfloop', 'master_echelon_selfloop'
+        'all_edges_have_lead_time_one', 'no_edge_cost', 'warehouse_demands_cap', 'master_selfloop', 'master_echelon_selfloop',
+        "sample_initial_inventory", "report_test_loss"
     }
 
     # Check that all keys in overriding_params are valid
@@ -54,6 +55,12 @@ def override_configs(overriding_params, config_setting, config_hyperparams):
 
     if 'n_extra_echelons' in overriding_params:
         config_setting['problem_params']['n_extra_echelons'] = overriding_params['n_extra_echelons']
+    
+    if 'sample_initial_inventory' in overriding_params:
+        config_setting['store_params']['initial_inventory']['sample'] = overriding_params['sample_initial_inventory']
+
+    if 'report_test_loss' in overriding_params:
+        config_setting['problem_params']['report_test_loss'] = overriding_params['report_test_loss']
 
     if 'to_collect_data' in overriding_params:
         config_setting['problem_params']['to_collect_data'] = overriding_params['to_collect_data']

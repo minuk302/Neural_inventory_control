@@ -29,30 +29,29 @@ sample_data_params:
   'split_by_period': False
 
 problem_params : 
-  'n_stores': 3  # Tested values: 3, 5, 10
+  'n_stores': 5  # Tested values: 3, 5, 10
   'n_warehouses': 1
   'n_extra_echelons': 0
   'lost_demand': False
   'maximize_profit': False
   'report_test_loss': True
-  'calculate_lower_bound': True
 
 params_by_dataset : 
   'train': 
-    'n_samples': 8192 
+    'n_samples': 32768 
     'batch_size': 1024 
     'periods': 100 
     'ignore_periods': 60 
   'dev': 
-    'n_samples': 8192 
+    'n_samples': 32768 
     'batch_size': 1024 
     'periods': 100 
     'ignore_periods': 60 
   'test': 
-    'n_samples': 8192 
-    'batch_size': 8192 
-    'periods': 10000 
-    'ignore_periods': 300
+    'n_samples': 32768 
+    'batch_size': 1024 
+    'periods': 5000
+    'ignore_periods': 3000
 
 observation_params:
   'include_warehouse_inventory': True
@@ -83,7 +82,7 @@ store_params:
     'sample_across_instances': False
     'vary_across_samples': False
     'expand': True
-    'value': 4  # Tested values: 2, 6
+    'value': 6  # Tested values: 2, 6
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False

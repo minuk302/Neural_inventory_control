@@ -159,6 +159,8 @@ class Trainer():
                 print(f'epoch: {epoch + 1}')
                 print(f'Average per-period train loss: {average_train_loss_to_report}')
                 print(f'Average per-period dev loss: {average_dev_loss_to_report}')
+                if 'test_loss' in report_dict:
+                    print(f'Average per-period test loss: {report_dict["test_loss"]}')
                 print(f'Best per-period dev loss: {self.best_performance_data["dev_loss"]}')
     
     def test(self, loss_function, simulator, model, data_loaders, optimizer, problem_params, observation_params, params_by_dataset, discrete_allocation=False):
@@ -428,7 +430,7 @@ class Trainer():
         Load a saved model
         """
 
-        checkpoint = torch.load(model_path)
+        checkpoint = torch.load(model_path, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         return model, optimizer

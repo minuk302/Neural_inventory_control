@@ -14,7 +14,7 @@ optimizer_params:
   'learning_rate': 0.5
 
 nn_params: 
-  'name': 'base_stock'
+  'name': 'base_stock_distribution'
   'inner_layer_activations': 
     'master': null
   'output_layer_activation':

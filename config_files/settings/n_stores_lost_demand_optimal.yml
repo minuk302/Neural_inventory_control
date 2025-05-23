@@ -50,7 +50,7 @@ params_by_dataset :
   'test': 
     'n_samples': 4096 
     'batch_size': 1024 
-    'periods': 10000
+    'periods': 500
     'ignore_periods': 300
 
 observation_params:
