@@ -149,6 +149,28 @@ if "finals_serial_HDPO" == testset_name:
         search_space['repeats'] = tune.grid_search([1,2,3])
 
 
+if "finals_transshipment_HDPO" == testset_name:
+    config = "transshipment_backlogged"
+    common_setups = {
+        "config": tune.grid_search([config]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+
+        "n_stores": tune.grid_search([3, 5, 10]),
+        "store_underage_cost": tune.grid_search([4, 9]),
+        "store_lead_time": tune.grid_search([2, 6]),
+        "stores_correlation": tune.grid_search([0.0, 0.5]),
+
+        "repeats": tune.grid_search([1, 2, 3]),
+
+        'train_dev_sample_and_batch_size': tune.grid_search([32768]),
+        "train_batch_size": tune.grid_search([1024]),
+    }
+    if 'vanilla_transshipment' == hyperparams_name:  
+        search_space = {**common_setups,
+        }
+
+
 if "finals_one_store_sample_efficiency" == testset_name:
     config = "one_store_lost"
     common_setups = {

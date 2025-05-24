@@ -3,6 +3,7 @@ import scipy.stats as stats
 import scipy.optimize as optimize
 from lifelines import KaplanMeierFitter
 import warnings
+from ray import train
 
 class WeibullDemandGenerator:
    def __init__(self, num_samples, periods):
@@ -532,6 +533,8 @@ class Scenario():
         # (p*max(0, relaxation_mean - relaxation_S) + (p + h)*relaxation_std*(standardized_s*stats.norm.cdf(standardized_s) + stats.norm.pdf(standardized_s))) / len(self.lead_times[0])
         # # we express it in per-store basis
         lower_bound = (relaxation_cost/len(self.lead_times[0])).item()
+        train.report({'lower_bound': lower_bound})
+        exit()
         return lower_bound
     def generate_costs_for_exponential_underage_costs(self, problem_params, store_params, seed):
         np.random.seed(seed)
@@ -619,34 +622,6 @@ class Scenario():
             
             # Transpose to get shape (num_samples, n_stores, periods)
             demand = np.transpose(demand, (0, 2, 1))
-
-            bog = False
-            if bog == True:
-                correlation_matrix = np.ones((n_stores, n_stores))
-                for i in range(n_stores):
-                    for j in range(n_stores):
-                        if i != j:
-                            correlation_matrix[i, j] = correlation
-                try:
-                    np.linalg.cholesky(correlation_matrix)  # Will raise error if matrix is not PSD
-                except np.linalg.LinAlgError:
-                    # Either adjust correlation or find nearest PSD matrix
-                    # For simplicity, just warn about potential issues
-                    print("Warning: Correlation matrix is not positive semi-definite. Results may not be valid.")
-
-                # Now create covariance matrices correctly for each sample
-                demands = []
-                for s in range(self.num_samples):
-                    # Create covariance matrix for this sample
-                    std_vector = demand_params['std'][s]
-                    # Correct way to create covariance from correlation and standard deviations
-                    D = np.diag(std_vector)
-                    cov_matrix = D @ correlation_matrix @ D
-                    
-                    # Generate demands for this sample across all periods
-                    mean_vector = demand_params['mean'][s]
-                    sample_demand = np.random.multivariate_normal(mean_vector, cov_matrix, size=self.periods)
-                    demands.append(sample_demand)
         return demand
 
     def generate_poisson_demand(self, problem_params, demand_params, seed, is_test=False):
