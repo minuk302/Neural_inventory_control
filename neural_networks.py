@@ -2,7 +2,6 @@ from copy import deepcopy
 from shared_imports import *
 from quantile_forecaster import FullyConnectedForecaster
 import gc
-import wandb
 import torch.nn.functional as F
 from torch.nn import functional as init
 
@@ -622,20 +621,20 @@ class N_Stores_Per_Store_Net(MyNeuralNetwork):
         x = torch.cat(outputs, dim=1).squeeze(-1)
         x = self.activation_functions['softplus'](x)
 
-        if self.is_debugging:
-            debug_dir = "/user/ml4723/Prj/NIC/debug"
-            if self.debug_identifier is not None:
-                debug_dir = debug_dir + self.debug_identifier
-            os.makedirs(debug_dir, exist_ok=True)
-            for sample_idx in range(min(x.size(0), 32)):
-                with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
-                    f.write("\n\n")
-                    # Write store orders and inventories side by side
-                    orders = x[sample_idx].detach().cpu().numpy()
-                    for store_idx in range(x.size(1)):
-                        store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
-                        formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv])
-                        f.write(f"{store_idx:2d}: [{orders[store_idx]:9.1f} | {formatted_store_inv}]\n")
+        # if self.is_debugging:
+        #     debug_dir = "/user/ml4723/Prj/NIC/debug"
+        #     if self.debug_identifier is not None:
+        #         debug_dir = debug_dir + self.debug_identifier
+        #     os.makedirs(debug_dir, exist_ok=True)
+        #     for sample_idx in range(min(x.size(0), 32)):
+        #         with open(f"{debug_dir}/{sample_idx}.txt", "a") as f:
+        #             f.write("\n\n")
+        #             # Write store orders and inventories side by side
+        #             orders = x[sample_idx].detach().cpu().numpy()
+        #             for store_idx in range(x.size(1)):
+        #                 store_inv = observation['store_inventories'][sample_idx, store_idx].detach().cpu().numpy()
+        #                 formatted_store_inv = ', '.join([f'{inv:.1f}' for inv in store_inv])
+        #                 f.write(f"{store_idx:2d}: [{orders[store_idx]:9.1f} | {formatted_store_inv}]\n")
 
         return {
             'stores': x, 
@@ -1722,49 +1721,25 @@ class DataDrivenNet(MyNeuralNetwork):
     
     def __init__(self, args, problem_params, device='cpu'):
         super().__init__(args, problem_params, device)
-        self.apply_normalization = 'apply_normalization' in args and args['apply_normalization']
     
     def forward(self, observation):
-        R = None
-        if self.apply_normalization:
-            R = observation['past_demands'].mean()
-            
-            # Normalize quantity-related inputs
-            normalized_store_inventories = observation['store_inventories'][:, :, 0] / R
-            normalized_past_demands = observation['past_demands'] / R
-            normalized_arrivals = observation['arrivals'] / R
-            normalized_orders = observation['orders'] / R
-            
-            input_data = [normalized_store_inventories, normalized_past_demands, normalized_arrivals, normalized_orders]
-        else:
-            input_data = [observation['store_inventories'][:, :, 0], observation['past_demands'], observation['store_arrivals'], observation['store_orders']]
-        
+        input_data = [observation['store_inventories'][:, :, 0], observation['past_demands'], observation['store_arrivals'], observation['store_orders']]
         input_data += [observation[key] for key in ['underage_costs', 'days_from_christmas']]
 
         if 'warehouse_inventories' in observation:
-            warehouse_inventories = observation['warehouse_inventories'] / R if self.apply_normalization else observation['warehouse_inventories']
-            warehouse_arrivals = observation['warehouse_arrivals'] / R if self.apply_normalization else observation['warehouse_arrivals']
-            warehouse_orders = observation['warehouse_orders'] / R if self.apply_normalization else observation['warehouse_orders']
-            input_data.append(warehouse_arrivals)
-            input_data.append(warehouse_orders)
-            input_data.append(warehouse_inventories)
+            input_data += [observation[k] for k in ['warehouse_arrivals', 'warehouse_orders', 'warehouse_inventories']]
         
         input_tensor = self.flatten_then_concatenate_tensors(input_data)
         outputs = self.net['master'](input_tensor)
         
         if 'warehouse_inventories' not in observation:
-            return {'stores': outputs * R} if self.apply_normalization else {'stores': outputs}
+            return {'stores': outputs}
 
         n_stores = observation['store_inventories'].size(1)
         store_intermediate_outputs, warehouse_intermediate_outputs = outputs[:, :n_stores], outputs[:, n_stores:]
         
-        store_allocation = self.apply_proportional_allocation(store_intermediate_outputs, warehouse_inventories)
+        store_allocation = self.apply_proportional_allocation(store_intermediate_outputs, observation['warehouse_inventories'])
         warehouse_allocation = warehouse_intermediate_outputs
-        
-        if self.apply_normalization:
-            store_allocation = store_allocation * R
-            warehouse_allocation = warehouse_allocation * R
-        
         return {'stores': store_allocation, 'warehouses': warehouse_allocation}
 
 class Data_Driven_N_Warehouses(MyNeuralNetwork):
@@ -1947,7 +1922,9 @@ class QuantilePolicy(MyNeuralNetwork):
     def __init__(self, args, problem_params, device='cpu'):
 
         super().__init__(args=args, problem_params=problem_params, device=device) # Initialize super class
-        self.fixed_nets = {'quantile_forecaster': self.load_forecaster(args, requires_grad=False), 'long_quantile_forecaster': self.load_long_forecaster(args, requires_grad=False)}
+        self.fixed_nets = {'quantile_forecaster': self.load_forecaster(args, requires_grad=False)}
+        if 'n_warehouses' in problem_params and problem_params['n_warehouses'] > 0:
+            self.fixed_nets['long_quantile_forecaster'] = self.load_long_forecaster(args, requires_grad=False)
         self.allow_back_orders = False  # We will set to True only for non-admissible ReturnsNV policy
         self.n_stores = problem_params['n_stores']
         self.warehouse_lead_time = 6  # warehouse lead time
@@ -1958,7 +1935,7 @@ class QuantilePolicy(MyNeuralNetwork):
         """
         quantile_forecaster = FullyConnectedForecaster([128, 128], lead_times=nn_params['forecaster_lead_times'], qs=np.arange(0.05, 1, 0.05))
         quantile_forecaster = quantile_forecaster
-        quantile_forecaster.load_state_dict(torch.load(f"{nn_params['forecaster_location']}"))
+        quantile_forecaster.load_state_dict(torch.load(f"{nn_params['forecaster_location']}", map_location=self.device))
         
         # Set requires_grad to False for all parameters if we are not training the forecaster
         for p in quantile_forecaster.parameters():
@@ -2014,54 +1991,44 @@ class QuantilePolicy(MyNeuralNetwork):
         raise NotImplementedError
     
     def forward(self, observation):
-        try:
-            """
-            Get store allocation by mapping features to quantiles for each store.
-            Then, with the quantile forecaster, we "invert" the quantiles to get base-stock levels and obtain the store allocation.
-            """
+        """
+        Get store allocation by mapping features to quantiles for each store.
+        Then, with the quantile forecaster, we "invert" the quantiles to get base-stock levels and obtain the store allocation.
+        """
 
-            underage_costs, holding_costs, lead_times, past_demands, days_from_christmas, store_inventories = [observation[key] for key in ['underage_costs', 'holding_costs', 'lead_times', 'past_demands', 'days_from_christmas', 'store_inventories']]
+        underage_costs, holding_costs, lead_times, past_demands, days_from_christmas, store_inventories = [observation[key] for key in ['underage_costs', 'holding_costs', 'lead_times', 'past_demands', 'days_from_christmas', 'store_inventories']]
 
-            # Get the desired quantiles for each store, which will be used to forecast the base stock levels
-            # This function is different for each type of QuantilePolicy
-            # quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs, 'holding_costs': holding_costs})
-            # for warehouse..
-            quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
+        # Get the desired quantiles for each store, which will be used to forecast the base stock levels
+        # This function is different for each type of QuantilePolicy
+        # quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs, 'holding_costs': holding_costs})
+        # for warehouse..
+        quantiles = self.compute_desired_quantiles({'underage_costs': underage_costs.unsqueeze(-1), 'holding_costs': holding_costs.unsqueeze(-1)})
 
-            # Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
-            stores_base_stock_levels, result = self.forecast_base_stock_allocation(
-                self.fixed_nets['quantile_forecaster'], past_demands, days_from_christmas, store_inventories, lead_times, quantiles, allow_back_orders=self.allow_back_orders
-                )
-            if 'warehouse_inventories' not in observation:
-                return result
-
-            warehouse_inventories = observation['warehouse_inventories']
-            result['stores'] = self.apply_proportional_allocation(result['stores'], warehouse_inventories)
-            long_desired_quantiles = self.net['long_desired_quantiles'](underage_costs.unsqueeze(-1)/(underage_costs.unsqueeze(-1) + holding_costs.unsqueeze(-1)))
-
-            # # Get base stock levels for longer horizon using long quantile forecaster
-            stores_long_base_stock_levels, _ = self.forecast_base_stock_allocation(
-                self.fixed_nets['long_quantile_forecaster'], 
-                past_demands,
-                days_from_christmas, 
-                store_inventories,
-                lead_times + self.warehouse_lead_time,
-                long_desired_quantiles,
-                allow_back_orders=self.allow_back_orders
+        # Get store allocation by mapping the quantiles to base stock levels with the use of the quantile forecaster
+        stores_base_stock_levels, result = self.forecast_base_stock_allocation(
+            self.fixed_nets['quantile_forecaster'], past_demands, days_from_christmas, store_inventories, lead_times, quantiles, allow_back_orders=self.allow_back_orders
             )
-            warehouse_base_stock_level = stores_long_base_stock_levels.sum(dim=1)
-            warehouse_pos = warehouse_inventories.sum(dim=2) + store_inventories.sum(dim=2).sum(dim=1, keepdim=True)
-            result['warehouses'] = torch.clip(warehouse_base_stock_level - warehouse_pos, min=0)
+        if 'warehouse_inventories' not in observation:
             return result
-        except Exception as e:
-            with open(f"/user/ml4723/Prj/NIC/error_log.txt", "a") as f:
-                f.write(f"Process ID: {os.getpid()}\n")
-                f.write(f"Error in forward method: {str(e)}\n")
-                import traceback
-                f.write(f"Traceback:\n{traceback.format_exc()}\n")
-                f.write(f"Call stack:\n{''.join(traceback.format_stack())}\n")
-                f.write("-" * 50 + "\n")
-                raise e
+
+        warehouse_inventories = observation['warehouse_inventories']
+        result['stores'] = self.apply_proportional_allocation(result['stores'], warehouse_inventories)
+        long_desired_quantiles = self.net['long_desired_quantiles'](underage_costs.unsqueeze(-1)/(underage_costs.unsqueeze(-1) + holding_costs.unsqueeze(-1)))
+
+        # # Get base stock levels for longer horizon using long quantile forecaster
+        stores_long_base_stock_levels, _ = self.forecast_base_stock_allocation(
+            self.fixed_nets['long_quantile_forecaster'], 
+            past_demands,
+            days_from_christmas, 
+            store_inventories,
+            lead_times + self.warehouse_lead_time,
+            long_desired_quantiles,
+            allow_back_orders=self.allow_back_orders
+        )
+        warehouse_base_stock_level = stores_long_base_stock_levels.sum(dim=1)
+        warehouse_pos = warehouse_inventories.sum(dim=2) + store_inventories.sum(dim=2).sum(dim=1, keepdim=True)
+        result['warehouses'] = torch.clip(warehouse_base_stock_level - warehouse_pos, min=0)
+        return result
         
 class TransformedNV(QuantilePolicy):
 
@@ -2103,7 +2070,7 @@ class FixedQuantile(QuantilePolicy):
         Returns the same quantile for all stores and periods
         """
 
-        return self.net['master'](torch.tensor([0.0]).to(self.device)).unsqueeze(1).expand(args['underage_costs'].shape[0], args['underage_costs'].shape[1])
+        return self.net['master'](torch.tensor([0.0]).to(self.device)).unsqueeze(1).expand(args['underage_costs'].shape[0], args['underage_costs'].shape[1], self.n_stores)
 
 
 class JustInTime(MyNeuralNetwork):

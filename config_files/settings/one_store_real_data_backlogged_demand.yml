@@ -16,42 +16,45 @@ dev_seeds :
   'demand': 58
   'initial_inventory': 4839
 
-test_seeds :  # seeds for test set
+test_seeds :
   'underage_cost': 28 
   'holding_cost': 73 
-  'mean': 33 
-  'coef_of_var': 92
-  'lead_time': 41
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
   'demand': 65
   'initial_inventory': 4839
 
 sample_data_params:
-  'split_by_period': False
+  'split_by_period': True
+  'train_periods': (0, 111)
+  'dev_periods': (88, 141)
+  'test_periods': (118, 171)
 
 problem_params : 
-  'n_stores': 5  # tested values: 3, 5, 10, 20, 30, 50
+  'n_stores': 1
   'n_warehouses': 0
   'n_extra_echelons': 0
-  'lost_demand': True
-  'maximize_profit': False
+  'lost_demand': False
+  'maximize_profit': True
   'report_test_loss': True
 
 params_by_dataset : 
   'train': 
-    'n_samples': 8192  # tested values: 16, 256, 8192 for vanilla and symmetry-aware (for sym-aware, additionally 2, 4, 8)
-    'batch_size': 1024 
-    'periods': 50 
-    'ignore_periods': 30 
+    'n_samples': 32768 
+    'batch_size': 8192 
+    'periods': 95
+    'ignore_periods': 16
   'dev': 
-    'n_samples': 8192 
-    'batch_size': 1024 
-    'periods': 50 
-    'ignore_periods': 30 
+    'n_samples': 32768 
+    'batch_size': 32768 
+    'periods': 37
+    'ignore_periods': 16 
   'test': 
-    'n_samples': 8192 
-    'batch_size': 1024 
-    'periods': 1000
-    'ignore_periods': 600
+    'n_samples': 32768 
+    'batch_size': 32768 
+    'periods': 37 
+    'ignore_periods': 16
 
 observation_params:
   'include_warehouse_inventory': False
@@ -59,28 +62,30 @@ observation_params:
     'holding_costs': True 
     'underage_costs': True 
     'lead_times': True 
+    'upper_bounds': False
   'demand': 
-    'past_periods': 0 
-    'period_shift': 0
+    'past_periods': 16 
+    'period_shift': 16
   'include_past_observations':
-    'arrivals': 0
-    'orders': 0
-  'include_days_to_christmas': False
+    'store_arrivals': 8
+    'store_orders': 8
+  'time_features_file': '/user/ml4723/Prj/NIC/data_files/favorita/dates_with_info.csv'
+  'time_features':
+    ['days_from_christmas']
 
 store_params: 
   'demand': 
-    'sample_across_stores': False
+    'distribution': 'real'
+    'file_location': '/user/ml4723/Prj/NIC/data_files/favorita/weekly_sales.pt'
     'sample_across_instances': False
-    'expand': True
-    'mean': 5.0
-    'distribution': 'poisson'
-    'clip': True
+    'expand': False
+    'clip': False
     'decimals': 3
   'lead_time': 
     'sample_across_instances': False
-    'vary_across_samples': False
-    'expand': True
-    'value': 3
+    'vary_across_samples': True
+    'expand': False
+    'range': [4, 7]  # Higher end is excluded from sampling!
   'holding_cost': 
     'sample_across_instances': False 
     'vary_across_samples': False
@@ -88,14 +93,14 @@ store_params:
     'value': 1.0
   'underage_cost': 
     'sample_across_instances': False
-    'vary_across_samples': False 
-    'expand': True
-    'value': 9.0
+    'vary_across_samples': True 
+    'expand': False
+    'range': [6.3, 11.7]
   'initial_inventory': 
     'sample': False
-    'inventory_periods': 3
+    'inventory_periods': 6
 
-warehouse_params: 
+warehouse_params:
   null
 
 echelon_params: 

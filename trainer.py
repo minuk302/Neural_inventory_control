@@ -239,43 +239,56 @@ class Trainer():
             total_samples = len(data_loader.dataset)
             periods_tracking_loss = periods - ignore_periods  # Number of periods for which we report the loss
 
-            amp_enabled = torch.cuda.is_bf16_supported()
-            if any(x in torch.cuda.get_device_name() for x in ('V100', 'T4')):
-                amp_enabled = False
-            if 'disable_amp' in problem_params and problem_params['disable_amp']:
-                amp_enabled = False
-            scaler = torch.amp.GradScaler('cuda', enabled = amp_enabled)
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            amp_enabled = False
+            scaler = None
+
+            if device.type == 'cuda':
+                amp_enabled = torch.cuda.is_bf16_supported()
+                if any(x in torch.cuda.get_device_name() for x in ('V100', 'T4')):
+                    amp_enabled = False
+                if 'disable_amp' in problem_params and problem_params['disable_amp']:
+                    amp_enabled = False
+                scaler = torch.amp.GradScaler('cuda', enabled=amp_enabled)
+
             for i, data_batch in enumerate(data_loader):  # Loop through batches of data
                 data_batch = self.move_batch_to_device(data_batch)
                 if train:
-                    # Zero-out the gradient
                     optimizer.zero_grad(set_to_none=True)
 
-                # Forward pass
-                with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=amp_enabled):
+                if device.type == 'cuda':
+                    with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=amp_enabled):
+                        total_reward, reward_to_report = self.simulate_batch(
+                            loss_function, simulator, model, periods, problem_params, data_batch, observation_params, ignore_periods, discrete_allocation
+                        )
+                        epoch_loss += total_reward.item()
+                        epoch_loss_to_report += reward_to_report.item()
+                        mean_loss = total_reward / (len(data_batch['demands']) * periods * problem_params['n_stores'])
+                else:
                     total_reward, reward_to_report = self.simulate_batch(
                         loss_function, simulator, model, periods, problem_params, data_batch, observation_params, ignore_periods, discrete_allocation
-                        )
-                    epoch_loss += total_reward.item()  # Rewards from period 0
-                    epoch_loss_to_report += reward_to_report.item()  # Rewards from period ignore_periods onwards
-                    
-                    mean_loss = total_reward/(len(data_batch['demands'])*periods*problem_params['n_stores'])
-                
-                if train and model.trainable:
-                    scaler.scale(mean_loss).backward()
-                    scaler.unscale_(optimizer)
-                    # mean_loss.backward()
-                    if model.gradient_clipping_norm_value is not None:
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), model.gradient_clipping_norm_value)
-                    scaler.step(optimizer)
-                    scaler.update()
-                    # optimizer.step()
-                    optimizer.zero_grad(set_to_none=True)
+                    )
+                    epoch_loss += total_reward.item()
+                    epoch_loss_to_report += reward_to_report.item()
+                    mean_loss = total_reward / (len(data_batch['demands']) * periods * problem_params['n_stores'])
 
-                # if model.is_debugging:
-                #     exit()
-            
-            return epoch_loss/(total_samples*periods*problem_params['n_stores']), epoch_loss_to_report/(total_samples*periods_tracking_loss*problem_params['n_stores'])
+                if train and model.trainable:
+                    if device.type == 'cuda' and scaler is not None:
+                        scaler.scale(mean_loss).backward()
+                        scaler.unscale_(optimizer)
+                        if model.gradient_clipping_norm_value is not None:
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), model.gradient_clipping_norm_value)
+                        scaler.step(optimizer)
+                        scaler.update()
+                        optimizer.zero_grad(set_to_none=True)
+                    else:
+                        mean_loss.backward()
+                        if model.gradient_clipping_norm_value is not None:
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), model.gradient_clipping_norm_value)
+                        optimizer.step()
+                        optimizer.zero_grad(set_to_none=True)
+
+            return epoch_loss / (total_samples * periods * problem_params['n_stores']), epoch_loss_to_report / (total_samples * periods_tracking_loss * problem_params['n_stores'])
         
         if train:
             model.train()
@@ -430,7 +443,8 @@ class Trainer():
         Load a saved model
         """
 
-        checkpoint = torch.load(model_path, weights_only=False)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         return model, optimizer

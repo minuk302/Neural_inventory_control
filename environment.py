@@ -395,7 +395,7 @@ class Simulator(gym.Env):
         for k, v in observation_params['include_past_observations'].items():
             if v > 0:
                 if 'store_orders' == k:
-                    if self.problem_params['n_warehouses'] == 1:
+                    if self.problem_params['n_warehouses'] <= 1:
                         observation[k] = torch.zeros(self.batch_size, self.n_stores, v, device=self.device)
                     else:
                         observation[k] = torch.zeros(self.batch_size, self.n_stores, self.problem_params['n_warehouses'], v, device=self.device)

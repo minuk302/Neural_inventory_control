@@ -69,6 +69,58 @@ ray.init(num_cpus = num_instances * n_cpus_per_instance, num_gpus = num_gpus, ob
 
 save_path = f'ray_results/{testset_name}/{hyperparams_name}'
 
+if "finals_one_store_real_data_lost_demand" == testset_name:
+    config = "one_store_real_data_lost_demand"
+    common_setups = {
+        "config": tune.grid_search([config]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+
+        "store_underage_cost": tune.grid_search([2, 3, 4, 6, 9, 13, 19]),
+        "repeats": tune.grid_search([1]),
+    }
+    if "data_driven_net" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+    if "transformed_nv" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+    if "fixed_quantile" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+    if "quantile_nv" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+    if "just_in_time" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+
+if "finals_one_store_real_data_backlogged_demand" == testset_name:
+    config = "one_store_real_data_backlogged_demand"
+    common_setups = {
+        "config": tune.grid_search([config]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+
+        "store_underage_cost": tune.grid_search([2, 3, 4, 6, 9, 13, 19]),
+        "repeats": tune.grid_search([1]),
+    }
+    if "data_driven_net" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+    if "transformed_nv" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+    if "fixed_quantile" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+    if "quantile_nv" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+    if "just_in_time" == hyperparams_name:
+        search_space = { **common_setups,
+        }
+
 if "finals_one_store_backlogged" == testset_name:
     config = "one_store_backlogged"
     common_setups = {

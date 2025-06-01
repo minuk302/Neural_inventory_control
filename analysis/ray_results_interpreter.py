@@ -68,6 +68,8 @@ class RayResultsinterpreter:
                         'test_n_samples': 'test_n_samples',
                         'train_batch_size': 'train_batch_size',
                         'warehouse_demands_cap': 'warehouse_demands_cap',
+                        "master_echelon": "master_echelon",
+                        "master_n_warehouses": "master_n_warehouses",
                     }
                     result = {}
                     for key, value in param_dict.items():

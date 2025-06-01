@@ -34,6 +34,7 @@ problem_params :
   'n_extra_echelons': 2
   'lost_demand': False
   'maximize_profit': False
+  'report_test_loss': False
 
 params_by_dataset : 
   'train': 
@@ -91,7 +92,7 @@ store_params:
     'expand': True
     'value': 9.0  # Values tested: 4, 9, 19, 39
   'initial_inventory': 
-    'sample': True
+    'sample': False
     'range_mult': [0, 1]
     'inventory_periods': 1  # Initial inventory will be of size max(inventory_periods, lead_time)
 
@@ -108,6 +109,7 @@ warehouse_params:
     'value': 0.5
   'initial_inventory': 
     'sample': False
+    'range_mult': [0, 1]
     'inventory_periods': 1  # Initial inventory will be of size max(inventory_periods, lead_time)
 
 echelon_params: 
@@ -123,4 +125,5 @@ echelon_params:
     'value': [0.1, 0.2]
   'initial_inventory': 
     'sample': False
+    'range_mult': [0, 1]
     'inventory_periods': 1  # Initial inventory will be of size max(inventory_periods, lead_time)

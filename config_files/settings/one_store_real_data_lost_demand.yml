@@ -7,20 +7,29 @@ seeds :
   'demand': 57 
   'initial_inventory': 4839
 
-test_seeds :  # Seeds for test set
-  'underage_cost': 36 
-  'holding_cost': 81 
-  'mean': 41 
-  'coef_of_var': 100
-  'lead_time': 49
+dev_seeds : 
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
+  'demand': 58
+  'initial_inventory': 4839
+
+test_seeds :
+  'underage_cost': 28 
+  'holding_cost': 73 
+  'mean': 33
+  'coef_of_var': 92 
+  'lead_time': 41 
   'demand': 65
   'initial_inventory': 4839
 
 sample_data_params:
   'split_by_period': True
-  'train_periods': (0, 120)
-  'dev_periods': (104, 170)
-  'test_periods': (154, 200)
+  'train_periods': (0, 111)
+  'dev_periods': (88, 141)
+  'test_periods': (118, 171)
 
 problem_params : 
   'n_stores': 1
@@ -34,18 +43,18 @@ params_by_dataset :
   'train': 
     'n_samples': 32768 
     'batch_size': 8192 
-    'periods': 104 
+    'periods': 95
     'ignore_periods': 16
   'dev': 
     'n_samples': 32768 
-    'batch_size': 8192 
-    'periods': 50 
+    'batch_size': 32768 
+    'periods': 37
     'ignore_periods': 16 
   'test': 
     'n_samples': 32768 
-    'batch_size': 8192 
-    'periods': 30 
-    'ignore_periods': 10
+    'batch_size': 32768 
+    'periods': 37 
+    'ignore_periods': 16
 
 observation_params:
   'include_warehouse_inventory': False
@@ -58,16 +67,16 @@ observation_params:
     'past_periods': 16 
     'period_shift': 16
   'include_past_observations':
-    'arrivals': 8
-    'orders': 8
-  'time_features_file': 'data_files/favorita/dates_with_info.csv'
+    'store_arrivals': 8
+    'store_orders': 8
+  'time_features_file': '/user/ml4723/Prj/NIC/data_files/favorita/dates_with_info.csv'
   'time_features':
     ['days_from_christmas']
 
 store_params: 
   'demand': 
     'distribution': 'real'
-    'file_location': 'data_files/favorita/weekly_sales.pt'
+    'file_location': '/user/ml4723/Prj/NIC/data_files/favorita/weekly_sales.pt'
     'sample_across_instances': False
     'expand': False
     'clip': False
@@ -91,9 +100,8 @@ store_params:
     'sample': False
     'inventory_periods': 6
 
-warehouse_params: 
-  'holding_cost': 0.3
-  'lead_time': 4     
+warehouse_params:
+  null
 
 echelon_params: 
   null

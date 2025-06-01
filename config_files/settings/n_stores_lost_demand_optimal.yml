@@ -34,7 +34,7 @@ problem_params :
   'n_extra_echelons': 0
   'lost_demand': True
   'maximize_profit': False
-  'report_test_loss': True
+  'report_test_loss': False
 
 params_by_dataset : 
   'train': 
@@ -43,15 +43,15 @@ params_by_dataset :
     'periods': 50 
     'ignore_periods': 30 
   'dev': 
-    'n_samples': 4096 
-    'batch_size': 1024 
+    'n_samples': 8192 
+    'batch_size': 8192 
     'periods': 50 
     'ignore_periods': 30 
   'test': 
-    'n_samples': 4096 
-    'batch_size': 1024 
-    'periods': 500
-    'ignore_periods': 300
+    'n_samples': 8192 
+    'batch_size': 8192 
+    'periods': 5000
+    'ignore_periods': 3000
 
 observation_params:
   'include_warehouse_inventory': False
