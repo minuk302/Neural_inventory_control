@@ -117,7 +117,7 @@ if "finals_one_store_real_data_backlogged_demand" == testset_name:
     if "quantile_nv" == hyperparams_name:
         search_space = { **common_setups,
         }
-    if "just_in_time" == hyperparams_name:
+    if "returns_nv" == hyperparams_name:
         search_space = { **common_setups,
         }
 
@@ -194,6 +194,7 @@ if "finals_serial_HDPO" == testset_name:
     if 'vanilla_serial' == hyperparams_name:
         search_space = { **common_setups,
         }
+        search_space['repeats'] = tune.grid_search([3])
     if 'echelon_stock_hard' == hyperparams_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.5, 0.1, 0.03]),
@@ -213,7 +214,7 @@ if "finals_transshipment_HDPO" == testset_name:
         "store_lead_time": tune.grid_search([2, 6]),
         "stores_correlation": tune.grid_search([0.0, 0.5]),
 
-        "repeats": tune.grid_search([1, 2, 3]),
+        "repeats": tune.grid_search([2, 3]),
 
         'train_dev_sample_and_batch_size': tune.grid_search([32768]),
         "train_batch_size": tune.grid_search([1024]),
@@ -227,7 +228,7 @@ if "finals_one_store_sample_efficiency" == testset_name:
     config = "one_store_lost"
     common_setups = {
         "config": tune.grid_search([config]),
-        "early_stop_check_epochs": tune.grid_search([5]),
+        "early_stop_check_epochs": tune.grid_search([10]),
         "stop_if_no_improve_for_epochs": tune.grid_search([500]),
 
         "store_lead_time": tune.grid_search([3, 4]),
@@ -235,16 +236,12 @@ if "finals_one_store_sample_efficiency" == testset_name:
 
         "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
         'different_for_each_sample': tune.grid_search([True]),
-        "repeats": tune.grid_search([1, 2, 3]),
+        "repeats": tune.grid_search([1]),
 
         'train_dev_sample_and_batch_size': tune.grid_search([16, 32, 64, 128, 256, 512, 1024]),
-
-        "test_n_samples": tune.grid_search([32768]),
-        "test_batch_size": tune.grid_search([32768]),
     }
     if 'vanilla_one_store' == hyperparams_name:
         search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
         }
 
 if "finals_serial" == testset_name:
@@ -273,12 +270,6 @@ if "finals_serial" == testset_name:
             "master_echelon": tune.grid_search([32, 64, 128]),
             "overriding_networks": ["master_echelon"],
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-        }
-    if 'vanilla_serial_selfloop' == hyperparams_name:
-        search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
-            "master_echelon_selfloop": tune.grid_search([32, 64, 128]),
-            "overriding_networks": ["master_echelon_selfloop"],
         }
     if 'GNN' == hyperparams_name:
         search_space = { **common_setups,
@@ -502,18 +493,22 @@ if "finals_one_warehouse_n_stores" == testset_name:
         }
 
 if "finals_real_n_warehouses_n_stores" == testset_name:
-    configs = ["n_warehouse_21_2_real_lost_demand", "n_warehouse_21_3_real_lost_demand", "n_warehouse_21_4_real_lost_demand",  "n_warehouse_21_5_real_lost_demand"]
+    configs = ["n_warehouse_21_3_real_lost_demand"]#, "n_warehouse_21_3_real_lost_demand", "n_warehouse_21_5_real_lost_demand", "n_warehouse_21_4_real_lost_demand"]
     common_setups = {
         "config": tune.grid_search(configs),
         "early_stop_check_epochs": tune.grid_search([10]),
         "stop_if_no_improve_for_epochs": tune.grid_search([500]),
 
         "repeats": tune.grid_search([1, 2, 3]),
-        'train_dev_sample_and_batch_size': tune.grid_search([288]),
         "train_batch_size": tune.grid_search([72]),
 
+        'train_dev_sample_and_batch_size': tune.grid_search([288]),
         "test_n_samples": tune.grid_search([288]),
         "test_batch_size": tune.grid_search([288]),
+
+        # 'train_dev_sample_and_batch_size': tune.grid_search([64]),
+        # "test_n_samples": tune.grid_search([64]),
+        # "test_batch_size": tune.grid_search([64]),
     }
     if 'GNN_real' == hyperparams_name:
         search_space = { **common_setups,
@@ -524,6 +519,12 @@ if "finals_real_n_warehouses_n_stores" == testset_name:
         search_space = { **common_setups,
             "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
             "n_MP": tune.grid_search([2]),
+        }
+        search_space['config'] = tune.grid_search([config + "_best" for config in configs])
+    if 'GNN_real_selfloop_best' == hyperparams_name:
+        search_space = { **common_setups,
+            "learning_rate": tune.grid_search([0.01, 0.001, 0.0001]),
+            "n_MP": tune.grid_search([1]),
         }
         search_space['config'] = tune.grid_search([config + "_best" for config in configs])
     if 'GNN_real_selfloop' == hyperparams_name:
@@ -569,9 +570,13 @@ if "finals_real_one_warehouse_n_stores" == testset_name:
         "n_stores": tune.grid_search([3, 5, 10, 15, 21]),
 
         "repeats": tune.grid_search([1, 2, 3]),
-        'train_dev_sample_and_batch_size': tune.grid_search([64]),
         "train_batch_size": tune.grid_search([72]),
 
+        # 'train_dev_sample_and_batch_size': tune.grid_search([288]),
+        # "test_n_samples": tune.grid_search([288]),
+        # "test_batch_size": tune.grid_search([288]),
+
+        'train_dev_sample_and_batch_size': tune.grid_search([64]),
         "test_n_samples": tune.grid_search([64]),
         "test_batch_size": tune.grid_search([64]),
     }
@@ -600,7 +605,6 @@ if "finals_real_one_warehouse_n_stores" == testset_name:
         search_space = { **common_setups,
         }
         search_space["repeats"] = tune.grid_search([1])
-        search_space["train_dev_sample_and_batch_size"] = tune.grid_search([64])
 
 if "finals_n_warehouses_n_stores" == testset_name:
     configs = ["n_warehouse_50_6_lost_demand", "n_warehouse_40_5_lost_demand", "n_warehouse_30_4_lost_demand", "n_warehouse_20_3_lost_demand", "n_warehouse_10_2_lost_demand"]
@@ -679,9 +683,9 @@ if "separate_store" == testset_name:
     yml_files = []
     folder_paths = [
         # "/user/ml4723/Prj/NIC/config_files/settings/separate/n_warehouse_21_2_real_lost_demand"
-        # "/user/ml4723/Prj/NIC/config_files/settings/separate/n_warehouse_21_3_real_lost_demand", 
-        "/user/ml4723/Prj/NIC/config_files/settings/separate/n_warehouse_21_5_real_lost_demand", 
-        # "/user/ml4723/Prj/NIC/config_files/settings/separate/n_warehouse_21_4_real_lost_demand", 
+        "/user/ml4723/Prj/NIC/config_files/settings/separate/n_warehouse_21_3_real_lost_demand", 
+        #"/user/ml4723/Prj/NIC/config_files/settings/separate/n_warehouse_21_5_real_lost_demand", 
+        #"/user/ml4723/Prj/NIC/config_files/settings/separate/n_warehouse_21_4_real_lost_demand", 
     ]
     
     for folder_path in folder_paths:
@@ -709,8 +713,8 @@ if "finals_separated_networks_demands_signal" == testset_name:
         "early_stop_check_epochs": tune.grid_search([10]),
         "stop_if_no_improve_for_epochs": tune.grid_search([500]),
         "repeats": tune.grid_search([1, 2, 3]),
-        'train_dev_sample_and_batch_size': tune.grid_search([8192]),
-        "train_batch_size": tune.grid_search([1024]),
+        'train_dev_sample_and_batch_size': tune.grid_search([32768]),
+        "train_batch_size": tune.grid_search([8192]),
 
         "store_underage_cost": tune.grid_search([[2, 6, 10]]),
     }
@@ -752,32 +756,41 @@ if "n_warehouse_1_2_edge_cost" == testset_name:
         }
 
 if "censored_demands" == testset_name:
-    config = "one_store_lost_censored"
+    config = "one_store_lost"
     common_setups = {
         "config": tune.grid_search([config]),
-        "repeats": tune.grid_search([1, 2, 3]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+        "repeats": tune.grid_search([1]),
         "store_lead_time": tune.grid_search([2]),
+        "store_underage_cost": tune.grid_search([4]),
         "censor_demands_for_train_and_dev": tune.grid_search(["weibull"]),
         "censoring_threshold": tune.grid_search([5, 6, 7, 8]),
         "weibull_fixed_lambda": tune.grid_search([1.0, 2.0, 3.0]),
         "weibull_k": tune.grid_search([0.8, 1.0, 1.2]),
+        "train_batch_size": tune.grid_search([1024]),
     }
     if 'vanilla_one_store' == hyperparams_name:
         search_space = { **common_setups }
     if 'capped_base_stock' == hyperparams_name:
         search_space = { **common_setups,
-            "learning_rate": tune.grid_search([0.1, 0.01]),
+            "learning_rate": tune.grid_search([1.0, 0.5, 0.1]),
         }
 
 if "censored_demands_kaplanmeier" == testset_name:
-    config = "one_store_lost_censored"
+    config = "one_store_lost"
     common_setups = {
         "config": tune.grid_search([config]),
-        "samples": tune.grid_search([17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]),
-        "repeats": tune.grid_search([1, 2, 3]),
+        "early_stop_check_epochs": tune.grid_search([10]),
+        "stop_if_no_improve_for_epochs": tune.grid_search([500]),
+        "samples": tune.grid_search([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]),        
+        'different_for_each_sample': tune.grid_search([True]),
+        "repeats": tune.grid_search([1]),
         "store_lead_time": tune.grid_search([2]),
+        "store_underage_cost": tune.grid_search([4]),
         "censor_demands_for_train_and_dev": tune.grid_search(["kaplanmeier"]),
         "kaplanmeier_n_fit": tune.grid_search([10**2, 10**3, 10**4, 10**5]),
+        "train_batch_size": tune.grid_search([1024]),
     }
     if 'vanilla_one_store' == hyperparams_name:
         search_space = { **common_setups }
